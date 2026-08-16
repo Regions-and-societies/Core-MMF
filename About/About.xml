@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ModMetaData>
+    <name>Regions and Territories</name>
+    <author>RimSynapse Team</author>
+    <packageId>RimSynapse.RegionsAndTerritories</packageId>
+    <url>https://github.com/RimSynapse/Regions-and-Territories</url>
+    <modVersion>0.8.0</modVersion>
+    <supportedVersions>
+        <li>1.5</li>
+        <li>1.6</li>
+    </supportedVersions>
+    <modDependencies>
+        <li>
+            <packageId>NozoMe.MapModeFramework</packageId>
+            <displayName>Map Mode Framework</displayName>
+            <downloadUrl>https://github.com/nozomemu/MapModeFramework/releases/latest</downloadUrl>
+            <steamWorkshopUrl>steam://url/CommunityFilePage/3296654393</steamWorkshopUrl>
+        </li>
+    </modDependencies>
+    <loadAfter>
+        <li>NozoMe.MapModeFramework</li>
+        <li>Matathias.Empire</li>
+        <li>OskarPotocki.VanillaFactionsExpanded.Core</li>
+        <li>vanillaexpanded.outposts</li>
+        <li>Ludeon.RimWorld.Royalty</li>
+        <li>Ludeon.RimWorld.Ideology</li>
+        <li>Ludeon.RimWorld.Biotech</li>
+        <li>Ludeon.RimWorld.Anomaly</li>
+    </loadAfter>
+    <description>
+Discord Community: https://discord.gg/eVBebZ2N9s
+Version: v0.8.0 (Target: RimWorld 1.6)
+
+Regions and Territories
+Official Wiki and Documentation: https://github.com/RimSynapse/Regions-and-Territories/wiki
+
+Handles mapping dynamics, including dynamic geographic province generation, world map overlays, four-tier faction territory ownership, geography-driven faction placement, regional demographics and population-density mapping, road generation, and ruins placement.
+
+*** BEST ON A NEW COLONY - EXISTING SAVES ARE SUPPORTED IN COMPATIBILITY MODE ***
+
+Regions and Territories does most of its work during world generation. It draws the province boundaries and then places faction settlements according to them, respecting region occupancy limits, border buffers, and sequential expansion. A world generated with the mod installed gets all of that.
+
+Added to a world that already exists, it adopts that world in Compatibility Mode instead. Provinces are still drawn, territory is still owned and shown on the map modes, and everything the overlays display works as normal. What stands down is placement: the mod will not decide where settlements and outposts may be built, because your world is already full of towns that were placed with no regard for those rules, and enforcing them now would refuse ground that has been settled since long before the mod arrived. Vanilla and any other mods keep control of placement, and more than one settlement may share a province.
+
+The mode is decided once, per save, and recorded in it. You can see and change it under Strict territorial ownership in the mod settings while that save is loaded - but be aware that switching an in-progress world to strict starts applying rules to settlements that were never placed under them.
+
+A new colony is still the recommended way to play this mod. Compatibility mode exists so an existing save is usable, not so it is equivalent - geography-driven faction placement, region occupancy limits, border buffers and sequential expansion are the heart of what Regions and Territories does, and only a world generated with the mod installed gets them.
+
+Removing the mod from an in-progress save will log errors about missing province data the next time that save is loaded. The save will usually still open, but this is not a supported path and you should expect a wall of red text.
+
+Requires: Map Mode Framework
+
+--- Changelog (v0.8.0) - Regional Demographics and Territorial Ownership ---
+New:
+- Regional demographics: every region now carries a deterministic population and belief distribution, computed on read and shown when you select the region. It shapes where settlements press outward and reflects the biomes each region favours.
+- Population heatmap rescaled to a theoretical-maximum scale with technology factors, so crowded and empty regions read clearly against the same yardstick.
+
+Territory and placement:
+- Ownership now requires a real claim. A faction owns a region only where it holds a settlement - or, lacking one, the most outposts there. Simply being present no longer paints the map.
+- A formal four-tier ownership ladder - exclusive hold, ownership, legitimate claim, loose claim - drives shading, tooltips and borders consistently.
+- Natural barriers, coastlines and mountains now read as a holding faction's own border where it owns the ground behind them.
+- NPC nations grow as contiguous territory instead of scattering: placement weighs established claim against resources (70/30) and is averse to settling amid a rival's claims. One settlement per region.
+- Settling inside a rival's claimed region now angers that faction and costs goodwill.
+- Settlement density is now a single, honest "claimed land area" knob, weighted by region size.
+
+Compatibility:
+- Vanilla Factions Expanded faction-suite world objects are now recognised through dedicated adapter profiles.
+- Realistic Planets 2 is supported through a separate Regions and Territories (Realistic Planets 2) edition.
+
+Fixed:
+- Fixed an out-of-memory crash during world generation on large or mod-heavy setups.
+- Worlds from earlier versions load correctly in Compatibility Mode.
+
+Full version history: https://github.com/RimSynapse/Regions-and-Territories/wiki/Changelog
+    </description>
+</ModMetaData>
