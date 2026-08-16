@@ -52,7 +52,7 @@ namespace RegionsAndSocieties
             l.CheckboxLabeled("Settlement tiers & capitals", ref Integration.WorldObjectIntegrationSettings.settlementTiers,
                 "Structural tiers (village → metropolis) from each faction's settlement pyramid, and the capital star marker.");
             l.CheckboxLabeled("Seed outposts at world generation", ref Integration.WorldObjectIntegrationSettings.outpostSeeding,
-                "Place VOE outposts around settlements up to each territory's tier-based allowance during world generation.");
+                "Place outposts around settlements up to each territory's tier-based allowance during world generation. Needs a compatibility patch that contributes an outpost creator (e.g. the Outposts Expanded patch).");
             l.CheckboxLabeled("Population caps (model only)", ref Integration.WorldObjectIntegrationSettings.populationCaps,
                 "Model a per-tier population cap that settlements drift toward. Never adds or removes the player's real colonists.");
 
@@ -127,9 +127,9 @@ namespace RegionsAndSocieties
             // and Core loads before this mod, so its callback is queued first.
             LongEventHandler.ExecuteWhenFinished(Integration.RegionMcpTools.RegisterWithCore);
 
-            // Empire Refactored patching moved to its compatibility patch
-            // (Regions-and-societies/Empire-CP), which applies its own typed Harmony patches.
-            TryPatchVOE(harmony);
+            // Foreign-mod patching lives in the compatibility patches now (Empire-CP, VOE-CP,
+            // VFE-CP, World-Domination-CP), each applying its own typed Harmony patches and
+            // registering its adapters/creators through the public registries above.
         }
 
         /// <summary>
@@ -212,35 +212,5 @@ namespace RegionsAndSocieties
             }
         }
 
-        private void TryPatchVOE(Harmony harmony)
-        {
-            try
-            {
-                var type = GenTypes.GetTypeInAnyAssembly("Outposts.Utils");
-                if (type != null)
-                {
-                    var target = type.GetMethods(BindingFlags.Public | BindingFlags.Static)
-                        .FirstOrDefault(m => m.Name == "CanSpawnOnWithExt");
-                    if (target != null)
-                    {
-                        var postfix = new HarmonyMethod(typeof(Patches.Patch_VOE_CanSpawnOn), nameof(Patches.Patch_VOE_CanSpawnOn.CanSpawnOnWithExt_Postfix));
-                        harmony.Patch(target, postfix: postfix);
-                        Log.Message("[RegionsAndSocieties] Dynamically patched Outposts.Utils.CanSpawnOnWithExt successfully.");
-                    }
-                    else
-                    {
-                        Log.Warning("[RegionsAndSocieties] Could not find CanSpawnOnWithExt method in Outposts.Utils.");
-                    }
-                }
-                else
-                {
-                    Log.Message("[RegionsAndSocieties] Vanilla Outposts Expanded not detected. Skipping VOE dynamic patching.");
-                }
-            }
-            catch (Exception ex)
-            {
-                Log.Error($"[RegionsAndSocieties] Error dynamically patching VOE: {ex.Message}");
-            }
-        }
     }
 }

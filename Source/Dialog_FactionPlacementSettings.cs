@@ -191,12 +191,10 @@ namespace RegionsAndSocieties
 
             // Row 1 — per-mod integrations.
             float y = box.y + 52f;
-            // Empire Refactored moved to its compatibility patch — installed means enabled, no toggle.
-            IntegrationToggle(new Rect(box.x + 10f + colW * 0f, y, colW - 8f, 22f), "Outposts Expanded",
-                ref Integration.WorldObjectIntegrationSettings.voeEnabled, on,
-                "Recognise Vanilla Outposts Expanded outposts, including their occupant count and upgrade level.");
-            // Empire, VFE and World Domination toggles left with their compatibility patches —
-            // a patch is enabled by being installed. VOE's remains until its extraction lands.
+            // Row 1 held the four per-mod integration toggles until the compatibility inversion
+            // (Core-MMF#3) moved every foreign-mod integration into its own patch. A patch is
+            // enabled by being installed, so no per-mod toggles remain — only the master switch
+            // and the per-mechanic rows below.
 
             // Row 2 — which mechanics the integration is allowed to drive.
             y += 24f;

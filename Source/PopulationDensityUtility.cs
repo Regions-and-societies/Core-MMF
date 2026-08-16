@@ -26,38 +26,10 @@ namespace RegionsAndSocieties
             public int population;
         }
 
-        public static bool IsVoeOutpost(WorldObject obj)
-        {
-            if (obj == null) return false;
-            System.Type type = obj.GetType();
-            while (type != null)
-            {
-                if (type.FullName == "Outposts.Outpost")
-                    return true;
-                type = type.BaseType;
-            }
-            return false;
-        }
-
-        public static int GetVoeOutpostPopulation(WorldObject obj)
-        {
-            if (obj == null) return 0;
-            var prop = obj.GetType().GetProperty("PawnCount", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
-            if (prop != null)
-            {
-                return (int)prop.GetValue(obj);
-            }
-            var field = obj.GetType().GetField("occupants", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public);
-            if (field != null)
-            {
-                var list = field.GetValue(obj) as System.Collections.ICollection;
-                if (list != null)
-                {
-                    return list.Count;
-                }
-            }
-            return 0;
-        }
+        // The old IsVoeOutpost/GetVoeOutpostPopulation belt-and-suspenders pair is gone (Core-MMF#3):
+        // it existed because the reflection profile could silently fail to read a population, and
+        // core reached around its own adapter layer to compensate. Populations now come only from
+        // the adapter registry, and the typed adapter in VOE-CP cannot fail the way the profile did.
 
         // Two arrays, two meanings, deliberately kept apart (#62 / #55):
         //   cachedTilePopulations       - the *smeared* influence field: a settlement's head count
@@ -202,10 +174,6 @@ namespace RegionsAndSocieties
                     if (!Integration.WorldObjectClassifier.HasPopulation(obj)) continue;
 
                     int pop = Integration.WorldObjectClassifier.GetPopulation(obj);
-                    if (pop <= 0 && IsVoeOutpost(obj))
-                    {
-                        pop = GetVoeOutpostPopulation(obj);
-                    }
 
                     if (pop > 0)
                     {

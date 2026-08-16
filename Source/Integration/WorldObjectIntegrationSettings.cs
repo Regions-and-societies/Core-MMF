@@ -19,7 +19,6 @@ namespace RegionsAndSocieties.Integration
         // (Regions-and-societies/{Empire,VFE,World-Domination}-CP); a patch is enabled by being
         // installed, so those toggles are gone. VOE remains until its extraction lands (last, since
         // other integrations historically resolved through its profile).
-        public static bool voeEnabled = true;
 
         // --- Per-mechanic switches ------------------------------------------------
         /// <summary>Gate placement of foreign world objects on region ownership and supply range.</summary>
@@ -71,7 +70,6 @@ namespace RegionsAndSocieties.Integration
         public static void ExposeData()
         {
             Scribe_Values.Look(ref masterEnabled, "integration_masterEnabled", true);
-            Scribe_Values.Look(ref voeEnabled, "integration_voeEnabled", true);
 
             Scribe_Values.Look(ref placementGovernance, "integration_placementGovernance", true);
             Scribe_Values.Look(ref economyGovernance, "integration_economyGovernance", true);

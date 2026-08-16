@@ -36,13 +36,12 @@ namespace RegionsAndSocieties.Integration
             if (initialized) return;
             initialized = true;
 
+            // Core ships only the vanilla adapter. Every foreign-mod adapter arrives through a
+            // compatibility patch calling Register from its own Mod constructor — patches load
+            // after core, so they merge into the priority order kept below (Core-MMF#3). The old
+            // KnownModProfiles table is gone; ReflectionWorldObjectAdapter remains available for
+            // patches that need loose binding.
             Register(new VanillaWorldObjectAdapter());
-
-            List<WorldObjectAdapterProfile> profiles = KnownModProfiles.All();
-            for (int i = 0; i < profiles.Count; i++)
-            {
-                Register(new ReflectionWorldObjectAdapter(profiles[i]));
-            }
 
             LogActiveAdapters();
         }

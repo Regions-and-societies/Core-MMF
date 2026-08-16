@@ -21,14 +21,15 @@ namespace RegionsAndSocieties.Integration
         public static IReadOnlyList<IHoldingCreator> Creators => creators;
         public static bool Initialized => initialized;
 
-        /// <summary>Builds the built-in creator set. Safe to call more than once; later calls are no-ops.</summary>
+        /// <summary>Marks the registry ready. Safe to call more than once; later calls are no-ops.</summary>
         public static void Initialize()
         {
             if (initialized) return;
             initialized = true;
 
-            Register(new VoeOutpostCreator());
-
+            // Core ships no creators of its own. Compatibility patches contribute them — the VOE
+            // outpost creator lives in Regions-and-societies/VOE-CP and registers from that patch's
+            // Mod constructor (Core-MMF#3).
             LogActiveCreators();
         }
 
