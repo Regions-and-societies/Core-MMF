@@ -127,7 +127,8 @@ namespace RegionsAndSocieties
             // and Core loads before this mod, so its callback is queued first.
             LongEventHandler.ExecuteWhenFinished(Integration.RegionMcpTools.RegisterWithCore);
 
-            TryPatchEmpires(harmony);
+            // Empire Refactored patching moved to its compatibility patch
+            // (Regions-and-societies/Empire-CP), which applies its own typed Harmony patches.
             TryPatchVOE(harmony);
         }
 
@@ -211,84 +212,6 @@ namespace RegionsAndSocieties
             }
         }
 
-        private void TryPatchEmpires(Harmony harmony)
-        {
-            try
-            {
-
-
-                var rewardDefType = GenTypes.GetTypeInAnyAssembly("FactionColonies.ResourceEventRewardDef");
-                if (rewardDefType != null)
-                {
-                    var originalBuildParams = AccessTools.Method(rewardDefType, "BuildParams");
-                    if (originalBuildParams != null)
-                    {
-                        var prefix = new HarmonyMethod(typeof(Patches.RegionsAndSocieties_EmpiresPatch), nameof(Patches.RegionsAndSocieties_EmpiresPatch.BuildParams_Prefix));
-                        harmony.Patch(originalBuildParams, prefix: prefix);
-                        Log.Message("[RegionsAndSocieties] Dynamically patched ResourceEventRewardDef.BuildParams successfully.");
-                    }
-                }
-
-                var paymentUtilType = GenTypes.GetTypeInAnyAssembly("FactionColonies.PaymentUtil");
-                if (paymentUtilType != null)
-                {
-                    var originalGenRewards = AccessTools.Method(paymentUtilType, "GenerateRewardThings");
-                    if (originalGenRewards != null)
-                    {
-                        var prefix = new HarmonyMethod(typeof(Patches.RegionsAndSocieties_EmpiresPatch), nameof(Patches.RegionsAndSocieties_EmpiresPatch.GenerateRewardThings_Prefix));
-                        harmony.Patch(originalGenRewards, prefix: prefix);
-                        Log.Message("[RegionsAndSocieties] Dynamically patched PaymentUtil.GenerateRewardThings successfully.");
-                    }
-
-                    var originalValOfTithe = AccessTools.Method(paymentUtilType, "ReturnValueOfTithe");
-                    if (originalValOfTithe != null)
-                    {
-                        var prefix = new HarmonyMethod(typeof(Patches.RegionsAndSocieties_EmpiresPatch), nameof(Patches.RegionsAndSocieties_EmpiresPatch.ReturnValueOfTithe_Prefix));
-                        harmony.Patch(originalValOfTithe, prefix: prefix);
-                        Log.Message("[RegionsAndSocieties] Dynamically patched PaymentUtil.ReturnValueOfTithe successfully.");
-                    }
-                }
-
-
-                var checkerType = GenTypes.GetTypeInAnyAssembly("FactionColonies.util.WorldTileChecker");
-                var defType = GenTypes.GetTypeInAnyAssembly("FactionColonies.WorldSettlementDef");
-                if (checkerType != null && defType != null)
-                {
-                    var originalIsValid = AccessTools.Method(checkerType, "IsValidTileForNewSettlement", new[] { typeof(RimWorld.Planet.PlanetTile), defType, typeof(System.Text.StringBuilder) });
-                    if (originalIsValid != null)
-                    {
-                        var prefix = new HarmonyMethod(typeof(Patches.Patch_WorldTileChecker_IsValidTileForNewSettlement), "Prefix");
-                        harmony.Patch(originalIsValid, prefix: prefix);
-                        Log.Message("[RegionsAndSocieties] Dynamically patched WorldTileChecker.IsValidTileForNewSettlement successfully.");
-                    }
-                }
-
-                var debugUtilType = GenTypes.GetTypeInAnyAssembly("FactionColonies.DebugUtil");
-                if (debugUtilType != null)
-                {
-                    var originalCreateTen = AccessTools.Method(debugUtilType, "CreateTenRandomSettlements");
-                    if (originalCreateTen != null)
-                    {
-                        var prefix = new HarmonyMethod(typeof(Patches.Patch_DebugUtil_CreateTenRandomSettlements), "Prefix");
-                        harmony.Patch(originalCreateTen, prefix: prefix);
-                        Log.Message("[RegionsAndSocieties] Dynamically patched DebugUtil.CreateTenRandomSettlements successfully.");
-                    }
-
-                    var originalCreatePerResource = AccessTools.Method(debugUtilType, "CreateSettlementPerResource");
-                    if (originalCreatePerResource != null)
-                    {
-                        var prefix = new HarmonyMethod(typeof(Patches.Patch_DebugUtil_CreateSettlementPerResource), "Prefix");
-                        harmony.Patch(originalCreatePerResource, prefix: prefix);
-                        Log.Message("[RegionsAndSocieties] Dynamically patched DebugUtil.CreateSettlementPerResource successfully.");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Log.Error($"[RegionsAndSocieties] Error dynamically patching Empires: {ex.Message}");
-            }
-        }
-
         private void TryPatchVOE(Harmony harmony)
         {
             try
@@ -300,7 +223,7 @@ namespace RegionsAndSocieties
                         .FirstOrDefault(m => m.Name == "CanSpawnOnWithExt");
                     if (target != null)
                     {
-                        var postfix = new HarmonyMethod(typeof(Patches.RegionsAndSocieties_EmpiresPatch), nameof(Patches.RegionsAndSocieties_EmpiresPatch.VOE_CanSpawnOnWithExt_Postfix));
+                        var postfix = new HarmonyMethod(typeof(Patches.Patch_VOE_CanSpawnOn), nameof(Patches.Patch_VOE_CanSpawnOn.CanSpawnOnWithExt_Postfix));
                         harmony.Patch(target, postfix: postfix);
                         Log.Message("[RegionsAndSocieties] Dynamically patched Outposts.Utils.CanSpawnOnWithExt successfully.");
                     }

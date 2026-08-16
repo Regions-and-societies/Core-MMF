@@ -18,8 +18,10 @@ namespace FactionColonies
         public int maxSettlementLevel = 10;
         // The 0.8 profile reads Empire's real member names (workers/workersMax, #30) — the old
         // invented "population" name is exactly what shipped inert and is deliberately gone.
-        public int workers = 250;
-        public int workersMax = 400;
+        // Doubles, as on the real WorldSettlementFC: the adapter's TryGetInt narrowing is part of
+        // what the population check exercises.
+        public double workers = 250;
+        public double workersMax = 400;
     }
 
     public class MilitaryFC : RimWorld.Planet.WorldObject { }
@@ -52,9 +54,66 @@ namespace IntegrationTests
     {
         private static int failures;
 
+        // Stand-ins for the per-patch "installed means enabled" state. The real per-mod toggles
+        // left core with the compatibility inversion (Core-MMF#3); these locals let the suite keep
+        // exercising the enabledGetter gating machinery without them.
+        private static bool empireIntegrationOn = true;
+        private static bool voeIntegrationOn = true;
+
         public static int Main()
         {
-            WorldObjectAdapterRegistry.Initialize();
+            // The compatibility inversion moved every real per-mod profile out of core and into a
+            // compatibility patch, where the compiler verifies its type and member names. What core
+            // still owns — and what this suite tests — is the MACHINERY: the registry, the
+            // reflection adapter, rule matching, gating and the classifier. The profiles below are
+            // test doubles mirroring the shapes the real patches use, bound to this file's fake mod
+            // types, registered through the same public API the patches call.
+            WorldObjectAdapterRegistry.Clear();
+            WorldObjectAdapterRegistry.Register(new VanillaWorldObjectAdapter());
+
+            var empireProfile = new WorldObjectAdapterProfile
+            {
+                adapterId = "empire",
+                packageId = "Test.FakeEmpire",
+                displayName = "Fake Empire",
+                priority = 100,
+                markerTypes = new[] { "FactionColonies.WorldSettlementFC" },
+                populationMembers = new[] { "workers", "workersMax" },
+                levelMembers = new[] { "settlementLevel" },
+                assumedMaxLevel = 10,
+                playerOwnedByDefault = true,
+                enabledGetter = () => WorldObjectIntegrationSettings.masterEnabled && empireIntegrationOn
+            };
+            empireProfile.Rule(TypeMatch.ExactType, "FactionColonies.WorldSettlementFC", WorldObjectKind.Settlement)
+                .Rule(TypeMatch.NamespacePrefix, "FactionColonies.WorldSettlement", WorldObjectKind.Settlement)
+                .Rule(TypeMatch.TypeNameContains, "MilitaryFC", WorldObjectKind.Military);
+            WorldObjectAdapterRegistry.Register(new ReflectionWorldObjectAdapter(empireProfile));
+
+            var voeProfile = new WorldObjectAdapterProfile
+            {
+                adapterId = "voe",
+                packageId = "Test.FakeVoe",
+                displayName = "Fake VOE",
+                priority = 110,
+                markerTypes = new[] { "Outposts.Outpost" },
+                populationMembers = new[] { "PawnCount", "occupants" },
+                levelMembers = new[] { "level" },
+                assumedMaxLevel = 0,
+                enabledGetter = () => WorldObjectIntegrationSettings.masterEnabled && voeIntegrationOn
+            };
+            voeProfile.Rule(TypeMatch.NamespacePrefix, "Outposts.", WorldObjectKind.Outpost);
+            WorldObjectAdapterRegistry.Register(new ReflectionWorldObjectAdapter(voeProfile));
+
+            // A profile whose marker types resolve nowhere: exercises the not-installed path.
+            var absentProfile = new WorldObjectAdapterProfile
+            {
+                adapterId = "absent",
+                packageId = "Test.NotInstalled",
+                displayName = "Absent Mod",
+                priority = 120,
+                markerTypes = new[] { "NotInstalled.MarkerType" }
+            };
+            WorldObjectAdapterRegistry.Register(new ReflectionWorldObjectAdapter(absentProfile));
 
             Section("adapters resolve installed mods only");
             var ids = new List<string>();
@@ -64,8 +123,7 @@ namespace IntegrationTests
             }
             Check("empire active (fake FactionColonies present)", ids.Contains("empire"));
             Check("voe active (fake Outposts present)", ids.Contains("voe"));
-            Check("vfe inactive (not installed)", !ids.Contains("vfe"));
-            Check("worlddomination inactive (not installed)", !ids.Contains("worlddomination"));
+            Check("absent profile inactive (marker type unresolvable)", !ids.Contains("absent"));
             Check("vanilla always active", ids.Contains("vanilla"));
 
             var empire = new FactionColonies.WorldSettlementFC { def = Def("EmpireColony") };
@@ -112,13 +170,13 @@ namespace IntegrationTests
             Check("caravan is not a holding", !WorldObjectClassifier.IsPlayerHolding(caravan));
 
             Section("per-mod opt out");
-            WorldObjectIntegrationSettings.voeEnabled = false;
+            voeIntegrationOn = false;
             WorldObjectClassifier.InvalidateCache();
             Check("VOE outpost ignored once its integration is off",
                 WorldObjectClassifier.Classify(voe) == WorldObjectKind.Ignored);
             Check("...and is no longer territorial", !WorldObjectClassifier.IsTerritorial(voe));
             Check("unrelated mods keep working", WorldObjectClassifier.Classify(empire) == WorldObjectKind.Settlement);
-            WorldObjectIntegrationSettings.voeEnabled = true;
+            voeIntegrationOn = true;
 
             Section("master switch off = pre-0.7 behaviour");
             WorldObjectIntegrationSettings.masterEnabled = false;

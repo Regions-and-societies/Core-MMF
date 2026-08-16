@@ -46,42 +46,27 @@ namespace RegionsAndSocieties
             return readableText;
         }
 
+        /// <summary>
+        /// A compatibility patch may supply a nicer display name for factions its mod owns —
+        /// Empire's patch names the player's empire from the faction component, for example. First
+        /// non-null answer wins; a throwing provider is skipped. Core itself names no foreign
+        /// faction (the old hardcoded PColony/FindFC branch moved to Empire-CP with the rest of
+        /// that integration, Core-MMF#3).
+        /// </summary>
+        public static System.Func<RimWorld.Faction, string> FactionDisplayNameOverride;
+
         public static string GetFactionDisplayName(RimWorld.Faction faction)
         {
             if (faction == null) return "Unknown";
 
-            if (faction.def.defName == "PColony")
+            try
             {
-                try
-                {
-                    var findFcType = GenTypes.GetTypeInAnyAssembly("FactionColonies.FindFC");
-                    if (findFcType != null)
-                    {
-                        var factionCompProp = findFcType.GetProperty("FactionComp", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
-                        if (factionCompProp != null)
-                        {
-                            var factionComp = factionCompProp.GetValue(null);
-                            if (factionComp != null)
-                            {
-                                var nameField = factionComp.GetType().GetField("name", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
-                                if (nameField != null)
-                                {
-                                    string customName = nameField.GetValue(factionComp) as string;
-                                    if (!customName.NullOrEmpty() && customName != "Player Faction")
-                                    {
-                                        return customName;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                catch
-                {
-                    // Fallback
-                }
-
-                return "Player's Empire";
+                string overridden = FactionDisplayNameOverride?.Invoke(faction);
+                if (!overridden.NullOrEmpty()) return overridden;
+            }
+            catch
+            {
+                // A broken provider must never take the map-mode legend down with it.
             }
 
             return faction.Name;

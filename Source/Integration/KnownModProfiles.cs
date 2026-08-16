@@ -13,7 +13,6 @@ namespace RegionsAndSocieties.Integration
         public static List<WorldObjectAdapterProfile> All()
         {
             var list = new List<WorldObjectAdapterProfile>();
-            list.Add(Empire());
             list.Add(VanillaOutpostsExpanded());
             list.Add(VanillaFactionsExpanded());
             list.Add(VanillaFactionsExpandedMedieval());
@@ -31,58 +30,6 @@ namespace RegionsAndSocieties.Integration
             //   oskarpotocki.vfe.tribals     (VFETribals.dll)    — only a ThingComp (CompFireOverlay)
             //   oskarpotocki.vfe.insectoid2  (VFEInsectoids.dll) — only a SitePartWorker (insect hive site)
             // Only VFE Medieval 2 contributes one (VFEMedieval.MerchantGuild), handled above.
-        }
-
-        /// <summary>
-        /// Empire Refactored (packageId Matathias.Empire, assembly namespace FactionColonies).
-        /// Settlements are WorldSettlementFC, which derives from vanilla Settlement.
-        /// </summary>
-        public static WorldObjectAdapterProfile Empire()
-        {
-            var p = new WorldObjectAdapterProfile
-            {
-                adapterId = "empire",
-                packageId = "Matathias.Empire",
-                displayName = "Empire Refactored",
-                priority = 100,
-                markerTypes = new[]
-                {
-                    "FactionColonies.FindFC",
-                    "FactionColonies.WorldSettlementFC"
-                },
-                // Empire has no concept called "population" — the three names previously listed here
-                // (population / Population / settlementPopulation) do not appear anywhere in its
-                // source, so TryGetPopulation returned false for every Empire settlement and every
-                // consumer read a plausible zero (#30).
-                //
-                // What it has is workers: a public double property on WorldSettlementFC, summed from
-                // the workers assigned to each ResourceFC. workersMax is the capacity for the same
-                // quantity. TryGetInt already narrows a double, so these read directly with no
-                // adapter change.
-                //
-                // Read against Empire Refactored 1.6.20, whose Workshop copy ships its source.
-                populationMembers = new[] { "workers", "workersMax" },
-                // settlementLevel is declared on WorldSettlementFC itself, not on a separate
-                // SettlementFC — there is no such type in Empire. The old comment describing one was
-                // the reason nobody questioned the population names beside it.
-                levelMembers = new[] { "settlementLevel" },
-                // maxSettlementLevel exists, but on WorldSettlementDef rather than on the world
-                // object, and the adapter only reads members of the instance's own type. The real
-                // ceiling is min(FCSettings.settlementMaxLevel, def.maxSettlementLevel) — per-def and
-                // player-configurable, so no single number is right for every settlement. 10 is the
-                // clamp Empire's own tests use and stays the assumed ceiling.
-                maxLevelMembers = new string[0],
-                assumedMaxLevel = 10,
-                // Empire runs the player's own colonies as WorldSettlementFC objects.
-                playerOwnedByDefault = true,
-                enabledGetter = () => WorldObjectIntegrationSettings.masterEnabled && WorldObjectIntegrationSettings.empireEnabled
-            };
-
-            p.Rule(TypeMatch.ExactType, "FactionColonies.WorldSettlementFC", WorldObjectKind.Settlement)
-             .Rule(TypeMatch.NamespacePrefix, "FactionColonies.WorldSettlement", WorldObjectKind.Settlement)
-             .Rule(TypeMatch.TypeNameContains, "MilitaryFC", WorldObjectKind.Military);
-
-            return p;
         }
 
         /// <summary>

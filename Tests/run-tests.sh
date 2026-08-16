@@ -129,7 +129,7 @@ run_suite typecheck Library \
     $SRC/RegionalOwnershipUtility.cs \
     $SRC/GeographicProvince.cs $SRC/IRegionDemographicProvider.cs \
     $SRC/ProvinceAdjacency.cs \
-    $SRC/Patches/RegionsAndSocieties_EmpiresPatch.cs \
+    \
     $SRC/Patches/Patch_TileFinder_IsValidTileForNewSettlement.cs \
     $SRC/Patches/Patch_WorldInspectPane_TileInspectString.cs
 [ "$failures" -eq "$pre_typecheck_failures" ] && echo "  type-check clean"

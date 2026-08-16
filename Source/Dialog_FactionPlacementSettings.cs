@@ -191,10 +191,8 @@ namespace RegionsAndSocieties
 
             // Row 1 — per-mod integrations.
             float y = box.y + 52f;
-            IntegrationToggle(new Rect(box.x + 10f + colW * 0f, y, colW - 8f, 22f), "Empire Refactored",
-                ref Integration.WorldObjectIntegrationSettings.empireEnabled, on,
-                "Recognise Empire Refactored colonies as settlements and read their settlement level.");
-            IntegrationToggle(new Rect(box.x + 10f + colW * 1f, y, colW - 8f, 22f), "Outposts Expanded",
+            // Empire Refactored moved to its compatibility patch — installed means enabled, no toggle.
+            IntegrationToggle(new Rect(box.x + 10f + colW * 0f, y, colW - 8f, 22f), "Outposts Expanded",
                 ref Integration.WorldObjectIntegrationSettings.voeEnabled, on,
                 "Recognise Vanilla Outposts Expanded outposts, including their occupant count and upgrade level.");
             IntegrationToggle(new Rect(box.x + 10f + colW * 2f, y, colW - 8f, 22f), "Factions Expanded",
