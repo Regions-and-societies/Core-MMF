@@ -15,10 +15,9 @@ namespace RegionsAndSocieties.Integration
         public static bool masterEnabled = true;
 
         // --- Per-mod integrations -------------------------------------------------
-        // Empire, VFE and World Domination moved to their compatibility patches
-        // (Regions-and-societies/{Empire,VFE,World-Domination}-CP); a patch is enabled by being
-        // installed, so those toggles are gone. VOE remains until its extraction lands (last, since
-        // other integrations historically resolved through its profile).
+        // Empire, VFE, World Domination and VOE moved to their compatibility patches
+        // (Regions-and-societies/{Empire,VFE,World-Domination,VOE}-CP); a patch is enabled by
+        // being installed, so per-mod toggles are gone.
 
         // --- Per-mechanic switches ------------------------------------------------
         /// <summary>Gate placement of foreign world objects on region ownership and supply range.</summary>
