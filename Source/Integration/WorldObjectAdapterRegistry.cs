@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using RimWorld.Planet;
 using Verse;
 
-namespace RimSynapse.RegionsAndTerritories.Integration
+namespace RegionsAndSocieties.Integration
 {
     /// <summary>
     /// Holds every registered <see cref="IWorldObjectAdapter"/> in priority order and fans queries
@@ -55,7 +55,7 @@ namespace RimSynapse.RegionsAndTerritories.Integration
             {
                 if (string.Equals(adapters[i].AdapterId, adapter.AdapterId, StringComparison.Ordinal))
                 {
-                    Log.Warning("[RimSynapse-RT] World-object adapter '" + adapter.AdapterId + "' registered twice; ignoring the duplicate.");
+                    Log.Warning("[RegionsAndSocieties] World-object adapter '" + adapter.AdapterId + "' registered twice; ignoring the duplicate.");
                     return;
                 }
             }
@@ -76,7 +76,7 @@ namespace RimSynapse.RegionsAndTerritories.Integration
         public static void LogActiveAdapters()
         {
             var sb = new System.Text.StringBuilder();
-            sb.Append("[RimSynapse-RT] World-object adapters: ");
+            sb.Append("[RegionsAndSocieties] World-object adapters: ");
             for (int i = 0; i < adapters.Count; i++)
             {
                 if (i > 0) sb.Append(", ");
@@ -94,7 +94,7 @@ namespace RimSynapse.RegionsAndTerritories.Integration
             }
             catch (Exception ex)
             {
-                Log.ErrorOnce("[RimSynapse-RT] Adapter '" + adapter.AdapterId + "' threw from IsActive: " + ex, 0x5A0001 ^ adapter.AdapterId.GetHashCode());
+                Log.ErrorOnce("[RegionsAndSocieties] Adapter '" + adapter.AdapterId + "' threw from IsActive: " + ex, 0x5A0001 ^ adapter.AdapterId.GetHashCode());
                 return false;
             }
         }
@@ -113,7 +113,7 @@ namespace RimSynapse.RegionsAndTerritories.Integration
             }
             catch (Exception ex)
             {
-                Log.ErrorOnce("[RimSynapse-RT] Adapter '" + adapter.AdapterId + "' threw from TryClassify: " + ex, 0x5A0002 ^ adapter.AdapterId.GetHashCode());
+                Log.ErrorOnce("[RegionsAndSocieties] Adapter '" + adapter.AdapterId + "' threw from TryClassify: " + ex, 0x5A0002 ^ adapter.AdapterId.GetHashCode());
                 return false;
             }
         }
@@ -126,7 +126,7 @@ namespace RimSynapse.RegionsAndTerritories.Integration
             }
             catch (Exception ex)
             {
-                Log.ErrorOnce("[RimSynapse-RT] Adapter '" + adapter.AdapterId + "' threw from IsPresent: " + ex, 0x5A0007 ^ adapter.AdapterId.GetHashCode());
+                Log.ErrorOnce("[RegionsAndSocieties] Adapter '" + adapter.AdapterId + "' threw from IsPresent: " + ex, 0x5A0007 ^ adapter.AdapterId.GetHashCode());
                 return false;
             }
         }
@@ -156,7 +156,7 @@ namespace RimSynapse.RegionsAndTerritories.Integration
                 }
                 catch (Exception ex)
                 {
-                    Log.ErrorOnce("[RimSynapse-RT] Adapter '" + adapter.AdapterId + "' threw from TryClassify: " + ex, 0x5A0002 ^ adapter.AdapterId.GetHashCode());
+                    Log.ErrorOnce("[RegionsAndSocieties] Adapter '" + adapter.AdapterId + "' threw from TryClassify: " + ex, 0x5A0002 ^ adapter.AdapterId.GetHashCode());
                 }
             }
 
@@ -198,7 +198,7 @@ namespace RimSynapse.RegionsAndTerritories.Integration
                 }
                 catch (Exception ex)
                 {
-                    Log.ErrorOnce("[RimSynapse-RT] Adapter '" + adapter.AdapterId + "' threw from TryClassify: " + ex, 0x5A0002 ^ adapter.AdapterId.GetHashCode());
+                    Log.ErrorOnce("[RegionsAndSocieties] Adapter '" + adapter.AdapterId + "' threw from TryClassify: " + ex, 0x5A0002 ^ adapter.AdapterId.GetHashCode());
                 }
             }
 
@@ -227,7 +227,7 @@ namespace RimSynapse.RegionsAndTerritories.Integration
                 }
                 catch (Exception ex)
                 {
-                    Log.ErrorOnce("[RimSynapse-RT] Adapter '" + adapter.AdapterId + "' threw from TryGetPopulation: " + ex, 0x5A0003 ^ adapter.AdapterId.GetHashCode());
+                    Log.ErrorOnce("[RegionsAndSocieties] Adapter '" + adapter.AdapterId + "' threw from TryGetPopulation: " + ex, 0x5A0003 ^ adapter.AdapterId.GetHashCode());
                 }
             }
 
@@ -258,7 +258,7 @@ namespace RimSynapse.RegionsAndTerritories.Integration
                 }
                 catch (Exception ex)
                 {
-                    Log.ErrorOnce("[RimSynapse-RT] Adapter '" + adapter.AdapterId + "' threw from TryGetLevel: " + ex, 0x5A0004 ^ adapter.AdapterId.GetHashCode());
+                    Log.ErrorOnce("[RegionsAndSocieties] Adapter '" + adapter.AdapterId + "' threw from TryGetLevel: " + ex, 0x5A0004 ^ adapter.AdapterId.GetHashCode());
                 }
             }
 
@@ -282,7 +282,7 @@ namespace RimSynapse.RegionsAndTerritories.Integration
                 }
                 catch (Exception ex)
                 {
-                    Log.ErrorOnce("[RimSynapse-RT] Adapter '" + adapter.AdapterId + "' threw from PostProcessProductionMultiplier: " + ex, 0x5A0005 ^ adapter.AdapterId.GetHashCode());
+                    Log.ErrorOnce("[RegionsAndSocieties] Adapter '" + adapter.AdapterId + "' threw from PostProcessProductionMultiplier: " + ex, 0x5A0005 ^ adapter.AdapterId.GetHashCode());
                 }
             }
         }
@@ -300,7 +300,7 @@ namespace RimSynapse.RegionsAndTerritories.Integration
                 }
                 catch (Exception ex)
                 {
-                    Log.ErrorOnce("[RimSynapse-RT] Adapter '" + adapter.AdapterId + "' threw from OnWorldLoaded: " + ex, 0x5A0006 ^ adapter.AdapterId.GetHashCode());
+                    Log.ErrorOnce("[RegionsAndSocieties] Adapter '" + adapter.AdapterId + "' threw from OnWorldLoaded: " + ex, 0x5A0006 ^ adapter.AdapterId.GetHashCode());
                 }
             }
         }

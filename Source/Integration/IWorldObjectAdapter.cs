@@ -1,7 +1,7 @@
 using System;
 using RimWorld.Planet;
 
-namespace RimSynapse.RegionsAndTerritories.Integration
+namespace RegionsAndSocieties.Integration
 {
     /// <summary>
     /// Per-mod translator between a foreign world object and the data Regions &amp; Territories

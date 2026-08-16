@@ -6,14 +6,14 @@ using RimWorld;
 using UnityEngine;
 using Verse;
 
-namespace RimSynapse.RegionsAndTerritories
+namespace RegionsAndSocieties
 {
-    public class RegionsAndTerritoriesMod : Mod
+    public class RegionsAndSocietiesMod : Mod
     {
         public static FactionPlacementSettings Settings;
         private static bool demographicTuningExpanded;
 
-        public override string SettingsCategory() => "RimSynapse Regions & Territories";
+        public override string SettingsCategory() => "Regions and Societies";
 
         public override void DoSettingsWindowContents(Rect inRect)
         {
@@ -46,7 +46,7 @@ namespace RimSynapse.RegionsAndTerritories
                 FactionPlacementSettings.maxRegionPanels, 1f, 8f));
 
             l.GapLine();
-            l.Label("RimSynapse 0.8 features — toggle any off to avoid conflicts with other mods:");
+            l.Label("Regions and Societies features — toggle any off to avoid conflicts with other mods:");
             l.CheckboxLabeled("World-object integration (master)", ref Integration.WorldObjectIntegrationSettings.masterEnabled,
                 "Master switch for the 0.7+ integration layer. Off means R&T governs only vanilla objects.");
             l.CheckboxLabeled("Settlement tiers & capitals", ref Integration.WorldObjectIntegrationSettings.settlementTiers,
@@ -87,12 +87,12 @@ namespace RimSynapse.RegionsAndTerritories
             l.End();
         }
 
-        public RegionsAndTerritoriesMod(ModContentPack content) : base(content)
+        public RegionsAndSocietiesMod(ModContentPack content) : base(content)
         {
-            Log.Message("[RimSynapse-RegionsAndTerritories] Initializing Regions and Territories Mod...");
+            Log.Message("[RegionsAndSocieties] Initializing Regions and Territories Mod...");
             Settings = GetSettings<FactionPlacementSettings>();
 
-            var harmony = new Harmony("rimsynapse.regionsandterritories");
+            var harmony = new Harmony("regionsandsocieties.core");
             try
             {
                 harmony.PatchAll();
@@ -104,12 +104,12 @@ namespace RimSynapse.RegionsAndTerritories
                 // PatchAll should not throw. This catch exists so any *unforeseen* single patch failure
                 // can never again sink the whole constructor and the manual VOE/Empire/provider
                 // registration below it (which is exactly what left R&T inert under RP2).
-                Log.Warning($"[RimSynapse-RegionsAndTerritories] Harmony PatchAll reported a failure; continuing so the rest of the mod loads. {ex}");
+                Log.Warning($"[RegionsAndSocieties] Harmony PatchAll reported a failure; continuing so the rest of the mod loads. {ex}");
             }
 
             foreach (var m in harmony.GetPatchedMethods())
             {
-                Log.Message($"[RimSynapse-RegionsAndTerritories] Successfully patched method: {m.DeclaringType.FullName}.{m.Name}");
+                Log.Message($"[RegionsAndSocieties] Successfully patched method: {m.DeclaringType.FullName}.{m.Name}");
             }
 
             // 0.7: build the mod-agnostic world-object adapter set before any integration patching,
@@ -165,16 +165,16 @@ namespace RimSynapse.RegionsAndTerritories
                 var slot = providers.GetProperty(slotName, BindingFlags.Public | BindingFlags.Static);
                 if (slot == null || !slot.CanWrite)
                 {
-                    Log.Warning($"[RimSynapse-RegionsAndTerritories] SynapseCoreProviders has no writable '{slotName}' slot; that capability will not be visible to other mods.");
+                    Log.Warning($"[RegionsAndSocieties] SynapseCoreProviders has no writable '{slotName}' slot; that capability will not be visible to other mods.");
                     return;
                 }
 
                 slot.SetValue(null, provider);
-                Log.Message($"[RimSynapse-RegionsAndTerritories] Registered '{slotName}' provider to RimSynapse Core successfully.");
+                Log.Message($"[RegionsAndSocieties] Registered '{slotName}' provider to RimSynapse Core successfully.");
             }
             catch (Exception ex)
             {
-                Log.Error($"[RimSynapse-RegionsAndTerritories] Error registering '{slotName}' provider: {ex}");
+                Log.Error($"[RegionsAndSocieties] Error registering '{slotName}' provider: {ex}");
             }
         }
 
@@ -189,7 +189,7 @@ namespace RimSynapse.RegionsAndTerritories
                 var coreWorldCompType = GenTypes.GetTypeInAnyAssembly("RimSynapse.SynapseCoreWorldComponent");
                 if (coreWorldCompType == null)
                 {
-                    Log.Message("[RimSynapse-RegionsAndTerritories] RimSynapse Core not detected. Running standalone; no providers registered.");
+                    Log.Message("[RegionsAndSocieties] RimSynapse Core not detected. Running standalone; no providers registered.");
                     return;
                 }
 
@@ -198,16 +198,16 @@ namespace RimSynapse.RegionsAndTerritories
                 {
                     Func<int, int> del = PopulationDensityUtility.GetSourcePopulationAtTile;
                     field.SetValue(null, del);
-                    Log.Message("[RimSynapse-RegionsAndTerritories] Registered population delegate to RimSynapse Core (legacy field) successfully.");
+                    Log.Message("[RegionsAndSocieties] Registered population delegate to RimSynapse Core (legacy field) successfully.");
                 }
                 else
                 {
-                    Log.Warning("[RimSynapse-RegionsAndTerritories] Could not find GetPopulationDensityDelegate field in SynapseCoreWorldComponent.");
+                    Log.Warning("[RegionsAndSocieties] Could not find GetPopulationDensityDelegate field in SynapseCoreWorldComponent.");
                 }
             }
             catch (Exception ex)
             {
-                Log.Error($"[RimSynapse-RegionsAndTerritories] Error registering population delegate: {ex.Message}");
+                Log.Error($"[RegionsAndSocieties] Error registering population delegate: {ex.Message}");
             }
         }
 
@@ -223,9 +223,9 @@ namespace RimSynapse.RegionsAndTerritories
                     var originalBuildParams = AccessTools.Method(rewardDefType, "BuildParams");
                     if (originalBuildParams != null)
                     {
-                        var prefix = new HarmonyMethod(typeof(Patches.RegionsAndTerritories_EmpiresPatch), nameof(Patches.RegionsAndTerritories_EmpiresPatch.BuildParams_Prefix));
+                        var prefix = new HarmonyMethod(typeof(Patches.RegionsAndSocieties_EmpiresPatch), nameof(Patches.RegionsAndSocieties_EmpiresPatch.BuildParams_Prefix));
                         harmony.Patch(originalBuildParams, prefix: prefix);
-                        Log.Message("[RimSynapse-RegionsAndTerritories] Dynamically patched ResourceEventRewardDef.BuildParams successfully.");
+                        Log.Message("[RegionsAndSocieties] Dynamically patched ResourceEventRewardDef.BuildParams successfully.");
                     }
                 }
 
@@ -235,17 +235,17 @@ namespace RimSynapse.RegionsAndTerritories
                     var originalGenRewards = AccessTools.Method(paymentUtilType, "GenerateRewardThings");
                     if (originalGenRewards != null)
                     {
-                        var prefix = new HarmonyMethod(typeof(Patches.RegionsAndTerritories_EmpiresPatch), nameof(Patches.RegionsAndTerritories_EmpiresPatch.GenerateRewardThings_Prefix));
+                        var prefix = new HarmonyMethod(typeof(Patches.RegionsAndSocieties_EmpiresPatch), nameof(Patches.RegionsAndSocieties_EmpiresPatch.GenerateRewardThings_Prefix));
                         harmony.Patch(originalGenRewards, prefix: prefix);
-                        Log.Message("[RimSynapse-RegionsAndTerritories] Dynamically patched PaymentUtil.GenerateRewardThings successfully.");
+                        Log.Message("[RegionsAndSocieties] Dynamically patched PaymentUtil.GenerateRewardThings successfully.");
                     }
 
                     var originalValOfTithe = AccessTools.Method(paymentUtilType, "ReturnValueOfTithe");
                     if (originalValOfTithe != null)
                     {
-                        var prefix = new HarmonyMethod(typeof(Patches.RegionsAndTerritories_EmpiresPatch), nameof(Patches.RegionsAndTerritories_EmpiresPatch.ReturnValueOfTithe_Prefix));
+                        var prefix = new HarmonyMethod(typeof(Patches.RegionsAndSocieties_EmpiresPatch), nameof(Patches.RegionsAndSocieties_EmpiresPatch.ReturnValueOfTithe_Prefix));
                         harmony.Patch(originalValOfTithe, prefix: prefix);
-                        Log.Message("[RimSynapse-RegionsAndTerritories] Dynamically patched PaymentUtil.ReturnValueOfTithe successfully.");
+                        Log.Message("[RegionsAndSocieties] Dynamically patched PaymentUtil.ReturnValueOfTithe successfully.");
                     }
                 }
 
@@ -259,7 +259,7 @@ namespace RimSynapse.RegionsAndTerritories
                     {
                         var prefix = new HarmonyMethod(typeof(Patches.Patch_WorldTileChecker_IsValidTileForNewSettlement), "Prefix");
                         harmony.Patch(originalIsValid, prefix: prefix);
-                        Log.Message("[RimSynapse-RegionsAndTerritories] Dynamically patched WorldTileChecker.IsValidTileForNewSettlement successfully.");
+                        Log.Message("[RegionsAndSocieties] Dynamically patched WorldTileChecker.IsValidTileForNewSettlement successfully.");
                     }
                 }
 
@@ -271,7 +271,7 @@ namespace RimSynapse.RegionsAndTerritories
                     {
                         var prefix = new HarmonyMethod(typeof(Patches.Patch_DebugUtil_CreateTenRandomSettlements), "Prefix");
                         harmony.Patch(originalCreateTen, prefix: prefix);
-                        Log.Message("[RimSynapse-RegionsAndTerritories] Dynamically patched DebugUtil.CreateTenRandomSettlements successfully.");
+                        Log.Message("[RegionsAndSocieties] Dynamically patched DebugUtil.CreateTenRandomSettlements successfully.");
                     }
 
                     var originalCreatePerResource = AccessTools.Method(debugUtilType, "CreateSettlementPerResource");
@@ -279,13 +279,13 @@ namespace RimSynapse.RegionsAndTerritories
                     {
                         var prefix = new HarmonyMethod(typeof(Patches.Patch_DebugUtil_CreateSettlementPerResource), "Prefix");
                         harmony.Patch(originalCreatePerResource, prefix: prefix);
-                        Log.Message("[RimSynapse-RegionsAndTerritories] Dynamically patched DebugUtil.CreateSettlementPerResource successfully.");
+                        Log.Message("[RegionsAndSocieties] Dynamically patched DebugUtil.CreateSettlementPerResource successfully.");
                     }
                 }
             }
             catch (Exception ex)
             {
-                Log.Error($"[RimSynapse-RegionsAndTerritories] Error dynamically patching Empires: {ex.Message}");
+                Log.Error($"[RegionsAndSocieties] Error dynamically patching Empires: {ex.Message}");
             }
         }
 
@@ -300,23 +300,23 @@ namespace RimSynapse.RegionsAndTerritories
                         .FirstOrDefault(m => m.Name == "CanSpawnOnWithExt");
                     if (target != null)
                     {
-                        var postfix = new HarmonyMethod(typeof(Patches.RegionsAndTerritories_EmpiresPatch), nameof(Patches.RegionsAndTerritories_EmpiresPatch.VOE_CanSpawnOnWithExt_Postfix));
+                        var postfix = new HarmonyMethod(typeof(Patches.RegionsAndSocieties_EmpiresPatch), nameof(Patches.RegionsAndSocieties_EmpiresPatch.VOE_CanSpawnOnWithExt_Postfix));
                         harmony.Patch(target, postfix: postfix);
-                        Log.Message("[RimSynapse-RegionsAndTerritories] Dynamically patched Outposts.Utils.CanSpawnOnWithExt successfully.");
+                        Log.Message("[RegionsAndSocieties] Dynamically patched Outposts.Utils.CanSpawnOnWithExt successfully.");
                     }
                     else
                     {
-                        Log.Warning("[RimSynapse-RegionsAndTerritories] Could not find CanSpawnOnWithExt method in Outposts.Utils.");
+                        Log.Warning("[RegionsAndSocieties] Could not find CanSpawnOnWithExt method in Outposts.Utils.");
                     }
                 }
                 else
                 {
-                    Log.Message("[RimSynapse-RegionsAndTerritories] Vanilla Outposts Expanded not detected. Skipping VOE dynamic patching.");
+                    Log.Message("[RegionsAndSocieties] Vanilla Outposts Expanded not detected. Skipping VOE dynamic patching.");
                 }
             }
             catch (Exception ex)
             {
-                Log.Error($"[RimSynapse-RegionsAndTerritories] Error dynamically patching VOE: {ex.Message}");
+                Log.Error($"[RegionsAndSocieties] Error dynamically patching VOE: {ex.Message}");
             }
         }
     }

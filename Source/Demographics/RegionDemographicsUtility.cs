@@ -4,11 +4,11 @@ using System.Reflection;
 using HarmonyLib;
 using RimWorld;
 using RimWorld.Planet;
-using RimSynapse.RegionsAndTerritories.Integration;
+using RegionsAndSocieties.Integration;
 using UnityEngine;
 using Verse;
 
-namespace RimSynapse.RegionsAndTerritories.Demographics
+namespace RegionsAndSocieties.Demographics
 {
     /// <summary>One tile's people: a race, a wealth level, an ideology, a sex — all derived, never stored.</summary>
     public struct TileDemographicSample

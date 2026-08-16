@@ -3,10 +3,10 @@ using System.Reflection;
 using HarmonyLib;
 using RimWorld;
 using RimWorld.Planet;
-using RimSynapse.RegionsAndTerritories.Sizing;
+using RegionsAndSocieties.Sizing;
 using Verse;
 
-namespace RimSynapse.RegionsAndTerritories.Integration
+namespace RegionsAndSocieties.Integration
 {
     /// <summary>
     /// Builds a Vanilla Outposts Expanded outpost (<c>Outposts.Outpost</c>) for a faction on a tile.
@@ -67,21 +67,21 @@ namespace RimSynapse.RegionsAndTerritories.Integration
             Type type = OutpostType();
             if (type == null)
             {
-                Log.ErrorOnce("[RimSynapse-RT] VoeOutpostCreator: Outposts.Outpost did not resolve; VOE outpost seeding is off. This is expected without Vanilla Outposts Expanded.", 0x5B0101);
+                Log.ErrorOnce("[RegionsAndSocieties] VoeOutpostCreator: Outposts.Outpost did not resolve; VOE outpost seeding is off. This is expected without Vanilla Outposts Expanded.", 0x5B0101);
                 return false;
             }
 
             WorldObjectDef def = ResolveDef(type, archetype);
             if (def == null)
             {
-                Log.ErrorOnce("[RimSynapse-RT] VoeOutpostCreator: no VOE outpost WorldObjectDef found (looked for the archetype def and Outpost_Encampment). Seeding cannot proceed.", 0x5B0102);
+                Log.ErrorOnce("[RegionsAndSocieties] VoeOutpostCreator: no VOE outpost WorldObjectDef found (looked for the archetype def and Outpost_Encampment). Seeding cannot proceed.", 0x5B0102);
                 return false;
             }
 
             WorldObject wo = WorldObjectMaker.MakeWorldObject(def);
             if (wo == null || !type.IsInstanceOfType(wo))
             {
-                Log.ErrorOnce("[RimSynapse-RT] VoeOutpostCreator: def '" + def.defName + "' did not produce an Outposts.Outpost instance.", 0x5B0103);
+                Log.ErrorOnce("[RegionsAndSocieties] VoeOutpostCreator: def '" + def.defName + "' did not produce an Outposts.Outpost instance.", 0x5B0103);
                 return false;
             }
 
@@ -95,7 +95,7 @@ namespace RimSynapse.RegionsAndTerritories.Integration
                 // No occupant means the outpost self-destructs next tick; better to remove it now
                 // cleanly than to leave a doomed object and an abandonment letter at world start.
                 if (!wo.Destroyed) wo.Destroy();
-                Log.ErrorOnce("[RimSynapse-RT] VoeOutpostCreator: could not attach an occupant; outpost removed. AddPawn(Pawn) may have changed in this VOE build.", 0x5B0104);
+                Log.ErrorOnce("[RegionsAndSocieties] VoeOutpostCreator: could not attach an occupant; outpost removed. AddPawn(Pawn) may have changed in this VOE build.", 0x5B0104);
                 return false;
             }
 
@@ -192,7 +192,7 @@ namespace RimSynapse.RegionsAndTerritories.Integration
             }
             catch (Exception ex)
             {
-                Log.ErrorOnce("[RimSynapse-RT] VoeOutpostCreator: AddPawn threw: " + ex, 0x5B0105);
+                Log.ErrorOnce("[RegionsAndSocieties] VoeOutpostCreator: AddPawn threw: " + ex, 0x5B0105);
                 DiscardPawn(pawn);
                 return false;
             }

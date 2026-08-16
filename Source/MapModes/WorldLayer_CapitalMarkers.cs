@@ -4,12 +4,12 @@ using System.Collections.Generic;
 using MapModeFramework;
 using RimWorld;
 using RimWorld.Planet;
-using RimSynapse.RegionsAndTerritories.Integration;
-using RimSynapse.RegionsAndTerritories.Sizing;
+using RegionsAndSocieties.Integration;
+using RegionsAndSocieties.Sizing;
 using UnityEngine;
 using Verse;
 
-namespace RimSynapse.RegionsAndTerritories
+namespace RegionsAndSocieties
 {
     /// <summary>
     /// Auto-discovered world draw layer that marks each faction's <b>capital</b> — its single
@@ -31,7 +31,7 @@ namespace RimSynapse.RegionsAndTerritories
 
         // Above the region-border overlay (3600) so the capital badge sits on top of everything.
         private const int RenderQueue = 3660;
-        private const string StarTexPath = "RimSynapse/CapitalStar";
+        private const string StarTexPath = "RegionsAndSocieties/CapitalStar";
 
         public override Vector3 Position => Vector3.zero;
         protected override Quaternion Rotation => Quaternion.identity;
@@ -56,7 +56,7 @@ namespace RimSynapse.RegionsAndTerritories
             }
             catch (Exception ex)
             {
-                Log.Warning($"[RimSynapse-RegionsAndTerritories] Capital marker build failed: {ex}");
+                Log.Warning($"[RegionsAndSocieties] Capital marker build failed: {ex}");
                 ok = true;   // don't spin forever on a hard error
             }
             if (ok)
@@ -79,7 +79,7 @@ namespace RimSynapse.RegionsAndTerritories
                 if (!loggedRenderError)
                 {
                     loggedRenderError = true;
-                    Log.Warning($"[RimSynapse-RegionsAndTerritories] Capital marker render error: {ex.Message}");
+                    Log.Warning($"[RegionsAndSocieties] Capital marker render error: {ex.Message}");
                 }
             }
         }

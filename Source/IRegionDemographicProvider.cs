@@ -4,7 +4,7 @@ using RimWorld;
 using UnityEngine;
 using Verse;
 
-namespace RimSynapse.RegionsAndTerritories
+namespace RegionsAndSocieties
 {
     public interface IRegionDemographicProvider
     {
@@ -38,7 +38,7 @@ namespace RimSynapse.RegionsAndTerritories
                 }
                 catch (Exception ex)
                 {
-                    Log.ErrorOnce($"[RimSynapse-RT] Error in demographic provider {provider?.ProviderName}: {ex}", 88102938);
+                    Log.ErrorOnce($"[RegionsAndSocieties] Error in demographic provider {provider?.ProviderName}: {ex}", 88102938);
                 }
             }
             return Mathf.Clamp01(total / providers.Count);

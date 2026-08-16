@@ -3,7 +3,7 @@ using HarmonyLib;
 using MapModeFramework;
 using Verse;
 
-namespace RimSynapse.RegionsAndTerritories
+namespace RegionsAndSocieties
 {
     /// <summary>
     /// #81: reads <c>MapModeFramework.MapModeDef.RegionProperties</c> reflectively so R&amp;T's assembly

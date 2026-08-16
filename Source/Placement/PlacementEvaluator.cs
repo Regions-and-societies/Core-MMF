@@ -1,7 +1,7 @@
 using System.Collections.Generic;
-using RimSynapse.RegionsAndTerritories.Integration;
+using RegionsAndSocieties.Integration;
 
-namespace RimSynapse.RegionsAndTerritories.Placement
+namespace RegionsAndSocieties.Placement
 {
     /// <summary>
     /// The 0.7 placement rules, generalised from outposts to every kind of world object.

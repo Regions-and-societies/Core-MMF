@@ -1,6 +1,6 @@
 using System;
 
-namespace RimSynapse.RegionsAndTerritories.Integration
+namespace RegionsAndSocieties.Integration
 {
     /// <summary>
     /// Mod-agnostic classification of a world-map object.

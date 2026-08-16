@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace RimSynapse.RegionsAndTerritories.Integration
+namespace RegionsAndSocieties.Integration
 {
     public enum TypeMatch
     {

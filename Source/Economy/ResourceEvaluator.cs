@@ -1,6 +1,6 @@
 using System;
 
-namespace RimSynapse.RegionsAndTerritories.Economy
+namespace RegionsAndSocieties.Economy
 {
     /// <summary>
     /// The resource model's arithmetic. Pure, exactly as <c>PlacementEvaluator</c> and

@@ -2,12 +2,12 @@ using System.Collections.Generic;
 using System.Text;
 using RimWorld;
 using RimWorld.Planet;
-using RimSynapse.RegionsAndTerritories.Economy;
-using RimSynapse.RegionsAndTerritories.Integration;
-using RimSynapse.RegionsAndTerritories.Sizing;
+using RegionsAndSocieties.Economy;
+using RegionsAndSocieties.Integration;
+using RegionsAndSocieties.Sizing;
 using Verse;
 
-namespace RimSynapse.RegionsAndTerritories
+namespace RegionsAndSocieties
 {
     /// <summary>
     /// The outcome of a seeding pass, structured so the debug report and the Tier-2 tests read the

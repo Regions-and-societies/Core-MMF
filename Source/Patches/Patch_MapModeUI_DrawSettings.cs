@@ -4,7 +4,7 @@ using MapModeFramework;
 using UnityEngine;
 using Verse;
 
-namespace RimSynapse.RegionsAndTerritories.Patches
+namespace RegionsAndSocieties.Patches
 {
     /// <summary>
     /// Adds a "Draw region borders" checkbox to Map Mode Framework's Draw Settings panel (#53), beside

@@ -1,11 +1,11 @@
 using System.Collections.Generic;
 using RimWorld;
 using RimWorld.Planet;
-using RimSynapse.RegionsAndTerritories.Integration;
-using RimSynapse.RegionsAndTerritories.Placement;
+using RegionsAndSocieties.Integration;
+using RegionsAndSocieties.Placement;
 using Verse;
 
-namespace RimSynapse.RegionsAndTerritories
+namespace RegionsAndSocieties
 {
     /// <summary>
     /// The live-game entry point for 0.7 placement governance.

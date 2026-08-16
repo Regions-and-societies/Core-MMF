@@ -2,10 +2,10 @@ using System;
 using System.Collections.Generic;
 using RimWorld;
 using RimWorld.Planet;
-using RimSynapse.RegionsAndTerritories.Sizing;
+using RegionsAndSocieties.Sizing;
 using Verse;
 
-namespace RimSynapse.RegionsAndTerritories.Integration
+namespace RegionsAndSocieties.Integration
 {
     /// <summary>
     /// Holds every registered <see cref="IHoldingCreator"/> in priority order and hands a creation
@@ -40,7 +40,7 @@ namespace RimSynapse.RegionsAndTerritories.Integration
             {
                 if (string.Equals(creators[i].CreatorId, creator.CreatorId, StringComparison.Ordinal))
                 {
-                    Log.Warning("[RimSynapse-RT] Holding creator '" + creator.CreatorId + "' registered twice; ignoring the duplicate.");
+                    Log.Warning("[RegionsAndSocieties] Holding creator '" + creator.CreatorId + "' registered twice; ignoring the duplicate.");
                     return;
                 }
             }
@@ -68,7 +68,7 @@ namespace RimSynapse.RegionsAndTerritories.Integration
                 }
                 catch (Exception ex)
                 {
-                    Log.ErrorOnce("[RimSynapse-RT] Holding creator '" + c.CreatorId + "' threw from IsActive/CanCreate: " + ex, 0x5B0001 ^ c.CreatorId.GetHashCode());
+                    Log.ErrorOnce("[RegionsAndSocieties] Holding creator '" + c.CreatorId + "' threw from IsActive/CanCreate: " + ex, 0x5B0001 ^ c.CreatorId.GetHashCode());
                 }
             }
             return false;
@@ -93,7 +93,7 @@ namespace RimSynapse.RegionsAndTerritories.Integration
                 }
                 catch (Exception ex)
                 {
-                    Log.ErrorOnce("[RimSynapse-RT] Holding creator '" + c.CreatorId + "' threw from TryCreate: " + ex, 0x5B0002 ^ c.CreatorId.GetHashCode());
+                    Log.ErrorOnce("[RegionsAndSocieties] Holding creator '" + c.CreatorId + "' threw from TryCreate: " + ex, 0x5B0002 ^ c.CreatorId.GetHashCode());
                     created = null;
                 }
             }
@@ -104,7 +104,7 @@ namespace RimSynapse.RegionsAndTerritories.Integration
         private static void LogActiveCreators()
         {
             var sb = new System.Text.StringBuilder();
-            sb.Append("[RimSynapse-RT] Holding creators: ");
+            sb.Append("[RegionsAndSocieties] Holding creators: ");
             if (creators.Count == 0) sb.Append("(none)");
             for (int i = 0; i < creators.Count; i++)
             {

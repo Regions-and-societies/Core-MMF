@@ -2,7 +2,7 @@ using System;
 using RimWorld;
 using RimWorld.Planet;
 
-namespace RimSynapse.RegionsAndTerritories.Integration
+namespace RegionsAndSocieties.Integration
 {
     /// <summary>
     /// Always-present fallback. Runs last, so any mod adapter gets first say, and guarantees that

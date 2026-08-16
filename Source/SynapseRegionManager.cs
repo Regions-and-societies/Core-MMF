@@ -6,7 +6,7 @@ using RimWorld.Planet;
 using Verse;
 using UnityEngine;
 
-namespace RimSynapse.RegionsAndTerritories
+namespace RegionsAndSocieties
 {
     public class SynapseRegionManager : WorldComponent
     {
@@ -210,8 +210,8 @@ namespace RimSynapse.RegionsAndTerritories
             strictTerritorialOwnershipRaw = hadProvinces ? 1 : 0;
 
             Log.Message(hadProvinces
-                ? "[RimSynapse-RegionsAndTerritories] Save predates the territorial-ownership flag but has generated provinces: treating as strict."
-                : "[RimSynapse-RegionsAndTerritories] Save has no province data: adopting it in compatibility mode. Regions will be generated; placement rules stand down.");
+                ? "[RegionsAndSocieties] Save predates the territorial-ownership flag but has generated provinces: treating as strict."
+                : "[RegionsAndSocieties] Save has no province data: adopting it in compatibility mode. Regions will be generated; placement rules stand down.");
 
             // Tell the player, not just the log. Somebody who installs mid-playthrough gets a
             // reduced mode and would otherwise have no way to know: the map modes look right, so
@@ -235,8 +235,8 @@ namespace RimSynapse.RegionsAndTerritories
             densityAlgorithmVersionRaw = hadProvinces ? DensityAlgorithmLegacy : DensityAlgorithmCurrent;
 
             Log.Message(hadProvinces
-                ? "[RimSynapse-RegionsAndTerritories] Save predates the density-algorithm stamp but has provinces: keeping the legacy (pre-0.7.2) population algorithm so this world's numbers do not shift."
-                : "[RimSynapse-RegionsAndTerritories] Save has no province data: regions will be generated with the current population algorithm.");
+                ? "[RegionsAndSocieties] Save predates the density-algorithm stamp but has provinces: keeping the legacy (pre-0.7.2) population algorithm so this world's numbers do not shift."
+                : "[RegionsAndSocieties] Save has no province data: regions will be generated with the current population algorithm.");
         }
 
         /// <summary>Test seam: force the density algorithm back to unresolved so the load-time decision can be exercised.</summary>
@@ -384,7 +384,7 @@ namespace RimSynapse.RegionsAndTerritories
                 }
             }
 
-            Log.Message($"[RimSynapse-RegionsAndTerritories] Rebuilt tile->province index from {provinces.Count} provinces ({mapped} tiles mapped).");
+            Log.Message($"[RegionsAndSocieties] Rebuilt tile->province index from {provinces.Count} provinces ({mapped} tiles mapped).");
         }
 
         private bool HasRiver(int tileId)
@@ -416,7 +416,7 @@ namespace RimSynapse.RegionsAndTerritories
 
         public void GenerateProvinces()
         {
-            Log.Message("[RimSynapse-RegionsAndTerritories] Generating Geographic Domains (Boundary-First Priority)...");
+            Log.Message("[RegionsAndSocieties] Generating Geographic Domains (Boundary-First Priority)...");
 
             // A world generating provinces with the flag still unresolved is a brand new world:
             // a loaded save resolves it in PostLoadInit, which runs before anything can reach the
@@ -426,7 +426,7 @@ namespace RimSynapse.RegionsAndTerritories
                 // Static on the settings class, like every other field there.
                 bool strict = FactionPlacementSettings.strictTerritorialOwnershipDefault;
                 strictTerritorialOwnershipRaw = strict ? 1 : 0;
-                Log.Message($"[RimSynapse-RegionsAndTerritories] New world: territorial ownership set to {(strict ? "strict" : "compatibility")}.");
+                Log.Message($"[RegionsAndSocieties] New world: territorial ownership set to {(strict ? "strict" : "compatibility")}.");
             }
 
             if (Find.WorldGrid == null) return;
@@ -863,9 +863,9 @@ namespace RimSynapse.RegionsAndTerritories
             }
 
             // Phase 5: Consolidation & Merging (Pass 2)
-            Log.Message("[RimSynapse-RegionsAndTerritories] Starting MergeTinyDomains...");
+            Log.Message("[RegionsAndSocieties] Starting MergeTinyDomains...");
             MergeTinyDomains(minWithFeatures, minNoFeatures);
-            Log.Message("[RimSynapse-RegionsAndTerritories] Finished MergeTinyDomains.");
+            Log.Message("[RegionsAndSocieties] Finished MergeTinyDomains.");
 
             // Phase 5b removed (#3/#49): the size cap is now enforced during growth by the value
             // budget in GrowTerrainBoundedRegions, so there is no oversized region to re-carve and no
@@ -881,14 +881,14 @@ namespace RimSynapse.RegionsAndTerritories
             SmoothRegionBoundaries(5);
 
             // Naming Phase: Contextual Name Resolution
-            Log.Message("[RimSynapse-RegionsAndTerritories] Running contextual province naming...");
+            Log.Message("[RegionsAndSocieties] Running contextual province naming...");
             ResolveContextualNames();
 
             // Aggregate the now-fixed topology once, so every later draw/ownership pass reads
             // perimeters and border shares instead of rescanning tiles (#48).
             BuildProvinceTopology();
 
-            Log.Message($"[RimSynapse-RegionsAndTerritories] Generated {provinces.Count} Geographic Domains.");
+            Log.Message($"[RegionsAndSocieties] Generated {provinces.Count} Geographic Domains.");
         }
 
         /// <summary>
@@ -961,7 +961,7 @@ namespace RimSynapse.RegionsAndTerritories
 
             if (absorbed > 0)
             {
-                Log.Message($"[RimSynapse-RegionsAndTerritories] Absorbed {absorbed} enclosed impassable/unclaimed tiles into their surrounding regions.");
+                Log.Message($"[RegionsAndSocieties] Absorbed {absorbed} enclosed impassable/unclaimed tiles into their surrounding regions.");
             }
         }
 
@@ -1491,7 +1491,7 @@ namespace RimSynapse.RegionsAndTerritories
                 }
             }
 
-            Log.Message($"[RimSynapse-RegionsAndTerritories] EnforceMaxRegionSize: re-carved {oversized.Count} oversized region(s) into {added} additional region(s) (cap {hardCap}).");
+            Log.Message($"[RegionsAndSocieties] EnforceMaxRegionSize: re-carved {oversized.Count} oversized region(s) into {added} additional region(s) (cap {hardCap}).");
         }
 
         /// <summary>
@@ -1551,7 +1551,7 @@ namespace RimSynapse.RegionsAndTerritories
 
         private void MergeTinyDomains(int minWithFeatures, int minNoFeatures)
         {
-            Log.Message($"[RimSynapse-RegionsAndTerritories] MergeTinyDomains started. Initial region count: {provinces.Count}");
+            Log.Message($"[RegionsAndSocieties] MergeTinyDomains started. Initial region count: {provinces.Count}");
             List<RimWorld.Planet.PlanetTile> neighbors = new List<RimWorld.Planet.PlanetTile>();
             // Cache province types
             var provinceTypeMap = provinces.ToDictionary(p => p.id, p => p.provinceType);
@@ -1717,7 +1717,7 @@ namespace RimSynapse.RegionsAndTerritories
                 }
             }
 
-            Log.Message($"[RimSynapse-RegionsAndTerritories] MergeTinyDomains finished. Merged {totalMerged} regions in {pass} passes. Final region count: {provinces.Count}");
+            Log.Message($"[RegionsAndSocieties] MergeTinyDomains finished. Merged {totalMerged} regions in {pass} passes. Final region count: {provinces.Count}");
         }
 
         private float GetResourceWeight(GeographicProvince p)

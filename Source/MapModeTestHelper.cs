@@ -3,7 +3,7 @@ using RimWorld;
 using System.Linq;
 using MapModeFramework;
 
-namespace RimSynapse.RegionsAndTerritories
+namespace RegionsAndSocieties
 {
     public class MapModeTestHelper : GameComponent
     {

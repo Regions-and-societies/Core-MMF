@@ -1,6 +1,6 @@
 # Changelog
 
-Full version history for RimSynapse - Regions and Territories. The mod page and Workshop description show only the latest release; every earlier version is recorded here.
+Full version history. Versions 0.5.0-0.8.0 shipped under the former identity, RimSynapse - Regions and Territories. The mod page and Workshop description show only the latest release; every earlier version is recorded here.
 
 ## v0.7.4 - Border overlay ownership fix
 - Fixed: the global region-border overlay again shows faction ownership at a glance, so you no longer have to switch into the Territories map mode to read who holds what. It had stopped colouring borders after the 0.7.3 ownership rework - the overlay never recalculated owners and never repainted when they changed, so every border drew white.

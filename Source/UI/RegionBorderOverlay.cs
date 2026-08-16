@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using Verse;
 
-namespace RimSynapse.RegionsAndTerritories.UI
+namespace RegionsAndSocieties.UI
 {
     /// <summary>
     /// State for the global region-border overlay (#53): a per-frame world layer draws the division

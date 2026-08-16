@@ -115,7 +115,7 @@ namespace RimWorld.Planet
     }
 }
 
-namespace RimSynapse.RegionsAndTerritories
+namespace RegionsAndSocieties
 {
     public static class PopulationDensityUtility
     {

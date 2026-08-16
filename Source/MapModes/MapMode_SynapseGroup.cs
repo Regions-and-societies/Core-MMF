@@ -4,7 +4,7 @@ using MapModeFramework;
 using RimWorld;
 using Verse;
 
-namespace RimSynapse.RegionsAndTerritories
+namespace RegionsAndSocieties
 {
     public class MapMode_SynapseGroup : MapMode
     {
@@ -19,7 +19,7 @@ namespace RimSynapse.RegionsAndTerritories
 
             List<FloatMenuOption> options = new List<FloatMenuOption>();
 
-            // The RimSynapse section is exactly two views: Territories (faction shading) and
+            // The Regions and Societies section is exactly two views: Territories (faction shading) and
             // Population/dwellings. Region division lines are a global overlay toggle in the map-mode
             // Draw Settings (see Patch_MapModeUI_RegionBorders), not a mode of their own, so they can
             // be shown on top of any map mode.

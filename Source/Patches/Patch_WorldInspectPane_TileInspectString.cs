@@ -2,11 +2,11 @@ using System.Text;
 using HarmonyLib;
 using RimWorld;
 using RimWorld.Planet;
-using RimSynapse.RegionsAndTerritories.Integration;
-using RimSynapse.RegionsAndTerritories.Placement;
+using RegionsAndSocieties.Integration;
+using RegionsAndSocieties.Placement;
 using Verse;
 
-namespace RimSynapse.RegionsAndTerritories.Patches
+namespace RegionsAndSocieties.Patches
 {
     [HarmonyPatch(typeof(WorldInspectPane), "TileInspectString", MethodType.Getter)]
     internal static class Patch_WorldInspectPane_TileInspectString

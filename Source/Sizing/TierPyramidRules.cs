@@ -1,4 +1,4 @@
-namespace RimSynapse.RegionsAndTerritories.Sizing
+namespace RegionsAndSocieties.Sizing
 {
     /// <summary>
     /// The structural tier model (0.8): a faction's settlements form a pyramid where each tier is at

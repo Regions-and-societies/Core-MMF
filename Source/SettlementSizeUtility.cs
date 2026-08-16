@@ -2,11 +2,11 @@ using System.Collections.Generic;
 using System.Linq;
 using RimWorld;
 using RimWorld.Planet;
-using RimSynapse.RegionsAndTerritories.Integration;
-using RimSynapse.RegionsAndTerritories.Sizing;
+using RegionsAndSocieties.Integration;
+using RegionsAndSocieties.Sizing;
 using Verse;
 
-namespace RimSynapse.RegionsAndTerritories.Sizing
+namespace RegionsAndSocieties.Sizing
 {
     /// <summary>
     /// The live-game entry point for settlement size tiers (0.8: structural model).

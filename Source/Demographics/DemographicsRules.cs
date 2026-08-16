@@ -1,6 +1,6 @@
 using System;
 
-namespace RimSynapse.RegionsAndTerritories.Demographics
+namespace RegionsAndSocieties.Demographics
 {
     /// <summary>
     /// The deterministic core of the demographics model (0.8, #36). A tile's people are a pure

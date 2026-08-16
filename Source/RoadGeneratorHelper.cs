@@ -4,7 +4,7 @@ using RimWorld;
 using RimWorld.Planet;
 using Verse;
 
-namespace RimSynapse.RegionsAndTerritories
+namespace RegionsAndSocieties
 {
     public static class RoadGeneratorHelper
     {
@@ -12,7 +12,7 @@ namespace RimSynapse.RegionsAndTerritories
         {
             if (Find.World == null || Find.WorldGrid == null) return;
 
-            Log.Message("[RimSynapse-RegionsAndTerritories] RoadGeneratorHelper linking settlements...");
+            Log.Message("[RegionsAndSocieties] RoadGeneratorHelper linking settlements...");
 
             RoadDef dirtRoad = DefDatabase<RoadDef>.GetNamed("DirtRoad", false) ?? DefDatabase<RoadDef>.AllDefs.FirstOrDefault(r => r.defName.Contains("Dirt"));
             RoadDef pavedRoad = DefDatabase<RoadDef>.GetNamed("StoneRoad", false) ?? DefDatabase<RoadDef>.AllDefs.FirstOrDefault(r => r.defName.Contains("Stone") || r.defName.Contains("Highway") || r.defName.Contains("Asphalt"));

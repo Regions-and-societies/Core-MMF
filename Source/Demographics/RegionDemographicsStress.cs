@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using Verse;
 
-namespace RimSynapse.RegionsAndTerritories.Demographics
+namespace RegionsAndSocieties.Demographics
 {
     /// <summary>
     /// The sparse mutation layer over the deterministic demographic baseline (0.8, #36). The baseline

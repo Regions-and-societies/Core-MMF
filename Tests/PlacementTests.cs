@@ -6,8 +6,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using RimSynapse.RegionsAndTerritories.Integration;
-using RimSynapse.RegionsAndTerritories.Placement;
+using RegionsAndSocieties.Integration;
+using RegionsAndSocieties.Placement;
 
 namespace PlacementTests
 {

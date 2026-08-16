@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace RimSynapse.RegionsAndTerritories
+namespace RegionsAndSocieties
 {
     public class SimplePriorityQueue<T>
     {

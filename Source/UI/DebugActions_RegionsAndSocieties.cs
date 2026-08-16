@@ -2,39 +2,66 @@ using System.Reflection;
 using LudeonTK;
 using RimWorld;
 using RimWorld.Planet;
-using RimSynapse.RegionsAndTerritories.Integration;
+using RegionsAndSocieties.Integration;
 using UnityEngine;
 using Verse;
 
-namespace RimSynapse.RegionsAndTerritories.UI
+namespace RegionsAndSocieties.UI
 {
     /// <summary>
-    /// Debug-menu entries for the 0.7.2 playtest fixes, grouped under "RimSynapse". Each just logs
-    /// the matching <see cref="RegionDebugReports"/> report, so the human menu path and the agent's
-    /// headless bridge path (RegionMcpTools) exercise the exact same code (see the mod CLAUDE.md
-    /// debug-validation gate).
+    /// Debug-menu entries for the 0.7.2 playtest fixes, grouped under "Regions and Societies". Each
+    /// just logs the matching <see cref="RegionDebugReports"/> report, so the human menu path and
+    /// the agent's headless bridge path (RegionMcpTools) exercise the exact same code (see the mod
+    /// CLAUDE.md debug-validation gate).
     /// </summary>
-    public static class DebugActions_RegionsAndTerritories
+    public static class DebugActions_RegionsAndSocieties
     {
-        [DebugAction("RimSynapse", "R&T: density report (#62/#55)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        [DebugAction("Regions and Societies", "R&S: rebrand back-compat report (Core-MMF#2)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        private static void RebrandBackCompatReport()
+        {
+            // Proves a pre-rebrand save was resurrected through the type mapping rather than
+            // silently dropped: the patch counts old-name resolutions, and the manager's contents
+            // show whether the scribed territory data actually arrived.
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("--- rebrand back-compat report (Core-MMF#2) ---");
+            int n = Patches.Patch_BackCompatibility_TypeRename.ResurrectionCount;
+            sb.AppendLine(n > 0
+                ? $"old-name resolutions this session: {n} (last: {Patches.Patch_BackCompatibility_TypeRename.LastResurrectedName})"
+                : "old-name resolutions this session: 0 (save was written post-rebrand, or no save loaded)");
+            var manager = Find.World?.GetComponent<SynapseRegionManager>();
+            if (manager == null)
+            {
+                sb.AppendLine("SynapseRegionManager: MISSING from the world's components — territory data was lost.");
+            }
+            else
+            {
+                int provinces = manager.Provinces?.Count ?? 0;
+                sb.AppendLine($"SynapseRegionManager: present, {provinces} province(s).");
+                if (n > 0 && provinces == 0)
+                    sb.AppendLine("WARNING: resurrected through the mapping but empty — scribing did not restore the data.");
+            }
+            Log.Message(sb.ToString());
+        }
+
+        [DebugAction("Regions and Societies", "R&S: density report (#62/#55)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void DensityReport()
         {
             Log.Message(RegionDebugReports.DensityReport());
         }
 
-        [DebugAction("RimSynapse", "R&T: shading tiers report (#60)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        [DebugAction("Regions and Societies", "R&S: shading tiers report (#60)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void ShadingReport()
         {
             Log.Message(RegionDebugReports.ShadingReport());
         }
 
-        [DebugAction("RimSynapse", "R&T: holdings report (#67)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        [DebugAction("Regions and Societies", "R&S: holdings report (#67)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void HoldingsReport()
         {
             Log.Message(RegionDebugReports.HoldingsReport());
         }
 
-        [DebugAction("RimSynapse", "R&T: placement probe (#61)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        [DebugAction("Regions and Societies", "R&S: placement probe (#61)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void PlacementProbe()
         {
             // Probe the selected world tile if there is one; otherwise sample one province per tier.
@@ -46,7 +73,7 @@ namespace RimSynapse.RegionsAndTerritories.UI
             Log.Message(RegionDebugReports.PlacementProbe(tileId));
         }
 
-        [DebugAction("RimSynapse", "R&T: border overlay report (#72)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        [DebugAction("Regions and Societies", "R&S: border overlay report (#72)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void BorderOverlayReport()
         {
             Log.Message(RegionDebugReports.BorderOverlayReport());
@@ -57,31 +84,31 @@ namespace RimSynapse.RegionsAndTerritories.UI
         // menu path and the headless run_debug_action path both work. Forced styles survive the repaint
         // until "clear ownership overrides" recomputes from real holdings.
 
-        [DebugAction("RimSynapse", "R&T: TEST force CONTESTED (selected province)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        [DebugAction("Regions and Societies", "R&S: TEST force CONTESTED (selected province)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void ForceContested()
         {
             Log.Message(RegionDebugReports.ForceOwnershipStyle(SelectedWorldTile(), "contested"));
         }
 
-        [DebugAction("RimSynapse", "R&T: TEST force SOLID owner (selected province)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        [DebugAction("Regions and Societies", "R&S: TEST force SOLID owner (selected province)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void ForceSolid()
         {
             Log.Message(RegionDebugReports.ForceOwnershipStyle(SelectedWorldTile(), "solid"));
         }
 
-        [DebugAction("RimSynapse", "R&T: TEST force LOOSE claim (selected province)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        [DebugAction("Regions and Societies", "R&S: TEST force LOOSE claim (selected province)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void ForceLoose()
         {
             Log.Message(RegionDebugReports.ForceOwnershipStyle(SelectedWorldTile(), "loose"));
         }
 
-        [DebugAction("RimSynapse", "R&T: TEST clear ownership overrides (recompute)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        [DebugAction("Regions and Societies", "R&S: TEST clear ownership overrides (recompute)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void ClearOwnershipOverrides()
         {
             Log.Message(RegionDebugReports.ClearOwnershipOverrides());
         }
 
-        [DebugAction("RimSynapse", "R&T: TEST drop rival settlement (selected province)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        [DebugAction("Regions and Societies", "R&S: TEST drop rival settlement (selected province)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void DropRivalSettlement()
         {
             Log.Message(RegionDebugReports.DropRivalSettlement(SelectedWorldTile()));
@@ -104,7 +131,7 @@ namespace RimSynapse.RegionsAndTerritories.UI
         /// DoDrawSettingsExpanded=false (the border-toggle patch must self-skip via its Prepare()), and the
         /// mod loads with no red errors. Runnable at the main menu (Entry) as well as in-world.
         /// </summary>
-        [DebugAction("RimSynapse", "R&T: map-framework compat probe (#81)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.Entry | AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        [DebugAction("Regions and Societies", "R&S: map-framework compat probe (#81)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.Entry | AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void MapFrameworkCompatProbe()
         {
             bool nozome = ModsConfig.IsActive("NozoMe.MapModeFramework");
@@ -123,7 +150,7 @@ namespace RimSynapse.RegionsAndTerritories.UI
                         $"under RP2, DoDrawSettingsExpanded=false is correct (border-toggle patch self-skips).");
         }
 
-        [DebugAction("RimSynapse", "R&T: ownership derivation (#69)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        [DebugAction("Regions and Societies", "R&S: ownership derivation (#69)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void OwnershipDerivation()
         {
             // Derive the selected province if one is picked; otherwise scan every holdingless province
@@ -136,25 +163,25 @@ namespace RimSynapse.RegionsAndTerritories.UI
             Log.Message(RegionDebugReports.OwnershipDerivationReport(tileId));
         }
 
-        [DebugAction("RimSynapse", "R&T: settlement tiers & outpost allowance (#56)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        [DebugAction("Regions and Societies", "R&S: settlement tiers & outpost allowance (#56)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void SettlementTierAllowanceReport()
         {
             Log.Message(RegionDebugReports.SettlementTierAllowanceReport());
         }
 
-        [DebugAction("RimSynapse", "R&T: force outpost seeding (#56)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        [DebugAction("Regions and Societies", "R&S: force outpost seeding (#56)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void ForceOutpostSeeding()
         {
             Log.Message(RegionDebugReports.OutpostSeedingReport());
         }
 
-        [DebugAction("RimSynapse", "R&T: tier pyramid & capitals (0.8)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        [DebugAction("Regions and Societies", "R&S: tier pyramid & capitals (0.8)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void TierPyramidReport()
         {
             Log.Message(RegionDebugReports.TierPyramidReport());
         }
 
-        [DebugAction("RimSynapse", "R&T: region demographics (#36)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        [DebugAction("Regions and Societies", "R&S: region demographics (#36)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void DemographicsReport()
         {
             Log.Message(RegionDebugReports.DemographicsReport(SelectedWorldTile()));
@@ -162,25 +189,25 @@ namespace RimSynapse.RegionsAndTerritories.UI
 
         // Live demographic-falloff tuning: nudge a knob, recompute, and reprint the selected region's
         // shares — no reload. Select a border province, then step reach/falloff until "own" reads ~50-60%.
-        [DebugAction("RimSynapse", "R&T: demo reach +0.1", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        [DebugAction("Regions and Societies", "R&S: demo reach +0.1", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void DemoReachUp() { NudgeDemographics(0.1f, 0f); }
 
-        [DebugAction("RimSynapse", "R&T: demo reach -0.1", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        [DebugAction("Regions and Societies", "R&S: demo reach -0.1", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void DemoReachDown() { NudgeDemographics(-0.1f, 0f); }
 
-        [DebugAction("RimSynapse", "R&T: demo falloff +0.25", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        [DebugAction("Regions and Societies", "R&S: demo falloff +0.25", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void DemoFalloffUp() { NudgeDemographics(0f, 0.25f); }
 
-        [DebugAction("RimSynapse", "R&T: demo falloff -0.25", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        [DebugAction("Regions and Societies", "R&S: demo falloff -0.25", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void DemoFalloffDown() { NudgeDemographics(0f, -0.25f); }
 
-        [DebugAction("RimSynapse", "R&T: faction demographics (#36)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        [DebugAction("Regions and Societies", "R&S: faction demographics (#36)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void FactionDemographicsReport()
         {
             Log.Message(RegionDebugReports.FactionDemographicsReport());
         }
 
-        [DebugAction("RimSynapse", "R&T: demo cycle falloff model", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        [DebugAction("Regions and Societies", "R&S: demo cycle falloff model", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void DemoCycleModel()
         {
             int count = System.Enum.GetValues(typeof(Demographics.DemographicsRules.FalloffModel)).Length;
@@ -189,7 +216,7 @@ namespace RimSynapse.RegionsAndTerritories.UI
             NudgeDemographics(0f, 0f);
         }
 
-        [DebugAction("RimSynapse", "R&T: demo refresh (recompute, no reload)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        [DebugAction("Regions and Societies", "R&S: demo refresh (recompute, no reload)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void DemoRefresh() { NudgeDemographics(0f, 0f); }
 
         private static void NudgeDemographics(float reachDelta, float falloffDelta)
@@ -206,43 +233,43 @@ namespace RimSynapse.RegionsAndTerritories.UI
             Log.Message(RegionDebugReports.DemographicsReport(SelectedWorldTile()));
         }
 
-        [DebugAction("RimSynapse", "R&T: TEST lone-settlement ownership (#42)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        [DebugAction("Regions and Societies", "R&S: TEST lone-settlement ownership (#42)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void LoneSettlementOwnership()
         {
             Log.Message(RegionDebugReports.LoneSettlementOwnershipReport());
         }
 
-        [DebugAction("RimSynapse", "R&T: ownership tier distribution (#64)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        [DebugAction("Regions and Societies", "R&S: ownership tier distribution (#64)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void OwnershipTierReport()
         {
             Log.Message(RegionDebugReports.OwnershipTierReport());
         }
 
-        [DebugAction("RimSynapse", "R&T: NPC loose-ownership barriers (#65)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        [DebugAction("Regions and Societies", "R&S: NPC loose-ownership barriers (#65)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void NpcBarrierReport()
         {
             Log.Message(RegionDebugReports.NpcBarrierReport());
         }
 
-        [DebugAction("RimSynapse", "R&T: TEST anger-on-claim hook (#66)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        [DebugAction("Regions and Societies", "R&S: TEST anger-on-claim hook (#66)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void TerritoryClaimHookTest()
         {
             Log.Message(RegionDebugReports.TerritoryClaimReport(SelectedWorldTile()));
         }
 
-        [DebugAction("RimSynapse", "R&T: adapter recon — modded WorldObjects (#71)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.Entry | AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        [DebugAction("Regions and Societies", "R&S: adapter recon — modded WorldObjects (#71)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.Entry | AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void AdapterRecon()
         {
             Log.Message(RegionDebugReports.AdapterReconReport());
         }
 
-        [DebugAction("RimSynapse", "R&T: density slider report (#51)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        [DebugAction("Regions and Societies", "R&S: density slider report (#51)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void DensitySliderReport()
         {
             Log.Message(RegionDebugReports.DensitySliderReport());
         }
 
-        [DebugAction("RimSynapse", "R&T: settlement placement check (#65)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        [DebugAction("Regions and Societies", "R&S: settlement placement check (#65)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void SettlementPlacementCheck()
         {
             int tileId = -1;
@@ -253,7 +280,7 @@ namespace RimSynapse.RegionsAndTerritories.UI
             Log.Message(RegionDebugReports.SettlementPlacementCheck(tileId));
         }
 
-        [DebugAction("RimSynapse", "R&T: ownership derivation for province (id=z*250+x)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        [DebugAction("Regions and Societies", "R&S: ownership derivation for province (id=z*250+x)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void OwnershipDerivationForProvince(IntVec3 c)
         {
             // Headless province targeting. run_debug_action passes an IntVec3, and the bridge bounds-
@@ -276,7 +303,7 @@ namespace RimSynapse.RegionsAndTerritories.UI
         /// orbital tile while accepting a genuine surface tile. Confirm from read_rimworld_log that NO
         /// "Attempted to access a tile" error appears after the [SYNAPSE-TEST] line.</para>
         /// </summary>
-        [DebugAction("RimSynapse", "R&T: TEST demographics off-surface tile (#77)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        [DebugAction("Regions and Societies", "R&S: TEST demographics off-surface tile (#77)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void TestDemographicsOffSurfaceTile()
         {
             WorldGrid grid = Find.WorldGrid;

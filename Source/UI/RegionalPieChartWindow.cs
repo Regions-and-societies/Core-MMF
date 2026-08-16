@@ -5,7 +5,7 @@ using RimWorld;
 using UnityEngine;
 using Verse;
 
-namespace RimSynapse.RegionsAndTerritories.UI
+namespace RegionsAndSocieties.UI
 {
     public static class RegionalPieChartWindow
     {

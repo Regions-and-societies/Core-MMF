@@ -1,6 +1,6 @@
 using System;
 
-namespace RimSynapse.RegionsAndTerritories.Economy
+namespace RegionsAndSocieties.Economy
 {
     /// <summary>
     /// Every number in the resource model, in one table — the same treatment <c>PlacementRules</c>

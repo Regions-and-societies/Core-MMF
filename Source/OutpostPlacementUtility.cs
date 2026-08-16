@@ -1,7 +1,7 @@
 using RimWorld;
-using RimSynapse.RegionsAndTerritories.Integration;
+using RegionsAndSocieties.Integration;
 
-namespace RimSynapse.RegionsAndTerritories
+namespace RegionsAndSocieties
 {
     /// <summary>
     /// Kept as the outpost-shaped door onto the general placement rules.

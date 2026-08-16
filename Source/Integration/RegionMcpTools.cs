@@ -7,7 +7,7 @@ using System.Text.RegularExpressions;
 using RimWorld.Planet;
 using Verse;
 
-namespace RimSynapse.RegionsAndTerritories.Integration
+namespace RegionsAndSocieties.Integration
 {
     /// <summary>
     /// Registers read-only introspection tools with RimSynapse Core's game-tool bridge, so the
@@ -26,7 +26,7 @@ namespace RimSynapse.RegionsAndTerritories.Integration
                 .FirstOrDefault(m => m.Name == "RegisterTool" && m.GetParameters().Length == 6);
             if (register == null)
             {
-                Log.Warning("[RimSynapse-RegionsAndTerritories] SynapseToolRegistry.RegisterTool(6-arg) not found; region tools not exposed.");
+                Log.Warning("[RegionsAndSocieties] SynapseToolRegistry.RegisterTool(6-arg) not found; region tools not exposed.");
                 return;
             }
 
@@ -43,7 +43,7 @@ namespace RimSynapse.RegionsAndTerritories.Integration
                 (Func<string, string>)ShowWorldMapHandler);
 
             // Debug-validation bridges for the 0.7.2 playtest fixes. Each shares its code path with
-            // the matching "RimSynapse" [DebugAction] via RegionDebugReports, so the agent's headless
+            // the matching "Regions and Societies" [DebugAction] via RegionDebugReports, so the agent's headless
             // trigger and the human menu produce the same report (mod CLAUDE.md validation gate).
             TryRegister(register, "rt_density_report",
                 "R&T density (#62/#55): source-pop histogram, natural-pocket caps (off-landmark <=5), and per-province population totals vs the old smear sum.",
@@ -100,11 +100,11 @@ namespace RimSynapse.RegionsAndTerritories.Integration
             try
             {
                 register.Invoke(null, new object[] { name, desc, schema, handler, false, null });
-                Log.Message($"[RimSynapse-RegionsAndTerritories] Registered game tool '{name}'.");
+                Log.Message($"[RegionsAndSocieties] Registered game tool '{name}'.");
             }
             catch (Exception ex)
             {
-                Log.Warning($"[RimSynapse-RegionsAndTerritories] Failed to register tool '{name}': {ex.Message}");
+                Log.Warning($"[RegionsAndSocieties] Failed to register tool '{name}': {ex.Message}");
             }
         }
 

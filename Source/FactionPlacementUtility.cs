@@ -8,7 +8,7 @@ using RimWorld.Planet;
 using Verse;
 using UnityEngine;
 
-namespace RimSynapse.RegionsAndTerritories
+namespace RegionsAndSocieties
 {
     public static class FactionPlacementUtility
     {

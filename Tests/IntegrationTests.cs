@@ -5,7 +5,7 @@ using System;
 using System.Collections.Generic;
 using RimWorld;
 using RimWorld.Planet;
-using RimSynapse.RegionsAndTerritories.Integration;
+using RegionsAndSocieties.Integration;
 
 // ---- Fake Empire Refactored -------------------------------------------------
 namespace FactionColonies

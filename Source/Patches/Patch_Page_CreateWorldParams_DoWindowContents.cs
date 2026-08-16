@@ -4,7 +4,7 @@ using RimWorld;
 using UnityEngine;
 using Verse;
 
-namespace RimSynapse.RegionsAndTerritories.Patches
+namespace RegionsAndSocieties.Patches
 {
     /// <summary>
     /// Adds the "Faction Geography" button to the vanilla Create-World page, opening R&amp;T's placement

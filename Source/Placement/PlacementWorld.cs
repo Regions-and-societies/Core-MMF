@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace RimSynapse.RegionsAndTerritories.Placement
+namespace RegionsAndSocieties.Placement
 {
     /// <summary>
     /// Everything <see cref="PlacementEvaluator"/> needs to know about the world, expressed as

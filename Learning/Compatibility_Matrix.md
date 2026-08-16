@@ -31,7 +31,7 @@ Everything below was observed with all listed mods loaded simultaneously, not in
 
 ## Load order
 
-**RimSynapse - Regions and Territories must load BEFORE RimSynapse - Factions.**
+**The old RimSynapse - Factions load-order rule no longer applies**: Factions bound the former assembly name and does not bind this mod.
 
 This is an ordering constraint, not an incompatibility. Reversed, the Factions assembly cannot resolve this one and **every type in it silently disappears** — its patches never bind, its worldgen step never runs, and nothing in the log says the mod is dead beyond a handful of "could not find a type named" lines. The mod appears installed and does nothing.
 

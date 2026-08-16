@@ -1,4 +1,4 @@
-namespace RimSynapse.RegionsAndTerritories.Sizing
+namespace RegionsAndSocieties.Sizing
 {
     /// <summary>
     /// The kind of outpost a tile is suited to, chosen so a seeded outpost reads as belonging where

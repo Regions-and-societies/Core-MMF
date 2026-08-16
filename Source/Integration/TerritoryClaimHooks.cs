@@ -2,10 +2,10 @@ using System;
 using System.Linq;
 using RimWorld;
 using RimWorld.Planet;
-using RimSynapse.RegionsAndTerritories.Placement;
+using RegionsAndSocieties.Placement;
 using Verse;
 
-namespace RimSynapse.RegionsAndTerritories.Integration
+namespace RegionsAndSocieties.Integration
 {
     /// <summary>
     /// The event a player permanent holding raises when it lands in a province a rival legitimately
@@ -47,7 +47,7 @@ namespace RimSynapse.RegionsAndTerritories.Integration
             try { return Handler != null && Handler(args); }
             catch (Exception ex)
             {
-                Log.Error($"[RimSynapse-RegionsAndTerritories] TerritoryClaim handler threw: {ex}");
+                Log.Error($"[RegionsAndSocieties] TerritoryClaim handler threw: {ex}");
                 return false;
             }
         }
@@ -111,9 +111,9 @@ namespace RimSynapse.RegionsAndTerritories.Integration
                 }
                 catch (Exception ex)
                 {
-                    Log.Warning($"[RimSynapse-RegionsAndTerritories] goodwill penalty on {claim.faction?.Name} failed: {ex.Message}");
+                    Log.Warning($"[RegionsAndSocieties] goodwill penalty on {claim.faction?.Name} failed: {ex.Message}");
                 }
-                Log.Message($"[RimSynapse-RegionsAndTerritories] Territory contested (#66): player settled province {province.id}, claimed by {claim.faction.Name} ({claim.TotalScore:0.00}, {RegionalDomainUtility.TierOf(claim.TotalScore)}); default goodwill {delta}.");
+                Log.Message($"[RegionsAndSocieties] Territory contested (#66): player settled province {province.id}, claimed by {claim.faction.Name} ({claim.TotalScore:0.00}, {RegionalDomainUtility.TierOf(claim.TotalScore)}); default goodwill {delta}.");
             }
         }
     }

@@ -4,7 +4,7 @@ using RimWorld.Planet;
 using UnityEngine;
 using Verse;
 
-namespace RimSynapse.RegionsAndTerritories.UI
+namespace RegionsAndSocieties.UI
 {
     /// <summary>
     /// Draggable expanded region readout — the influence pie plus the full text — opened by

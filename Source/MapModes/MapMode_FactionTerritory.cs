@@ -9,7 +9,7 @@ using RimWorld.Planet;
 using UnityEngine;
 using Verse;
 
-namespace RimSynapse.RegionsAndTerritories
+namespace RegionsAndSocieties
 {
     public class MapMode_FactionTerritory : MapMode_Region
     {

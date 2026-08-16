@@ -1,6 +1,6 @@
 using System;
 
-namespace RimSynapse.RegionsAndTerritories.Sizing
+namespace RegionsAndSocieties.Sizing
 {
     /// <summary>
     /// How large a population centre is, independent of which mod created it.

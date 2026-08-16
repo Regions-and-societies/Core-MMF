@@ -1,11 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using RimSynapse.RegionsAndTerritories.Placement;
+using RegionsAndSocieties.Placement;
 using RimWorld;
 using Verse;
 
-namespace RimSynapse.RegionsAndTerritories
+namespace RegionsAndSocieties
 {
     public enum ProvinceDomainStatus
     {

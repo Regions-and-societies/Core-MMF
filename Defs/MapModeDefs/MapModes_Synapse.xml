@@ -4,7 +4,7 @@
     <defName>SynapsePopulationDensity</defName>
     <label>dwellings</label>
     <description>Visualizes the density of pawn dwellings across the planet.</description>
-    <mapModeClass>RimSynapse.RegionsAndTerritories.MapMode_PopulationDensity</mapModeClass>
+    <mapModeClass>RegionsAndSocieties.MapMode_PopulationDensity</mapModeClass>
     <worldLayerClass>MapModeFramework.WorldLayer_MapMode_Terrain</worldLayerClass>
     <iconPath>UI/MapModes/Default</iconPath>
     <canCache>true</canCache>
@@ -15,7 +15,7 @@
     <defName>SynapseFactionTerritory</defName>
     <label>Territories</label>
     <description>Visualizes national domains and zones of control, shaded by owning faction.</description>
-    <mapModeClass>RimSynapse.RegionsAndTerritories.MapMode_FactionTerritory</mapModeClass>
+    <mapModeClass>RegionsAndSocieties.MapMode_FactionTerritory</mapModeClass>
     <worldLayerClass>MapModeFramework.WorldLayer_MapMode_Region</worldLayerClass>
     <iconPath>UI/MapModes/Default</iconPath>
     <canCache>true</canCache>
@@ -29,9 +29,9 @@
 
   <MapModeFramework.MapModeDef MayRequireAnyOf="NozoMe.MapModeFramework,koth.RealisticPlanets2">
     <defName>SynapseMapModeGroup</defName>
-    <label>RimSynapse Regions and Territories</label>
-    <description>Visualizes world analytics from RimSynapse Regions and Territories (dropdown list).</description>
-    <mapModeClass>RimSynapse.RegionsAndTerritories.MapMode_SynapseGroup</mapModeClass>
+    <label>Regions and Societies</label>
+    <description>Visualizes world analytics from Regions and Societies (dropdown list).</description>
+    <mapModeClass>RegionsAndSocieties.MapMode_SynapseGroup</mapModeClass>
     <worldLayerClass>MapModeFramework.WorldLayer_MapMode</worldLayerClass>
     <iconPath>UI/MapModes/SynapseGroup</iconPath>
     <canCache>false</canCache>

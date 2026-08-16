@@ -16,7 +16,7 @@
   -->
   <GlobalWorldDrawLayerDef MayRequireAnyOf="NozoMe.MapModeFramework,koth.RealisticPlanets2">
     <defName>SynapseRegionBorders</defName>
-    <worldDrawLayer>RimSynapse.RegionsAndTerritories.WorldLayer_RegionBorders</worldDrawLayer>
+    <worldDrawLayer>RegionsAndSocieties.WorldLayer_RegionBorders</worldDrawLayer>
   </GlobalWorldDrawLayerDef>
 
 </Defs>

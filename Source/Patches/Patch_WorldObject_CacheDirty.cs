@@ -1,9 +1,9 @@
 using HarmonyLib;
 using RimWorld.Planet;
-using RimSynapse.RegionsAndTerritories.Integration;
+using RegionsAndSocieties.Integration;
 using Verse;
 
-namespace RimSynapse.RegionsAndTerritories.Patches
+namespace RegionsAndSocieties.Patches
 {
     [HarmonyPatch(typeof(WorldObject), nameof(WorldObject.PostAdd))]
     public static class Patch_WorldObject_PostAdd

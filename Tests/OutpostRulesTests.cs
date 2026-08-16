@@ -4,8 +4,8 @@
 // over the same numbers the seeding pass feeds them at runtime. What is under test is the mapping,
 // which is the part that can actually be wrong.
 using System;
-using RimSynapse.RegionsAndTerritories.Integration;
-using RimSynapse.RegionsAndTerritories.Sizing;
+using RegionsAndSocieties.Integration;
+using RegionsAndSocieties.Sizing;
 
 namespace OutpostRulesTests
 {

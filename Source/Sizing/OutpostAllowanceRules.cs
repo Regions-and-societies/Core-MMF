@@ -1,4 +1,4 @@
-namespace RimSynapse.RegionsAndTerritories.Sizing
+namespace RegionsAndSocieties.Sizing
 {
     /// <summary>
     /// How many outposts a territory may hold, as a function of the tier of the settlement anchoring

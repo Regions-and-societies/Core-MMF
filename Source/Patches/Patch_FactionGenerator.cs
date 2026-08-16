@@ -7,7 +7,7 @@ using RimWorld.Planet;
 using Verse;
 using UnityEngine;
 
-namespace RimSynapse.RegionsAndTerritories.Patches
+namespace RegionsAndSocieties.Patches
 {
     [HarmonyPatch(typeof(FactionGenerator), "GenerateFactionsIntoWorldLayer")]
     public static class Patch_FactionGenerator_GenerateFactionsIntoWorld
@@ -17,20 +17,20 @@ namespace RimSynapse.RegionsAndTerritories.Patches
         {
             if (layer == null || layer.Def == null || layer.Def.defName != "Surface")
             {
-                Log.Message($"[RimSynapse-RegionsAndTerritories] Bypassing custom faction generator for non-surface layer '{layer?.Def?.defName ?? "null"}'. Falling back to vanilla.");
+                Log.Message($"[RegionsAndSocieties] Bypassing custom faction generator for non-surface layer '{layer?.Def?.defName ?? "null"}'. Falling back to vanilla.");
                 return true;
             }
 
-            Log.Message("[RimSynapse-RegionsAndTerritories] Custom Faction Generation and Placement solver starting...");
+            Log.Message("[RegionsAndSocieties] Custom Faction Generation and Placement solver starting...");
             if (Prefs.DevMode)
             {
-                Log.Message("[RimSynapse-RegionsAndTerritories] Call site:\n" + new System.Diagnostics.StackTrace());
+                Log.Message("[RegionsAndSocieties] Call site:\n" + new System.Diagnostics.StackTrace());
             }
 
             World world = Find.World ?? Current.CreatingWorld;
             if (world == null || world.info == null || world.grid == null)
             {
-                Log.Warning("[RimSynapse-RegionsAndTerritories] World, World.info, or World.grid is null! Falling back to vanilla generator.");
+                Log.Warning("[RegionsAndSocieties] World, World.info, or World.grid is null! Falling back to vanilla generator.");
                 return true;
             }
 
@@ -49,7 +49,7 @@ namespace RimSynapse.RegionsAndTerritories.Patches
             FactionManager factionManager = world.factionManager;
             if (factionManager == null)
             {
-                Log.Warning("[RimSynapse-RegionsAndTerritories] FactionManager is null! Falling back to vanilla generator.");
+                Log.Warning("[RegionsAndSocieties] FactionManager is null! Falling back to vanilla generator.");
                 return true;
             }
 
@@ -59,7 +59,7 @@ namespace RimSynapse.RegionsAndTerritories.Patches
             var regionManager = world.GetComponent<SynapseRegionManager>();
             if (regionManager == null)
             {
-                Log.Warning("[RimSynapse-RegionsAndTerritories] SynapseRegionManager is null! Falling back to vanilla generator.");
+                Log.Warning("[RegionsAndSocieties] SynapseRegionManager is null! Falling back to vanilla generator.");
                 return true;
             }
 
@@ -178,7 +178,7 @@ namespace RimSynapse.RegionsAndTerritories.Patches
             var allProvinces = regionManager.Provinces;
             if (!allProvinces.Any())
             {
-                Log.Warning("[RimSynapse-RegionsAndTerritories] No provinces generated! Falling back to vanilla generator.");
+                Log.Warning("[RegionsAndSocieties] No provinces generated! Falling back to vanilla generator.");
                 return true;
             }
             Faction playerFaction = Find.FactionManager?.OfPlayer;
@@ -507,7 +507,7 @@ namespace RimSynapse.RegionsAndTerritories.Patches
                     }
                 }
 
-                Log.Message($"[RimSynapse-RegionsAndTerritories] Placed {factionBases.Count} bases across {factionProvinces.Count} provinces for faction: {faction.Name}");
+                Log.Message($"[RegionsAndSocieties] Placed {factionBases.Count} bases across {factionProvinces.Count} provinces for faction: {faction.Name}");
             }
 
             // Redistribute NPC faction colors deterministically to ensure high vibrance and distinct visual separation
@@ -536,9 +536,9 @@ namespace RimSynapse.RegionsAndTerritories.Patches
             // after settlements are placed and provinces are owned, and only on the R&T placement
             // path (this prefix), so it never fires for a non-surface layer or a vanilla fallback.
             OutpostSeedingResult seeding = OutpostSeedingUtility.SeedOutposts();
-            Log.Message("[RimSynapse-RegionsAndTerritories] " + seeding.ToReport().TrimEnd());
+            Log.Message("[RegionsAndSocieties] " + seeding.ToReport().TrimEnd());
 
-            Log.Message("[RimSynapse-RegionsAndTerritories] Custom Faction Generation and Placement completed successfully.");
+            Log.Message("[RegionsAndSocieties] Custom Faction Generation and Placement completed successfully.");
             return false;
         }
 
@@ -734,7 +734,7 @@ namespace RimSynapse.RegionsAndTerritories.Patches
             foreach (var s in scores)
             {
                 if (s != null && s.faction != null && s.faction != faction &&
-                    s.TotalScore >= RimSynapse.RegionsAndTerritories.Placement.PlacementRules.OwnershipThreshold)
+                    s.TotalScore >= RegionsAndSocieties.Placement.PlacementRules.OwnershipThreshold)
                 {
                     return true;
                 }
@@ -842,7 +842,7 @@ namespace RimSynapse.RegionsAndTerritories.Patches
         public static void Prefix()
         {
             if (!Prefs.DevMode) return;
-            Log.Message("[RimSynapse-RegionsAndTerritories] WorldGenerator.GenerateWorld prefix reached.");
+            Log.Message("[RegionsAndSocieties] WorldGenerator.GenerateWorld prefix reached.");
         }
     }
 
@@ -853,7 +853,7 @@ namespace RimSynapse.RegionsAndTerritories.Patches
         public static void Prefix()
         {
             if (!Prefs.DevMode) return;
-            Log.Message("[RimSynapse-RegionsAndTerritories] WorldGenStep_Factions.GenerateFresh prefix reached.\n"
+            Log.Message("[RegionsAndSocieties] WorldGenStep_Factions.GenerateFresh prefix reached.\n"
                 + new System.Diagnostics.StackTrace());
         }
     }

@@ -6,9 +6,9 @@ using RimWorld;
 using RimWorld.Planet;
 using Verse;
 
-namespace RimSynapse.RegionsAndTerritories.Patches
+namespace RegionsAndSocieties.Patches
 {
-    public static class RegionsAndTerritories_EmpiresPatch
+    public static class RegionsAndSocieties_EmpiresPatch
     {
         public static string GetDefNameSafe(object obj)
         {
@@ -214,7 +214,7 @@ namespace RimSynapse.RegionsAndTerritories.Patches
             }
             catch (Exception ex)
             {
-                Log.Error($"[RimSynapse-RegionsAndTerritories] Error in BuildParams_Prefix: {ex}");
+                Log.Error($"[RegionsAndSocieties] Error in BuildParams_Prefix: {ex}");
                 return true; // Fallback to original if something failed
             }
         }
@@ -233,7 +233,7 @@ namespace RimSynapse.RegionsAndTerritories.Patches
                 var buildParamsMethod = rewardDef.GetType().GetMethod("BuildParams", BindingFlags.Public | BindingFlags.Instance);
                 if (buildParamsMethod == null)
                 {
-                    Log.Error($"[RimSynapse] Could not find BuildParams method on rewardDef");
+                    Log.Error($"[RegionsAndSocieties] Could not find BuildParams method on rewardDef");
                     __result = new System.Collections.Generic.List<Thing>();
                     return false;
                 }
@@ -275,7 +275,7 @@ namespace RimSynapse.RegionsAndTerritories.Patches
             }
             catch (Exception ex)
             {
-                Log.Error($"[RimSynapse-RegionsAndTerritories] Error in GenerateRewardThings_Prefix: {ex}");
+                Log.Error($"[RegionsAndSocieties] Error in GenerateRewardThings_Prefix: {ex}");
                 return true; // Fallback to original
             }
         }
@@ -441,10 +441,10 @@ namespace RimSynapse.RegionsAndTerritories.Patches
                 return false;
             }
 
-            Faction placingFaction = RegionsAndTerritories_EmpiresPatch.GetPlayerFaction();
+            Faction placingFaction = RegionsAndSocieties_EmpiresPatch.GetPlayerFaction();
             if (placingFaction != null)
             {
-                Faction owner = RegionsAndTerritories_EmpiresPatch.GetRegionOwner(tile.tileId);
+                Faction owner = RegionsAndSocieties_EmpiresPatch.GetRegionOwner(tile.tileId);
                 if (owner != null && owner != placingFaction)
                 {
                     reason?.Append("This region is owned by another faction.");
@@ -687,19 +687,19 @@ namespace RimSynapse.RegionsAndTerritories.Patches
 
             try
             {
-                Faction playerFaction = RegionsAndTerritories_EmpiresPatch.GetPlayerFaction();
+                Faction playerFaction = RegionsAndSocieties_EmpiresPatch.GetPlayerFaction();
                 if (playerFaction == null) return true;
 
                 int from = fromTile.tileId;
                 int to = toTile.tileId;
 
-                Faction ownerFrom = RegionsAndTerritories_EmpiresPatch.GetRegionOwner(from);
+                Faction ownerFrom = RegionsAndSocieties_EmpiresPatch.GetRegionOwner(from);
                 if (ownerFrom != null && ownerFrom != playerFaction)
                 {
                     return false; // Block road segment overlay
                 }
 
-                Faction ownerTo = RegionsAndTerritories_EmpiresPatch.GetRegionOwner(to);
+                Faction ownerTo = RegionsAndSocieties_EmpiresPatch.GetRegionOwner(to);
                 if (ownerTo != null && ownerTo != playerFaction)
                 {
                     return false; // Block road segment overlay
@@ -707,7 +707,7 @@ namespace RimSynapse.RegionsAndTerritories.Patches
             }
             catch (Exception ex)
             {
-                Log.ErrorOnce($"[RimSynapse-RegionsAndTerritories] Error in Patch_WorldGrid_OverlayRoad: {ex}", 991823);
+                Log.ErrorOnce($"[RegionsAndSocieties] Error in Patch_WorldGrid_OverlayRoad: {ex}", 991823);
             }
             return true;
         }

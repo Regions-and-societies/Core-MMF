@@ -1,8 +1,8 @@
 [b]Discord Community:[/b] [url=https://discord.gg/eVBebZ2N9s]https://discord.gg/eVBebZ2N9s[/url]
 [b]Version:[/b] v0.8.0 (Target: RimWorld 1.6)
 
-[h1]Regions and Territories[/h1]
-[b][url=https://github.com/RimSynapse/Regions-and-Territories/wiki]Official Wiki and Documentation[/url][/b]
+[h1]Regions and Societies[/h1]
+[b][url=https://github.com/Regions-and-societies/Core-MMF/wiki]Official Wiki and Documentation[/url][/b]
 [b]Overhauls the world map generation with dynamic geographic province generation, world map overlays, and territory borders.[/b]
 
 ---
@@ -10,7 +10,7 @@
 [h2]Best on a New Colony - Existing Saves Supported in Compatibility Mode[/h2]
 [b]A world generated with the mod installed gets everything. A world already in progress is adopted in Compatibility Mode.[/b]
 
-Regions and Territories does most of its work during world generation. It draws the province boundaries and then places faction settlements according to them, respecting region occupancy limits, border buffers, and sequential expansion.
+Regions and Societies does most of its work during world generation. It draws the province boundaries and then places faction settlements according to them, respecting region occupancy limits, border buffers, and sequential expansion.
 
 Added to a world that already exists, it adopts that world in Compatibility Mode. Provinces are still drawn, territory is still owned and shown on the map modes, and the overlays work as normal. What stands down is placement: the mod will not decide where settlements and outposts may be built, because your world is already full of towns placed with no regard for those rules, and enforcing them now would refuse ground that has been settled since long before the mod arrived. Vanilla and any other mods keep control of placement, and more than one settlement may share a province.
 
@@ -20,7 +20,7 @@ The mode is decided once per save and recorded in it. You can see and change it 
 
 Removing it from an in-progress save will log errors about missing province data when that save is next loaded. The save will usually still open, but this is not a supported path and you should expect a wall of red text.
 
-Regions and Territories divides the globe into dynamic geographic provinces with defined borders, population densities, custom road linkages, and procedurally placed ruins.
+Regions and Societies divides the globe into dynamic geographic provinces with defined borders, population densities, custom road linkages, and procedurally placed ruins.
 
 ---
 
@@ -54,14 +54,14 @@ Regions and Territories divides the globe into dynamic geographic provinces with
 [b]Compatibility[/b]
 [list]
 [*] [b]Vanilla Factions Expanded[/b] faction-suite world objects are now recognised through dedicated adapter profiles.
-[*] [b]Realistic Planets 2[/b] is supported through a separate Regions and Territories (Realistic Planets 2) edition.
+[*] [b]Realistic Planets 2[/b] is supported through a separate Regions and Societies (Realistic Planets 2) edition.
 [/list]
 [b]Fixed[/b]
 [list]
 [*] Fixed an out-of-memory crash during world generation on large or mod-heavy setups.
 [*] Worlds from earlier versions load correctly in Compatibility Mode.
 [/list]
-[b]Full version history:[/b] [url=https://github.com/RimSynapse/Regions-and-Territories/wiki/Changelog]github.com/RimSynapse/Regions-and-Territories/wiki[/url]
+[b]Full version history:[/b] [url=https://github.com/Regions-and-societies/Core-MMF/wiki/Changelog]github.com/Regions-and-societies/Core-MMF/wiki[/url]
 
 ---
 
@@ -87,6 +87,6 @@ Regions and Territories divides the globe into dynamic geographic provinces with
 ---
 
 [h2]Source Code and Support[/h2]
-GitHub: [url]https://github.com/RimSynapse/Regions-and-Territories[/url]
+GitHub: [url]https://github.com/Regions-and-societies/Core-MMF[/url]
 Licence: [url=https://polyformproject.org/licenses/noncommercial/1.0.0/]PolyForm Noncommercial License 1.0.0[/url] - free for any noncommercial use.
 Buy me a coffee: [url]https://buymeacoffee.com/archdukejim[/url]

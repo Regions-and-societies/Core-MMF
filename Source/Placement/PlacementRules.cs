@@ -1,6 +1,6 @@
-using RimSynapse.RegionsAndTerritories.Integration;
+using RegionsAndSocieties.Integration;
 
-namespace RimSynapse.RegionsAndTerritories.Placement
+namespace RegionsAndSocieties.Placement
 {
     /// <summary>
     /// The numeric rules governing where a world object may be placed, in one table.
@@ -32,7 +32,7 @@ namespace RimSynapse.RegionsAndTerritories.Placement
         /// there. Was the bare <c>0.30f</c> in <c>GetDistanceToFactionBorder</c>.
         ///
         /// This is also the <b>legitimate-claim</b> floor of the ownership tier ladder (see
-        /// <see cref="RimSynapse.RegionsAndTerritories.OwnershipTier"/>): a faction scoring at or
+        /// <see cref="RegionsAndSocieties.OwnershipTier"/>): a faction scoring at or
         /// above it has a legitimate claim on the province, whether or not it dominates.
         /// </summary>
         public const float OwnershipThreshold = 0.30f;
@@ -41,7 +41,7 @@ namespace RimSynapse.RegionsAndTerritories.Placement
         /// Loose-ownership floor: a faction at or above this is the clear majority owner of a
         /// province (51%). Below <see cref="ExclusiveThreshold"/> the claim is still contestable.
         /// With <see cref="OwnershipThreshold"/> and <see cref="ExclusiveThreshold"/> this completes
-        /// the four-tier ownership ladder (#64); <see cref="RimSynapse.RegionsAndTerritories.RegionalDomainUtility.TierOf"/>
+        /// the four-tier ownership ladder (#64); <see cref="RegionsAndSocieties.RegionalDomainUtility.TierOf"/>
         /// is the single place that reads these cutoffs.
         /// </summary>
         public const float LooseOwnershipThreshold = 0.51f;

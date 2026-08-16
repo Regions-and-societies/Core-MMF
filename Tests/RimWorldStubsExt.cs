@@ -189,7 +189,7 @@ namespace RimWorld.Planet
     }
 }
 
-namespace RimSynapse.RegionsAndTerritories
+namespace RegionsAndSocieties
 {
     using System.Collections.Generic;
     using RimWorld;
@@ -219,7 +219,7 @@ namespace RimSynapse.RegionsAndTerritories
 }
 
 // ---------------------------------------------------------------------------
-// Enough of the item/reward surface to type-check RegionsAndTerritories_EmpiresPatch.
+// Enough of the item/reward surface to type-check RegionsAndSocieties_EmpiresPatch.
 //
 // That file was outside the compile set until 0.7 Epic 3 child 5, which is when it stopped
 // carrying its own economy arithmetic and started calling ProductionScalingUtility. Those two
@@ -322,7 +322,7 @@ namespace HarmonyLib
     }
 }
 
-namespace RimSynapse.RegionsAndTerritories
+namespace RegionsAndSocieties
 {
     using RimWorld;
 

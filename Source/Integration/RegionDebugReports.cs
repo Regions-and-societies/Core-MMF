@@ -4,18 +4,18 @@ using System.Linq;
 using System.Text;
 using RimWorld;
 using RimWorld.Planet;
-using RimSynapse.RegionsAndTerritories.Demographics;
-using RimSynapse.RegionsAndTerritories.Placement;
-using RimSynapse.RegionsAndTerritories.Sizing;
+using RegionsAndSocieties.Demographics;
+using RegionsAndSocieties.Placement;
+using RegionsAndSocieties.Sizing;
 using Verse;
 
-namespace RimSynapse.RegionsAndTerritories.Integration
+namespace RegionsAndSocieties.Integration
 {
     /// <summary>
     /// The proof-of-function reports for the 0.7.2 playtest fixes. Each mechanic that changed gets a
     /// report here that dumps enough state to confirm it behaves as intended, and each is reachable
-    /// two ways that share this one code path: a <c>[DebugAction]</c> under the "RimSynapse" menu for
-    /// the human (see <c>DebugActions_RegionsAndTerritories</c>), and a Core bridge tool for the
+    /// two ways that share this one code path: a <c>[DebugAction]</c> under the "Regions and Societies" menu for
+    /// the human (see <c>DebugActions_RegionsAndSocieties</c>), and a Core bridge tool for the
     /// agent to trigger headlessly (see <c>RegionMcpTools</c>). One method, one answer, either door.
     ///
     ///   DensityReport   - #62/#55: natural pockets stay small, province totals no longer overcount.
@@ -650,7 +650,7 @@ namespace RimSynapse.RegionsAndTerritories.Integration
             foreach (var s in data.factionScores)
                 if (s.faction != null) province.owningFactionIds.Add(s.faction.GetUniqueLoadID());
 
-            RegionsAndTerritories.UI.RegionBorderOverlay.Invalidate();
+            RegionsAndSocieties.UI.RegionBorderOverlay.Invalidate();
 
             WorldLayer_RegionBorders.BorderStyle applied = WorldLayer_RegionBorders.StyleFor(province);
             return $"Forced province #{province.id} -> {desc}. Overlay style now: {applied.kind}. "
@@ -669,7 +669,7 @@ namespace RimSynapse.RegionsAndTerritories.Integration
 
             mgr.MarkOwnersDirty();
             mgr.RecalculateProvinceOwners();
-            RegionsAndTerritories.UI.RegionBorderOverlay.Invalidate();
+            RegionsAndSocieties.UI.RegionBorderOverlay.Invalidate();
             return "Cleared synthetic overrides: recomputed ownership from real holdings and repainted the overlay.";
         }
 

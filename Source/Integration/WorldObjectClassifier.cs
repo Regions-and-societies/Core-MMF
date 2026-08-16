@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using RimWorld.Planet;
 using Verse;
 
-namespace RimSynapse.RegionsAndTerritories.Integration
+namespace RegionsAndSocieties.Integration
 {
     /// <summary>
     /// The single place Regions &amp; Territories asks "what kind of thing is this world object?".
@@ -90,7 +90,7 @@ namespace RimSynapse.RegionsAndTerritories.Integration
             Type t = obj.GetType();
             if (!loggedUnknownTypes.Add(t)) return;
 
-            Log.Message("[RimSynapse-RT] Unclassified world object type '" + t.FullName
+            Log.Message("[RegionsAndSocieties] Unclassified world object type '" + t.FullName
                         + "' (def " + (obj.def != null ? obj.def.defName : "null")
                         + "). Add a profile in KnownModProfiles to govern it.");
         }

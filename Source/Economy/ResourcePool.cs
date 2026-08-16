@@ -1,6 +1,6 @@
 using System;
 
-namespace RimSynapse.RegionsAndTerritories.Economy
+namespace RegionsAndSocieties.Economy
 {
     /// <summary>
     /// One resource's stock in one province: what the terrain can hold, and what is actually there.

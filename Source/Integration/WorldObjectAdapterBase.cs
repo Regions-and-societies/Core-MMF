@@ -1,7 +1,7 @@
 using System;
 using RimWorld.Planet;
 
-namespace RimSynapse.RegionsAndTerritories.Integration
+namespace RegionsAndSocieties.Integration
 {
     /// <summary>
     /// Convenience base for adapters. Every optional member no-ops, so an adapter only overrides

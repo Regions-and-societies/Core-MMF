@@ -1,7 +1,7 @@
 using UnityEngine;
 using Verse;
 
-namespace RimSynapse.RegionsAndTerritories
+namespace RegionsAndSocieties
 {
     public static class TextureUtility
     {

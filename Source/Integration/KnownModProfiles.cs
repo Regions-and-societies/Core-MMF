@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace RimSynapse.RegionsAndTerritories.Integration
+namespace RegionsAndSocieties.Integration
 {
     /// <summary>
     /// The declarative table of mods Regions &amp; Territories knows how to govern.

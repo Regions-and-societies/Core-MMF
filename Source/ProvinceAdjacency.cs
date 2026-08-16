@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using RimWorld.Planet;
 using Verse;
 
-namespace RimSynapse.RegionsAndTerritories
+namespace RegionsAndSocieties
 {
     /// <summary>
     /// Which provinces border which, for the whole map, derived once and held.

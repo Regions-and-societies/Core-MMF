@@ -1,6 +1,6 @@
 using Verse;
 
-namespace RimSynapse.RegionsAndTerritories.Integration
+namespace RegionsAndSocieties.Integration
 {
     /// <summary>
     /// Player-facing switches for the 0.7 world-object governance layer.

@@ -2,7 +2,7 @@
 // weighted picking, ranges and the median. All pure, so this runs without a game — and it is what
 // guarantees a tile's people regenerate identically on every machine and every load.
 using System;
-using RimSynapse.RegionsAndTerritories.Demographics;
+using RegionsAndSocieties.Demographics;
 
 namespace DemographicsRulesTests
 {

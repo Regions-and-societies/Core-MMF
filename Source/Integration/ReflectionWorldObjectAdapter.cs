@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using RimWorld.Planet;
 using Verse;
 
-namespace RimSynapse.RegionsAndTerritories.Integration
+namespace RegionsAndSocieties.Integration
 {
     /// <summary>
     /// Generic adapter driven entirely by a <see cref="WorldObjectAdapterProfile"/>.

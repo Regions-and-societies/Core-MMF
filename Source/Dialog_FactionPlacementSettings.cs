@@ -6,7 +6,7 @@ using RimWorld.Planet;
 using UnityEngine;
 using Verse;
 
-namespace RimSynapse.RegionsAndTerritories
+namespace RegionsAndSocieties
 {
     public class Dialog_FactionPlacementSettings : Window
     {
@@ -30,7 +30,7 @@ namespace RimSynapse.RegionsAndTerritories
         public override void DoWindowContents(Rect inRect)
         {
             Text.Font = GameFont.Medium;
-            Widgets.Label(new Rect(0f, 0f, inRect.width, 35f), "RimSynapse Regions - Geographic Placement Settings");
+            Widgets.Label(new Rect(0f, 0f, inRect.width, 35f), "Regions and Societies - Geographic Placement Settings");
             Text.Font = GameFont.Small;
 
             // Retrieve current planet coverage from Page_CreateWorldParams if open

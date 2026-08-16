@@ -1,6 +1,6 @@
 using System;
 
-namespace RimSynapse.RegionsAndTerritories.Economy
+namespace RegionsAndSocieties.Economy
 {
     /// <summary>
     /// How a resource pool reads to the player. Pure string formatting — no <c>Find</c>, no Unity,

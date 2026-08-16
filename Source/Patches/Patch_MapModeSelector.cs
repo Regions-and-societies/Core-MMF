@@ -8,7 +8,7 @@ using RimWorld.Planet;
 using UnityEngine;
 using Verse;
 
-namespace RimSynapse.RegionsAndTerritories.Patches
+namespace RegionsAndSocieties.Patches
 {
     // #81: every patch in this file targets a Map Mode Framework type. If the target is baked into the
     // [HarmonyPatch(typeof(...))] attribute, PatchAll force-loads that type while enumerating patch

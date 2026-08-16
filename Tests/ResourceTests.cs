@@ -7,7 +7,7 @@
 //
 // The production half of this suite moved to Factions/Tests/ProductionTests.cs with the model.
 using System;
-using RimSynapse.RegionsAndTerritories.Economy;
+using RegionsAndSocieties.Economy;
 
 namespace ResourceTests
 {

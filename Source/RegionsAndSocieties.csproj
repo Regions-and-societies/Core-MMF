@@ -4,8 +4,8 @@
 
     <PropertyGroup>
         <TargetFramework>net48</TargetFramework>
-        <AssemblyName>RimSynapseRegionsAndTerritories</AssemblyName>
-        <RootNamespace>RimSynapse.RegionsAndTerritories</RootNamespace>
+        <AssemblyName>RegionsAndSocieties</AssemblyName>
+        <RootNamespace>RegionsAndSocieties</RootNamespace>
         <LangVersion>9.0</LangVersion>
         <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
         <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>

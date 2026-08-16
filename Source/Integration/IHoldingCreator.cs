@@ -1,8 +1,8 @@
 using RimWorld;
 using RimWorld.Planet;
-using RimSynapse.RegionsAndTerritories.Sizing;
+using RegionsAndSocieties.Sizing;
 
-namespace RimSynapse.RegionsAndTerritories.Integration
+namespace RegionsAndSocieties.Integration
 {
     /// <summary>
     /// Per-mod maker of a world-object holding. The write-side counterpart to

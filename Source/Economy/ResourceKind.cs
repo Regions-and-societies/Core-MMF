@@ -1,6 +1,6 @@
 using System;
 
-namespace RimSynapse.RegionsAndTerritories.Economy
+namespace RegionsAndSocieties.Economy
 {
     /// <summary>
     /// The resource stocks a province carries. These are exactly the fields

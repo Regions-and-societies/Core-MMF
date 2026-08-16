@@ -1,6 +1,6 @@
-using RimSynapse.RegionsAndTerritories.Integration;
+using RegionsAndSocieties.Integration;
 
-namespace RimSynapse.RegionsAndTerritories.Placement
+namespace RegionsAndSocieties.Placement
 {
     /// <summary>How a faction stands in a province.</summary>
     public enum ProvinceControl

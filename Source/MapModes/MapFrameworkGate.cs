@@ -2,7 +2,7 @@ using System.Reflection;
 using RimWorld;
 using Verse;
 
-namespace RimSynapse.RegionsAndTerritories
+namespace RegionsAndSocieties
 {
     /// <summary>
     /// Either-or gate for the Map Mode Framework capability (#81). R&amp;T's world overlays are built on
@@ -39,7 +39,7 @@ namespace RimSynapse.RegionsAndTerritories
                 : (rp2 ? "Realistic Planets 2 (forked shim)"
                 : (present ? "unknown fork" : "NONE"));
 
-            Log.Message($"[RimSynapse-RegionsAndTerritories] Map-framework gate (#81): provider={provider} " +
+            Log.Message($"[RegionsAndSocieties] Map-framework gate (#81): provider={provider} " +
                         $"frameworkPresent={present} DoDrawSettingsExpanded={drawSettingsExpanded} " +
                         $"(under RP2, DoDrawSettingsExpanded=false is expected — the border-toggle patch self-skips via Prepare()).");
 
@@ -48,7 +48,7 @@ namespace RimSynapse.RegionsAndTerritories
                 // Deferred so the WindowStack is up when it shows. Once per launch, and permanently
                 // dismissible — the either-or warning the vanilla dependency system can't express (#81).
                 LongEventHandler.QueueLongEvent(ShowMissingFrameworkDialog,
-                    "RimSynapse_RT_MapFrameworkWarning", false, null);
+                    "RegionsAndSocieties_MapFrameworkWarning", false, null);
             }
         }
 
@@ -56,7 +56,7 @@ namespace RimSynapse.RegionsAndTerritories
         {
             if (Find.WindowStack == null) return;
             Find.WindowStack.Add(new Dialog_MessageBox(
-                "RimSynapse — Regions & Territories needs a map-mode framework for its world overlays: " +
+                "Regions and Societies needs a map-mode framework for its world overlays: " +
                 "either Map Mode Framework or Realistic Planets 2. Neither is active, so the province, " +
                 "territory, and population overlays are disabled. The rest of the mod still works — " +
                 "install either framework to turn the overlays on.",
@@ -65,7 +65,7 @@ namespace RimSynapse.RegionsAndTerritories
                 buttonBAction: () =>
                 {
                     FactionPlacementSettings.mapFrameworkWarningDismissed = true;
-                    RegionsAndTerritoriesMod.Settings?.Write();
+                    RegionsAndSocietiesMod.Settings?.Write();
                 }));
         }
     }

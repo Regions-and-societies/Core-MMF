@@ -2,10 +2,10 @@ using System;
 using System.Collections.Generic;
 using RimWorld;
 using RimWorld.Planet;
-using RimSynapse.RegionsAndTerritories.Economy;
+using RegionsAndSocieties.Economy;
 using Verse;
 
-namespace RimSynapse.RegionsAndTerritories
+namespace RegionsAndSocieties
 {
     public enum ProvinceType { Land, River, MountainRange, Lake, Ocean }
 

@@ -5,11 +5,11 @@ using System.Linq;
 using MapModeFramework;
 using RimWorld;
 using RimWorld.Planet;
-using RimSynapse.RegionsAndTerritories.Placement;
+using RegionsAndSocieties.Placement;
 using UnityEngine;
 using Verse;
 
-namespace RimSynapse.RegionsAndTerritories
+namespace RegionsAndSocieties
 {
     /// <summary>
     /// Auto-discovered world draw layer that renders the global region-border overlay (#53): the outline
@@ -35,7 +35,7 @@ namespace RimSynapse.RegionsAndTerritories
             if (!loggedCtor)
             {
                 loggedCtor = true;
-                Log.Message("[RimSynapse-RegionsAndTerritories] WorldLayer_RegionBorders constructed (auto-discovered).");
+                Log.Message("[RegionsAndSocieties] WorldLayer_RegionBorders constructed (auto-discovered).");
             }
         }
 
@@ -52,7 +52,7 @@ namespace RimSynapse.RegionsAndTerritories
             if (!loggedRegen)
             {
                 loggedRegen = true;
-                Log.Message("[RimSynapse-RegionsAndTerritories] WorldLayer_RegionBorders.Regenerate invoked.");
+                Log.Message("[RegionsAndSocieties] WorldLayer_RegionBorders.Regenerate invoked.");
             }
             bool ok = false;
             try
@@ -61,7 +61,7 @@ namespace RimSynapse.RegionsAndTerritories
             }
             catch (Exception ex)
             {
-                Log.Warning($"[RimSynapse-RegionsAndTerritories] Region border overlay build failed: {ex}");
+                Log.Warning($"[RegionsAndSocieties] Region border overlay build failed: {ex}");
                 ok = true;   // don't spin forever on a hard error
             }
             if (ok)
@@ -96,7 +96,7 @@ namespace RimSynapse.RegionsAndTerritories
                 if (!loggedRenderError)
                 {
                     loggedRenderError = true;
-                    Log.Warning($"[RimSynapse-RegionsAndTerritories] Region border overlay render error: {ex.Message}");
+                    Log.Warning($"[RegionsAndSocieties] Region border overlay render error: {ex.Message}");
                 }
             }
         }
@@ -173,7 +173,7 @@ namespace RimSynapse.RegionsAndTerritories
                 }
             }
 
-            Log.Message($"[RimSynapse-RegionsAndTerritories] Region border overlay built: {edges} edge lines across {provinces.Count} provinces.");
+            Log.Message($"[RegionsAndSocieties] Region border overlay built: {edges} edge lines across {provinces.Count} provinces.");
             return true;
         }
 

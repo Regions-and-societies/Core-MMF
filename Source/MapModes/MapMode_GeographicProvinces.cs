@@ -4,13 +4,13 @@ using System.Collections.Generic;
 using System.Linq;
 using MapModeFramework;
 using Region = MapModeFramework.Region;
-using RimSynapse.RegionsAndTerritories.Economy;
+using RegionsAndSocieties.Economy;
 using RimWorld;
 using RimWorld.Planet;
 using UnityEngine;
 using Verse;
 
-namespace RimSynapse.RegionsAndTerritories
+namespace RegionsAndSocieties
 {
     public class MapMode_GeographicProvinces : MapMode_Region
     {

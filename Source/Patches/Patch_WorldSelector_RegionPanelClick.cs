@@ -5,7 +5,7 @@ using RimWorld.Planet;
 using UnityEngine;
 using Verse;
 
-namespace RimSynapse.RegionsAndTerritories.Patches
+namespace RegionsAndSocieties.Patches
 {
     /// <summary>
     /// Modifier + click a region (in a region map mode) to open its draggable expanded readout (#53).
