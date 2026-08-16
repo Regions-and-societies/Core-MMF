@@ -2,7 +2,7 @@
 
 This mod ships three world-map overlays, drawn through the **Map Mode Framework**. That framework is a hard dependency — without it the overlays do not draw at all.
 
-Switch between them with the map mode selector on the world view.
+Switch between them with the map mode selector on the world view. On top of the modes, an owner-coloured **region-border overlay** can be drawn over any map mode (toggled from the Draw Settings panel or the mod settings), and faction **capital markers** flag each faction's principal settlement.
 
 ---
 
@@ -40,4 +40,4 @@ Useful when: choosing where to settle, or working out why one region feels busie
 
 - **Map Mode Framework not installed.** Nothing will draw. It is a requirement, not an optional integration.
 - **A blank or uniform overlay on a freshly generated world** usually means worldgen did not complete this mod's steps — check `Player.log` for errors during world generation.
-- **Territory looking more fully claimed than expected** is a known limitation of 0.7 rather than a display fault; see [Territory Ownership](Territory_Ownership).
+- **Territory shading that looks wrong** is usually the score, not the display — the map reads the same ownership answer as everything else. See [Territory Ownership](Territory_Ownership) for how the score is built, and enable the calculation-breakdown setting to inspect a province's derivation.

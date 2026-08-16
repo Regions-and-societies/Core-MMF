@@ -2,6 +2,8 @@
 
 This mod has to reason about settlements, outposts, camps and military installations that belong to **other mods**, without hardcoding which mods exist. That is what the integration layer does.
 
+As of 0.1.0 the model is **inverted**: core carries no knowledge of any foreign mod. It ships the classification contract, a vanilla adapter, and a public registration API. Knowledge of a specific mod lives in a dedicated **compatibility patch** — a small companion mod that hard-depends on both core and its target, and registers an adapter at load time.
+
 ---
 
 ## The problem it solves
@@ -12,48 +14,123 @@ Now there is one classifier. Every world object is resolved to a **kind** — se
 
 ---
 
-## Adapter profiles
+## How classification works
 
-Each supported mod is described by a **profile** rather than by code: its package ID, the types it contributes, which members hold population and level, and a priority. Profiles are data, so adding support for a mod is a description rather than a new branch.
+`WorldObjectClassifier.Classify` is the single place the mod asks "what kind of thing is this world object?". Resolution order:
 
-Profiles ship for Empire Refactored, Vanilla Outposts Expanded, Vanilla Expanded Framework and World Domination. A vanilla adapter handles the base game.
+1. **Registered adapters, in priority order.** Mod-specific knowledge wins. Mod adapters use priorities 100–199; the vanilla adapter runs last at 1000.
+2. **Generic name heuristics** — type or def names containing "Outpost", "Settlement", "Garrison" or "Camp" — so an unknown mod's objects still get governed.
+3. **Unknown**, logged once per type (when the diagnostic setting is on) so an unrecognised mod is easy to write a patch for.
 
-If a profile's mod is not installed, that profile sits quietly and classifies nothing.
+Two opt-out gates come before the heuristics: an object belonging to a mod whose integration the player switched off is `Ignored` rather than recaptured by name matching, and with the master integration switch off only vanilla-derived objects are governed at all.
 
----
+Data queries (population, upgrade level) are gated on classification: an adapter is only asked about objects it recognises, so one mod's generic member name can never silently answer for another mod's object.
 
-## Why the profiles are checked against the real game
-
-A profile names foreign types and members as **strings**, and a wrong name costs nothing at runtime: the adapter simply returns its default and the caller reads a plausible zero. Nothing throws, nothing logs, and the number looks reasonable.
-
-That is not hypothetical. **Three of the four shipped profiles were wrong** before this was checked:
-
-- The Empire profile named three population members, none of which exist. Every Empire settlement reported a population of zero, always. What Empire actually publishes is a worker count.
-- The Vanilla Expanded Framework profile named types from an assembly that had been **renamed** — VFECore became VEF — so that adapter had been completely inert for as long as it had existed, and nothing said so.
-- The World Domination profile was written before the mod was installed and was wrong in every particular: namespace, both marker types, the author, and its dependencies.
-
-There is now a test that reflects against the **live assemblies** on every run and fails if a profile names something that is not there. A profile whose mod is active but whose markers resolve to nothing is treated as an error, not as "not installed".
-
-The lesson generalises: in a layer designed to fail silently, correctness has to be asserted, because nothing else will notice.
+Every registry call is exception-guarded. A broken third-party adapter degrades that one integration; it never takes down world generation or a tick.
 
 ---
 
-## Rules are matched carefully
+## Core's contract
 
-A profile's type rules are matched in priority order and the first non-unknown answer wins. Rules are **not** scoped to the mod that declared them, which means an overly broad rule could claim another mod's objects.
+Core ships, in the `RegionsAndSocieties.Integration` namespace:
 
-This was real. The VEF profile once carried four broad substring rules — matching anything containing "Settlement", "Camp", "Outpost" or "Base". Because it sorts before World Domination, it would have classified two of that mod's **travelling parties** as territory-holding settlements. The only reason it never happened is that VEF's markers were stale for an unrelated reason.
+| Type | Role |
+|---|---|
+| `WorldObjectKind` | The mod-agnostic classification enum all territory rules key off. |
+| `IWorldObjectAdapter` | Per-mod translator between a foreign world object and the data governance needs. |
+| `WorldObjectAdapterBase` | Convenience base class; every optional member no-ops. Derive from this, not the interface. |
+| `WorldObjectAdapterRegistry` | Holds registered adapters in priority order and fans queries out to them. **`Register` is the public registration API.** |
+| `VanillaWorldObjectAdapter` | The built-in default: classifies base-game settlements, caravans, sites and the ignorable objects. Always present, always last. |
+| `WorldObjectClassifier` | The public query surface call sites use (`Classify`, `IsSettlement`, `IsTerritorial`, `GetPopulation`, ...). |
+| `ReflectionWorldObjectAdapter` + `WorldObjectAdapterProfile` | An optional loose-binding convenience: a declarative, string-driven adapter for patches that prefer not to reference their target assembly. |
+| `IHoldingCreator` + `HoldingCreatorRegistry` | The write-side mirror: creators *build* holdings (e.g. outposts seeded at worldgen) where adapters only read them. Core ships no creators of its own. |
 
-Profiles now use narrow, exact rules wherever possible, and a test asserts that every world object is classified by its own mod's profile. Legitimate cross-assembly cases — VOE's types arriving from VEF's assembly — are recorded as data rather than allowed to weaken the check.
+The vanilla adapter guarantees base-game objects classify correctly even with every integration disabled or no patch installed.
 
 ---
 
-## Adding support for another mod
+## The compatibility patches
 
-The short version: describe the mod rather than special-casing it.
+Foreign-mod support ships as companion mods under the [Regions-and-societies](https://github.com/Regions-and-societies) organisation:
 
-- Give the profile the mod's package ID and the types it actually contributes.
-- **Read the real type and member names off the loaded assembly.** Do not write them from documentation or expectation — that is how three of four profiles shipped wrong.
-- Prefer exact type matches over substring matches. A substring rule is global and will eventually claim something it should not.
-- Set a priority that does not place broad rules ahead of more specific ones.
-- Declare only population and level members that genuinely exist. Declaring none is a truthful statement that the mod publishes no headcount; declaring names that do not resolve is not.
+| Patch repo | Target mod |
+|---|---|
+| `Empire-CP` | Empire Refactored |
+| `World-Domination-CP` | World Domination 2.0 |
+| `VFE-CP` | Vanilla Expanded framework (VEF) |
+| `VOE-CP` | Vanilla Outposts Expanded |
+
+A patch hard-depends on both core and its target, so it loads only when both are present — installing the patch *is* the enable switch. Each patch applies its own typed Harmony patches against its target and contributes its adapter (and, for VOE, an outpost creator) through the public registries.
+
+The old model — a `KnownModProfiles` table of string-based reflection profiles inside core — is gone. Its hard-won lessons (three of four shipped profiles named members that did not exist, and nothing said so) are why the patches bind their targets **directly and typed**: a patch that references the real assembly fails to compile against a wrong name instead of silently returning zero.
+
+---
+
+## Writing a compatibility patch
+
+The short version: make a tiny mod that hard-depends on core and the target, subclass `WorldObjectAdapterBase`, and register it from your `Mod` constructor.
+
+**1. Declare the dependencies** in your patch's `About.xml`, and load after both:
+
+```xml
+<modDependencies>
+    <li><packageId>RegionsAndSocieties.Core</packageId></li>
+    <li><packageId>Some.TargetMod</packageId></li>
+</modDependencies>
+<loadAfter>
+    <li>RegionsAndSocieties.Core</li>
+    <li>Some.TargetMod</li>
+</loadAfter>
+```
+
+**2. Write the adapter.** Reference both assemblies and name the target's types directly:
+
+```csharp
+using RegionsAndSocieties.Integration;
+using RimWorld.Planet;
+
+public class TargetModAdapter : WorldObjectAdapterBase
+{
+    public override string AdapterId => "targetmod";       // stable, unique
+    public override string DisplayName => "Target Mod";
+    public override int Priority => 150;                   // mod adapters: 100-199
+
+    public override bool TryClassify(WorldObject obj, out WorldObjectKind kind)
+    {
+        kind = WorldObjectKind.Unknown;
+        if (obj is TargetMod.FrontierOutpost) { kind = WorldObjectKind.Outpost; return true; }
+        if (obj is TargetMod.FrontierTown)    { kind = WorldObjectKind.Settlement; return true; }
+        return false;                                      // defer to the next adapter
+    }
+
+    public override bool TryGetPopulation(WorldObject obj, out int population)
+    {
+        population = 0;
+        if (obj is TargetMod.FrontierTown town) { population = town.Residents.Count; return true; }
+        return false;
+    }
+}
+```
+
+**3. Register it from your patch's `Mod` constructor:**
+
+```csharp
+public class TargetModPatch : Mod
+{
+    public TargetModPatch(ModContentPack content) : base(content)
+    {
+        WorldObjectAdapterRegistry.Register(new TargetModAdapter());
+    }
+}
+```
+
+Core initialises the registry in its own `Mod` constructor, and your patch loads after core, so `Register` merges your adapter into the priority order that is already live. Registering the same `AdapterId` twice logs a warning and keeps the first.
+
+**Rules of thumb**, learned the hard way by the old profile table:
+
+- Return `false` (leaving `kind` at `Unknown`) for anything that is not yours. The registry takes the first non-Unknown answer, so an over-broad adapter claims other mods' objects.
+- Prefer exact type checks over name matching. If you must bind loosely, use `ReflectionWorldObjectAdapter` with a `WorldObjectAdapterProfile` — and read the real type and member names off the loaded assembly, never from documentation.
+- Declare only data that genuinely exists. Answering `false` from `TryGetPopulation` is a truthful "this mod publishes no headcount"; reflecting on a member name that does not resolve is a plausible-looking zero forever.
+- Override `IsActive`/`IsPresent` only if your patch has its own enable toggle; for a hard-dependent patch the defaults (always active) are correct, because being installed is the switch.
+
+For the full API — including the write-side `IHoldingCreator` for mods whose holdings core should be able to *create*, and the demographic and territory-claim extension points — see the [Developer's Guide](Developers_Guide).

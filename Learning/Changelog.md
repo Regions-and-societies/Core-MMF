@@ -1,6 +1,21 @@
 # Changelog
 
-Full version history. Versions 0.5.0-0.8.0 shipped under the former identity, RimSynapse - Regions and Territories. The mod page and Workshop description show only the latest release; every earlier version is recorded here.
+Full version history. The mod page and Workshop description show only the latest release; earlier versions are recorded here. Versions before 0.1.0 shipped under the former identity, **RimSynapse - Regions and Territories**, and are kept below as the predecessor's history.
+
+## v0.1.0 - Migration and Rebrand
+
+The first release as **Regions and Societies**.
+
+- **Ported from Regions and Territories v0.8.0.** The full source tree — provinces, the four-tier ownership ladder, placement governance, map modes, demographics — continues here unchanged in behaviour.
+- **Rebranded.** New mod name, new package ID (`RegionsAndSocieties.Core`), new repository ([Regions-and-societies/Core-MMF](https://github.com/Regions-and-societies/Core-MMF)). Because the package ID changed, this installs as a **new mod side by side with the old one** — it does not update Regions and Territories in place, and saves made with the old package ID are not migrated.
+- **Compatibility model inverted.** Core no longer carries foreign-mod knowledge: the string-based reflection profiles for Empire Refactored, World Domination, the Vanilla Expanded framework and Vanilla Outposts Expanded are gone from core, extracted to dedicated companion compatibility patches (`Empire-CP`, `World-Domination-CP`, `VFE-CP`, `VOE-CP`). Core keeps the classification contract and exposes a public, priority-ordered adapter registration API that each patch calls at load; the vanilla adapter remains built in. Installing a patch is the enable switch for its integration.
+- **Release provenance.** Every release now ships `Assemblies/CHECKSUMS.sha256`, generated from the final build by `harness/release-manifest.ps1` and verifiable — against the release or any deployed copy — with `harness/verify-binaries.ps1`.
+
+---
+
+# Predecessor history: RimSynapse - Regions and Territories
+
+Everything below shipped under the former identity and package ID.
 
 ## v0.7.4 - Border overlay ownership fix
 - Fixed: the global region-border overlay again shows faction ownership at a glance, so you no longer have to switch into the Territories map mode to read who holds what. It had stopped colouring borders after the 0.7.3 ownership rework - the overlay never recalculated owners and never repainted when they changed, so every border drew white.

@@ -1,6 +1,6 @@
 # Save Compatibility
 
-**Short version: start a new colony.**
+**Short version: start a new colony.** An existing save is adopted in compatibility mode rather than refused, but a world generated with the mod installed is the only way to get everything.
 
 ---
 
@@ -16,7 +16,7 @@ Adding this mod to an existing save therefore gives you a world with no regions,
 
 Rather than refusing to load such a save, the mod **adopts** it.
 
-When a save contains no province data, strict territorial ownership stands down: placement rules that depend on regions stop applying, so you are not suddenly unable to settle tiles that were legal yesterday. You are told when this happens rather than left to guess.
+When a save contains no province data, strict territorial ownership stands down: placement rules that depend on regions stop applying, so you are not suddenly unable to settle tiles that were legal yesterday. You are told when this happens rather than left to guess, and the mode is shown under *Strict territorial ownership* in the mod settings — it is decided once per save.
 
 A save that **does** contain provinces keeps strict rules, unchanged.
 
@@ -24,16 +24,14 @@ Compatibility mode is a safety net, not a supported way to play. You get the mod
 
 ---
 
-## Updating between versions
+## Migrating from Regions and Territories
 
-Within a major version, saves carry over. Across the 0.6 to 0.7 boundary they do not — 0.7 changed how ownership is computed and what is stored on a province.
+There is no migration. Regions and Societies has a **new package ID** (`RegionsAndSocieties.Core`), so it installs as a new mod side by side with the old Regions and Territories rather than updating it in place. A save that lists the old package ID keeps needing the old mod; swapping this one in does not adopt it.
 
-If you are mid-colony on 0.6 and want to stay there, finish that colony before updating. There is no migration, and none is planned; the effort is better spent on the world layer than on translating a model that changed underneath it.
+If you are mid-colony on the old mod and want to stay there, finish that colony before switching. Translating saves across the rebrand is not planned; the effort is better spent on the world layer.
 
 ---
 
-## What to expect after updating an in-progress 0.7 world
+## Updating between versions of this mod
 
-Ownership figures shift when the scoring changes between releases. In 0.7 specifically, the demographic component was switched off, so some provinces that previously read as **held** now read as **unclaimed** or **contested**.
-
-That is the intended correction rather than lost data — the old figure was awarding a fifth of the score for something already counted elsewhere. Any system reading ownership, including Empire production and tithe figures, moves with it.
+Ownership figures can shift when the scoring changes between releases — some provinces that read as **held** under one release may read as **unclaimed** or **contested** under the next. That is the model being corrected rather than data being lost, and any system reading ownership (including companion compatibility patches, such as Empire production figures) moves with it. Release notes in the [Changelog](Changelog) call out when a release changes what is stored on a province.
