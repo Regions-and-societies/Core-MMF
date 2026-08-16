@@ -195,11 +195,8 @@ namespace RegionsAndSocieties
             IntegrationToggle(new Rect(box.x + 10f + colW * 0f, y, colW - 8f, 22f), "Outposts Expanded",
                 ref Integration.WorldObjectIntegrationSettings.voeEnabled, on,
                 "Recognise Vanilla Outposts Expanded outposts, including their occupant count and upgrade level.");
-            IntegrationToggle(new Rect(box.x + 10f + colW * 2f, y, colW - 8f, 22f), "Factions Expanded",
-                ref Integration.WorldObjectIntegrationSettings.vfeEnabled, on,
-                "Recognise settlement-, camp-, and base-like world objects from the Vanilla Factions Expanded family.");
-            // The fourth slot held the World Domination toggle until that integration moved to its
-            // compatibility patch — a patch is enabled by being installed, so no toggle remains.
+            // Empire, VFE and World Domination toggles left with their compatibility patches —
+            // a patch is enabled by being installed. VOE's remains until its extraction lands.
 
             // Row 2 — which mechanics the integration is allowed to drive.
             y += 24f;
