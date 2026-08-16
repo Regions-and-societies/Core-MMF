@@ -1,6 +1,10 @@
 [b]Discord Community:[/b] [url=https://discord.gg/eVBebZ2N9s]https://discord.gg/eVBebZ2N9s[/url]
 [b]Version:[/b] v0.1.0 (Target: RimWorld 1.5 / 1.6)
 
+[img]https://i.imgur.com/tWWMap9.png[/img]
+[img]https://i.imgur.com/TfTAgoV.png[/img]
+[img]https://i.imgur.com/Kjvsy4j.png[/img]
+
 [h1]Regions and Societies[/h1]
 [b][url=https://github.com/Regions-and-societies/Core-MMF/wiki]Official Wiki and Documentation[/url][/b]
 [b]Overhauls the world map with dynamic geographic province generation, world map overlays, and territory borders.[/b]
