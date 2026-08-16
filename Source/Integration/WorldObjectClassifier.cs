@@ -92,7 +92,7 @@ namespace RegionsAndSocieties.Integration
 
             Log.Message("[RegionsAndSocieties] Unclassified world object type '" + t.FullName
                         + "' (def " + (obj.def != null ? obj.def.defName : "null")
-                        + "). Add a profile in KnownModProfiles to govern it.");
+                        + "). Register an adapter via WorldObjectAdapterRegistry to govern it.");
         }
 
         // ---------------------------------------------------------------------
