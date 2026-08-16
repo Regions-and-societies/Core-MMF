@@ -16,6 +16,25 @@ namespace RegionsAndSocieties.UI
     /// </summary>
     public static class DebugActions_RegionsAndSocieties
     {
+        [DebugAction("Regions and Societies", "R&S: adapter registry dump (Core-MMF#3)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.Entry | AllowedGameStates.Playing)]
+        private static void AdapterRegistryDump()
+        {
+            // The compatibility-inversion acceptance check: which adapters are registered, from
+            // which assembly (core's reflection profiles vs a compatibility patch), in what priority
+            // order, and whether each is present/active. This is how "which patch claimed which
+            // object" is verified headlessly after an extraction.
+            WorldObjectAdapterRegistry.Initialize();
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("--- adapter registry dump (Core-MMF#3) ---");
+            foreach (var a in WorldObjectAdapterRegistry.Adapters)
+            {
+                string assembly = a.GetType().Assembly.GetName().Name;
+                sb.AppendLine($"  [{a.Priority,4}] {a.AdapterId,-16} {a.DisplayName,-28} type={a.GetType().Name} asm={assembly} present={a.IsPresent} active={a.IsActive}");
+            }
+            sb.AppendLine($"{WorldObjectAdapterRegistry.Adapters.Count} adapter(s) registered.");
+            Log.Message(sb.ToString());
+        }
+
         [DebugAction("Regions and Societies", "R&S: rebrand back-compat report (Core-MMF#2)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void RebrandBackCompatReport()
         {

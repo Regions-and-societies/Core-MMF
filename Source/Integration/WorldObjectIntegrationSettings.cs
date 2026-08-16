@@ -15,10 +15,11 @@ namespace RegionsAndSocieties.Integration
         public static bool masterEnabled = true;
 
         // --- Per-mod integrations -------------------------------------------------
+        // World Domination moved to its compatibility patch (Regions-and-societies/World-Domination-CP);
+        // a patch is enabled by being installed, so it carries no toggle here.
         public static bool empireEnabled = true;
         public static bool voeEnabled = true;
         public static bool vfeEnabled = true;
-        public static bool worldDominationEnabled = true;
         // #71: of the VFE faction suite, only Medieval 2 introduces a world object of its own
         // (VFEMedieval.MerchantGuild); the others' bases are plain vanilla Settlement (no profile).
         public static bool vfeMedievalEnabled = true;
@@ -76,7 +77,6 @@ namespace RegionsAndSocieties.Integration
             Scribe_Values.Look(ref empireEnabled, "integration_empireEnabled", true);
             Scribe_Values.Look(ref voeEnabled, "integration_voeEnabled", true);
             Scribe_Values.Look(ref vfeEnabled, "integration_vfeEnabled", true);
-            Scribe_Values.Look(ref worldDominationEnabled, "integration_worldDominationEnabled", true);
             Scribe_Values.Look(ref vfeMedievalEnabled, "integration_vfeMedievalEnabled", true);
 
             Scribe_Values.Look(ref placementGovernance, "integration_placementGovernance", true);

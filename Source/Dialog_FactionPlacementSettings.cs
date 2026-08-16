@@ -200,9 +200,8 @@ namespace RegionsAndSocieties
             IntegrationToggle(new Rect(box.x + 10f + colW * 2f, y, colW - 8f, 22f), "Factions Expanded",
                 ref Integration.WorldObjectIntegrationSettings.vfeEnabled, on,
                 "Recognise settlement-, camp-, and base-like world objects from the Vanilla Factions Expanded family.");
-            IntegrationToggle(new Rect(box.x + 10f + colW * 3f, y, colW - 8f, 22f), "World Domination",
-                ref Integration.WorldObjectIntegrationSettings.worldDominationEnabled, on,
-                "Recognise World Domination tiered bases. Most of its objects also resolve through the Outposts Expanded integration.");
+            // The fourth slot held the World Domination toggle until that integration moved to its
+            // compatibility patch — a patch is enabled by being installed, so no toggle remains.
 
             // Row 2 — which mechanics the integration is allowed to drive.
             y += 24f;
