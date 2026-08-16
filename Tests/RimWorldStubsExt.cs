@@ -16,7 +16,9 @@ namespace UnityEngine
     {
         public static float Clamp01(float v) { return v < 0f ? 0f : (v > 1f ? 1f : v); }
         public static float Max(float a, float b) { return a > b ? a : b; }
+        public static int Max(int a, int b) { return a > b ? a : b; }
         public static float Min(float a, float b) { return a < b ? a : b; }
+        public static int Min(int a, int b) { return a < b ? a : b; }
         public static int RoundToInt(float v) { return (int)Math.Round(v); }
     }
 }
@@ -204,6 +206,8 @@ namespace RimSynapse.RegionsAndTerritories
 
         public List<GeographicProvince> Provinces = new List<GeographicProvince>();
 
+        public bool StrictTerritorialOwnership = false;
+
         public int GetProvinceId(int tileId) { return -1; }
         public GeographicProvince GetProvince(int provinceId) { return null; }
         public GeographicProvince GetProvinceForTile(int tileId) { return null; }
@@ -330,5 +334,23 @@ namespace RimSynapse.RegionsAndTerritories
     public static class FactionPlacementUtility
     {
         public static int FindBestTileForFaction(Faction faction) { return -1; }
+    }
+
+    /// <summary>
+    /// Stand-in for the settings class (a ModSettings in the real file). RegionalOwnershipUtility
+    /// consults the breakdown toggle when building the developer derivation (#53/#54).
+    /// </summary>
+    public static class FactionPlacementSettings
+    {
+        public static bool showCalculationBreakdowns = false;
+    }
+
+    /// <summary>
+    /// Stand-in for MapModes/TextureUtility, which is Unity-coupled (Texture2D). The tier
+    /// vocabulary in RegionalDomainStatus names factions through its display-name helper (#64).
+    /// </summary>
+    public static class TextureUtility
+    {
+        public static string GetFactionDisplayName(Faction faction) { return faction?.Name ?? "None"; }
     }
 }

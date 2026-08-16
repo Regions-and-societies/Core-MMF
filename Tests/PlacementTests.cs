@@ -105,7 +105,10 @@ namespace PlacementTests
             provinces.ProvinceIdAt = t => t < 3 ? 1 : (t < 6 ? 2 : 3);
             provinces.ProvincesAdjacent = (a, b) => Math.Abs(a - b) <= 1;
             provinces.ControlOf = (p, f) => ProvinceControl.Unclaimed;
-            Check("into the same province", Allowed(provinces, 2, Player, WorldObjectKind.Settlement));
+            // 0.8 (#66): one settlement per region is the hard preclude, so a second settlement in
+            // the province the player already settled is refused; outposts still expand in place.
+            Check("a second settlement into the same province is refused", Refused(provinces, 2, Player, WorldObjectKind.Settlement, PlacementRejection.RegionAlreadySettled));
+            Check("an outpost into the same province is allowed", Allowed(provinces, 2, Player, WorldObjectKind.Outpost));
             Check("into an adjacent province", Allowed(provinces, 4, Player, WorldObjectKind.Settlement));
             Check("across a gap is refused", Refused(provinces, 7, Player, WorldObjectKind.Settlement, PlacementRejection.NoAdjacentFoothold));
             Check("camps ignore the rule", Allowed(provinces, 7, Player, WorldObjectKind.Camp));
@@ -173,10 +176,14 @@ namespace PlacementTests
             stacked.ProvinceIdAt = t => 1;
             stacked.ControlOf = (p, f) => ProvinceControl.Foreign;
             stacked.ExclusiveRivalAt = (p, f) => true;   // 0.8: only an exclusive rival refuses, so make it one
+            // 0.8 (#66): occupancy is the hard preclude and is reported first for settlements; the
+            // crowding/ownership/supply ladder is exercised with outposts, which occupancy skips.
+            Check("occupancy is reported before crowding",
+                Evaluate(stacked, 1, Player, WorldObjectKind.Settlement).Rejection == PlacementRejection.RegionAlreadySettled);
             Check("crowding is reported before ownership",
-                Evaluate(stacked, 1, Player, WorldObjectKind.Settlement).Rejection == PlacementRejection.TooCloseToHolding);
+                Evaluate(stacked, 1, Player, WorldObjectKind.Outpost).Rejection == PlacementRejection.TooCloseToHolding);
             Check("ownership is reported before supply range",
-                Evaluate(stacked, 400, Player, WorldObjectKind.Settlement).Rejection == PlacementRejection.ForeignTerritory);
+                Evaluate(stacked, 400, Player, WorldObjectKind.Outpost).Rejection == PlacementRejection.ForeignTerritory);
 
             Section("degenerate input");
             Check("a null world allows everything", PlacementEvaluator.Evaluate(null, 0, Player, WorldObjectKind.Settlement).Allowed);

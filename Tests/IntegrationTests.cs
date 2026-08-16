@@ -16,7 +16,10 @@ namespace FactionColonies
     {
         public int settlementLevel = 3;
         public int maxSettlementLevel = 10;
-        public int population = 250;
+        // The 0.8 profile reads Empire's real member names (workers/workersMax, #30) — the old
+        // invented "population" name is exactly what shipped inert and is deliberately gone.
+        public int workers = 250;
+        public int workersMax = 400;
     }
 
     public class MilitaryFC : RimWorld.Planet.WorldObject { }

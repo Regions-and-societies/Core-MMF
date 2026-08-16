@@ -55,7 +55,11 @@ namespace Verse
 
 namespace RimWorld
 {
-    public partial class Faction { public bool IsPlayer; }
+    public partial class Faction
+    {
+        public bool IsPlayer;
+        public static Faction OfPlayerSilentFail { get { return null; } }
+    }
 }
 
 namespace RimWorld.Planet
@@ -117,5 +121,7 @@ namespace RimSynapse.RegionsAndTerritories
     {
         public static int GetSettlementPopulation(RimWorld.Planet.Settlement s) { return 42; }
         public static int GetPopulationAtTile(int tileId) { return 0; }
+        public static int GetSourcePopulationAtTile(int targetTile) { return 0; }
+        public static int CacheVersion { get; set; }
     }
 }
