@@ -1039,6 +1039,10 @@ namespace RegionsAndSocieties.Integration
                 + $"    biotech={demo.biotechActive}  ideology={demo.ideologyActive}");
             sb.AppendLine($"female fraction {demo.femaleFraction:P0}    overall median wealth {demo.overallMedianWealth}"
                 + (RegionDemographicsStress.HasOverride(province.id) ? "  [STRESSED]" : ""));
+            sb.AppendLine($"age (#10): median {demo.medianAge}"
+                + $"    children {demo.ageShares[(int)AgeBucket.Child]:P0}"
+                + $"  working-age {demo.ageShares[(int)AgeBucket.WorkingAge]:P0}"
+                + $"  elders {demo.ageShares[(int)AgeBucket.Elder]:P0}");
             sb.AppendLine($"tuning: model {(Demographics.DemographicsRules.FalloffModel)WorldObjectIntegrationSettings.demographicFalloffModel}"
                 + $"  reach ×{WorldObjectIntegrationSettings.demographicReach:0.00}  shape {WorldObjectIntegrationSettings.demographicFalloff:0.00}");
 
@@ -1099,7 +1103,7 @@ namespace RegionsAndSocieties.Integration
             foreach (var row in rows)
             {
                 RegionDemographics d = row.d;
-                sb.AppendLine($"-- {row.f.Name}: {d.settledTiles} tiles    median wealth {d.overallMedianWealth}    female {d.femaleFraction:P0} --");
+                sb.AppendLine($"-- {row.f.Name}: {d.settledTiles} tiles    median wealth {d.overallMedianWealth}    female {d.femaleFraction:P0}    median age {d.medianAge} --");
                 foreach (var kv in d.raceShares.OrderByDescending(k => k.Value))
                 {
                     d.medianWealthByRace.TryGetValue(kv.Key, out int w);

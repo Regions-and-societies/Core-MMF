@@ -103,6 +103,12 @@ run_suite demographics Exe \
     Tests/DemographicsRulesTests.cs \
     $SRC/Demographics/DemographicsRules.cs
 
+# 0.2.0 age-structure core (#10): tech-level base pyramids + natalist/longevity skews + median age.
+# Pure, no game — same rationale as the demographics core above.
+run_suite agestructure Exe \
+    Tests/AgeStructureRulesTests.cs \
+    $SRC/Demographics/AgeStructureRules.cs
+
 run_suite resource Exe \
     Tests/RimWorldStubs.cs Tests/ResourceTests.cs \
     $INTEGRATION_PURE $SRC/Economy/*.cs
@@ -128,6 +134,7 @@ run_suite typecheck Library \
     $SRC/WorldObjectPlacementUtility.cs $SRC/OutpostPlacementUtility.cs \
     $SRC/RegionalOwnershipUtility.cs \
     $SRC/GeographicProvince.cs $SRC/IRegionDemographicProvider.cs \
+    $SRC/Demographics/AgeStructureRules.cs \
     $SRC/ProvinceAdjacency.cs \
     \
     $SRC/Patches/Patch_TileFinder_IsValidTileForNewSettlement.cs \

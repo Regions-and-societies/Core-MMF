@@ -18,6 +18,7 @@ namespace RegionsAndSocieties.Demographics
         public int wealth;         // silver-ish, reflects the race's socioeconomic class
         public Ideo ideo;          // null when Ideology is off
         public Gender sex;
+        public AgeBucket ageBucket; // child / working-age / elder, drawn from the local age pyramid (#10)
     }
 
     /// <summary>A region's aggregated makeup, computed from its tile samples. Purely derived.</summary>
@@ -31,6 +32,10 @@ namespace RegionsAndSocieties.Demographics
         public readonly Dictionary<MemeDef, float> memeShares = new Dictionary<MemeDef, float>();
         public float femaleFraction;
         public int overallMedianWealth;
+        // Age structure (#10): the share of settled tiles in each bucket, and the resulting median age.
+        // Indexed by (int)AgeBucket — [child, working-age, elder]. All zero for an unsettled region.
+        public readonly float[] ageShares = new float[AgeStructureRules.BucketCount];
+        public int medianAge;
         public bool biotechActive;
         public bool ideologyActive;
     }
@@ -55,6 +60,7 @@ namespace RegionsAndSocieties.Demographics
         private const int WealthSalt = 13;
         private const int SexSalt = 17;
         private const int IdeoSalt = 19;
+        private const int AgeSalt = 23;
 
         private static readonly Dictionary<Faction, FactionDemographicProfile> profileCache = new Dictionary<Faction, FactionDemographicProfile>();
         private static readonly Dictionary<int, RegionDemographics> regionCache = new Dictionary<int, RegionDemographics>();
@@ -209,8 +215,19 @@ namespace RegionsAndSocieties.Demographics
             uint wealthState = DemographicsRules.TileSeed(WorldSeed, tileId, WealthSalt);
             sample.wealth = DemographicsRules.RangeInt(ref wealthState, (int)(baseWealth * 0.6), (int)(baseWealth * 1.4));
 
-            // Ideology from a pressure-weighted faction draw (factions sorted by load id for determinism).
-            sample.ideo = ProfileFor(PressureWeightedFaction(tileId, pf, pw, top)).primaryIdeo;
+            // Ideology and age both hang off the same pressure-weighted faction draw (factions sorted by
+            // load id for determinism) — the society whose norms and demographics dominate this tile.
+            Faction ageFaction = PressureWeightedFaction(tileId, pf, pw, top);
+            FactionDemographicProfile ageProf = ProfileFor(ageFaction);
+            sample.ideo = ageProf.primaryIdeo;
+
+            // Age bucket: draw from the faction's tech/ideology pyramid, bent by the chosen race's
+            // longevity (a long-lived caste holds more elders). Independent salt so it doesn't correlate
+            // with the race/wealth/sex/ideo draws.
+            float[] agePyramid = AgeStructureRules.Pyramid(ageProf.techLevel, ageProf.natalistSkew, LongevityOf(chosen));
+            uint ageState = DemographicsRules.TileSeed(WorldSeed, tileId, AgeSalt);
+            int agePick = DemographicsRules.WeightedPick(ref ageState, agePyramid);
+            sample.ageBucket = agePick >= 0 ? (AgeBucket)agePick : AgeBucket.WorkingAge;
             return sample;
         }
 
@@ -256,6 +273,8 @@ namespace RegionsAndSocieties.Demographics
             var wealthByRace = new Dictionary<XenotypeDef, List<int>>();
             var memeCounts = new Dictionary<MemeDef, int>();
             var allWealth = new List<int>();
+            var ageCounts = new int[AgeStructureRules.BucketCount];
+            float longevityAcc = 0f;
             int female = 0;
 
             List<int> tiles = province.tiles;
@@ -267,6 +286,8 @@ namespace RegionsAndSocieties.Demographics
                 if (s.owner == null) continue;   // no pressure here — contributes only to the sex ratio
 
                 demo.settledTiles++;
+                ageCounts[(int)s.ageBucket]++;
+                longevityAcc += LongevityOf(s.race);
                 factionCounts.TryGetValue(s.owner, out int fc); factionCounts[s.owner] = fc + 1;
                 if (s.race != null)
                 {
@@ -298,9 +319,38 @@ namespace RegionsAndSocieties.Demographics
 
                 int[] wealthArr = allWealth.ToArray();
                 demo.overallMedianWealth = DemographicsRules.Median(wealthArr, wealthArr.Length);
+
+                FillAgeStructure(demo, ageCounts, longevityAcc);
             }
 
             return demo;
+        }
+
+        /// <summary>
+        /// A compact age-structure readout for a region — median age and the three bucket shares — or
+        /// null when it has no settled tiles. One formatter shared by the map overlay tooltip, the
+        /// region selection panel and the debug report, so those three never drift apart.
+        /// </summary>
+        public static string AgeStructureSummary(GeographicProvince province)
+        {
+            if (province == null) return null;
+            RegionDemographics demo = ForRegion(province);
+            if (demo.settledTiles <= 0) return null;
+            return $"Age structure (median {demo.medianAge}):\n"
+                + $"  Children {demo.ageShares[(int)AgeBucket.Child]:P0}"
+                + $"   Working-age {demo.ageShares[(int)AgeBucket.WorkingAge]:P0}"
+                + $"   Elders {demo.ageShares[(int)AgeBucket.Elder]:P0}";
+        }
+
+        /// <summary>Turn per-bucket tile counts into shares and a median age, using the region's average
+        /// longevity to stretch the elder band. Shared by the region and faction aggregators.</summary>
+        private static void FillAgeStructure(RegionDemographics demo, int[] ageCounts, float longevityAcc)
+        {
+            if (demo.settledTiles <= 0) return;
+            for (int i = 0; i < AgeStructureRules.BucketCount; i++)
+                demo.ageShares[i] = (float)ageCounts[i] / demo.settledTiles;
+            float avgLongevity = longevityAcc / demo.settledTiles;
+            demo.medianAge = AgeStructureRules.MedianAge(demo.ageShares, avgLongevity);
         }
 
         /// <summary>
@@ -332,6 +382,8 @@ namespace RegionsAndSocieties.Demographics
             var wealthByRace = new Dictionary<XenotypeDef, List<int>>();
             var memeCounts = new Dictionary<MemeDef, int>();
             var allWealth = new List<int>();
+            var ageCounts = new int[AgeStructureRules.BucketCount];
+            float longevityAcc = 0f;
             int female = 0;
 
             foreach (GeographicProvince p in mgr.Provinces)
@@ -346,6 +398,8 @@ namespace RegionsAndSocieties.Demographics
 
                     demo.tileCount++;
                     demo.settledTiles++;
+                    ageCounts[(int)s.ageBucket]++;
+                    longevityAcc += LongevityOf(s.race);
                     if (s.sex == Gender.Female) female++;
                     if (s.race != null)
                     {
@@ -374,6 +428,7 @@ namespace RegionsAndSocieties.Demographics
                     demo.memeShares[kv.Key] = (float)kv.Value / demo.settledTiles;
                 int[] wealthArr = allWealth.ToArray();
                 demo.overallMedianWealth = DemographicsRules.Median(wealthArr, wealthArr.Length);
+                FillAgeStructure(demo, ageCounts, longevityAcc);
             }
             return demo;
         }
@@ -505,6 +560,39 @@ namespace RegionsAndSocieties.Demographics
             catch { return 0f; }
         }
 
+        // --- xenotype longevity (the age pyramid's third signal) ---------------
+
+        private static readonly Dictionary<XenotypeDef, float> longevityCache = new Dictionary<XenotypeDef, float>();
+
+        /// <summary>
+        /// How long-lived a race is, 0 (mortal baseline) to 1 (effectively ageless). Detected from the
+        /// xenotype's genes by name — an Ageless / Deathless / Longevity gene marks a caste that
+        /// accumulates elders (e.g. sanguophage-adjacent). Keyword-based so it also catches modded
+        /// longevity genes; first-pass and tunable, like the biome-affinity and underclass detectors.
+        /// Returns 0 when Biotech is off (null race) so the pyramid degrades to the plain tech baseline.
+        /// </summary>
+        private static float LongevityOf(XenotypeDef race)
+        {
+            if (race?.genes == null) return 0f;
+            if (longevityCache.TryGetValue(race, out float cached)) return cached;
+
+            float longevity = 0f;
+            for (int i = 0; i < race.genes.Count; i++)
+            {
+                string n = race.genes[i]?.defName;
+                if (n == null) continue;
+                if (n.IndexOf("Ageless", StringComparison.OrdinalIgnoreCase) >= 0
+                    || n.IndexOf("Deathless", StringComparison.OrdinalIgnoreCase) >= 0
+                    || n.IndexOf("Longevity", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    longevity = 1f;   // strongest signal wins; no need to keep scanning
+                    break;
+                }
+            }
+            longevityCache[race] = longevity;
+            return longevity;
+        }
+
         // Straight-line ("crow flies") great-circle distance between two tiles, in tile-widths.
         private static float CrowTiles(WorldGrid grid, int a, int b)
         {
@@ -544,7 +632,8 @@ namespace RegionsAndSocieties.Demographics
     {
         public static readonly FactionDemographicProfile Empty = new FactionDemographicProfile
         {
-            races = new XenotypeDef[0], raceWeights = new float[0], raceMedianWealth = new int[0], fallbackWealth = 300
+            races = new XenotypeDef[0], raceWeights = new float[0], raceMedianWealth = new int[0], fallbackWealth = 300,
+            techLevel = (int)TechLevel.Industrial, natalistSkew = 0f
         };
 
         public XenotypeDef[] races;
@@ -552,12 +641,16 @@ namespace RegionsAndSocieties.Demographics
         public int[] raceMedianWealth;
         public int fallbackWealth;
         public Ideo primaryIdeo;
+        public int techLevel;        // RimWorld TechLevel ordinal — shapes the base age pyramid (#10)
+        public float natalistSkew;   // 0..1, from pro-natalist memes; pushes the pyramid toward children
 
         public static FactionDemographicProfile Build(Faction faction)
         {
             var p = new FactionDemographicProfile();
-            int baseWealth = BaseWealth(faction.def?.techLevel ?? TechLevel.Industrial);
+            TechLevel tech = faction.def?.techLevel ?? TechLevel.Industrial;
+            int baseWealth = BaseWealth(tech);
             p.fallbackWealth = baseWealth;
+            p.techLevel = (int)tech;   // seeds the age pyramid (#10): tribal birth-heavy vs spacer flat
 
             var races = new List<XenotypeDef>();
             var weights = new List<float>();
@@ -591,8 +684,32 @@ namespace RegionsAndSocieties.Demographics
                 try { p.primaryIdeo = faction.ideos?.PrimaryIdeo; }
                 catch { p.primaryIdeo = null; }
             }
+            p.natalistSkew = NatalistSkew(p.primaryIdeo);
 
             return p;
+        }
+
+        /// <summary>
+        /// How strongly an ideology pushes for children, 0 (neutral) to 1 (pro-natalist), read from its
+        /// memes by name — a Natalist / Fertility / Fecund meme skews the pyramid young. Keyword-based so
+        /// it catches modded memes too; returns 0 with no Ideology, so the age model degrades to the bare
+        /// tech pyramid. First-pass and tunable.
+        /// </summary>
+        private static float NatalistSkew(Ideo ideo)
+        {
+            if (ideo?.memes == null) return 0f;
+            foreach (MemeDef m in ideo.memes)
+            {
+                string n = m?.defName;
+                if (n == null) continue;
+                if (n.IndexOf("Natal", StringComparison.OrdinalIgnoreCase) >= 0
+                    || n.IndexOf("Fertil", StringComparison.OrdinalIgnoreCase) >= 0
+                    || n.IndexOf("Fecund", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    return 1f;
+                }
+            }
+            return 0f;
         }
 
         private static int BaseWealth(TechLevel tech)

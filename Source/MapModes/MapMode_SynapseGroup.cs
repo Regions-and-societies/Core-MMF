@@ -19,10 +19,10 @@ namespace RegionsAndSocieties
 
             List<FloatMenuOption> options = new List<FloatMenuOption>();
 
-            // The Regions and Societies section is exactly two views: Territories (faction shading) and
-            // Population/dwellings. Region division lines are a global overlay toggle in the map-mode
-            // Draw Settings (see Patch_MapModeUI_RegionBorders), not a mode of their own, so they can
-            // be shown on top of any map mode.
+            // The Regions and Societies section lists the analytic views: Territories (faction shading),
+            // Population/dwellings, and Age structure. Region division lines are a global overlay toggle
+            // in the map-mode Draw Settings (see Patch_MapModeUI_RegionBorders), not a mode of their
+            // own, so they can be shown on top of any map mode.
             var territoryMode = MapModeComponent.Instance.mapModes.FirstOrDefault(m => m.def.defName == "SynapseFactionTerritory");
             if (territoryMode != null)
             {
@@ -33,6 +33,14 @@ namespace RegionsAndSocieties
             if (popMode != null)
             {
                 options.Add(new FloatMenuOption(popMode.def.LabelCap, () => MapModeComponent.Instance.RequestMapModeSwitch(popMode)));
+            }
+
+            // Age structure: regions shaded by median age (#10). Sits alongside dwellings as another
+            // read of the same deterministic demographic model.
+            var ageMode = MapModeComponent.Instance.mapModes.FirstOrDefault(m => m.def.defName == "SynapseAgeStructure");
+            if (ageMode != null)
+            {
+                options.Add(new FloatMenuOption(ageMode.def.LabelCap, () => MapModeComponent.Instance.RequestMapModeSwitch(ageMode)));
             }
 
             if (options.Any())
