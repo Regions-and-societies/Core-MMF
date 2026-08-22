@@ -50,6 +50,13 @@ namespace RegionsAndSocieties
                 options.Add(new FloatMenuOption(sexMode.def.LabelCap, () => MapModeComponent.Instance.RequestMapModeSwitch(sexMode)));
             }
 
+            // Xenotypes: regions tinted by dominant caste (#12). Only meaningful with Biotech.
+            var xenoMode = MapModeComponent.Instance.mapModes.FirstOrDefault(m => m.def.defName == "SynapseXenotype");
+            if (xenoMode != null)
+            {
+                options.Add(new FloatMenuOption(xenoMode.def.LabelCap, () => MapModeComponent.Instance.RequestMapModeSwitch(xenoMode)));
+            }
+
             if (options.Any())
             {
                 Find.WindowStack.Add(new FloatMenu(options));

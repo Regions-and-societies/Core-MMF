@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using HarmonyLib;
 using RimWorld;
@@ -359,6 +360,38 @@ namespace RegionsAndSocieties.Demographics
             if (Mathf.Abs(skew) >= 0.01f)
                 line += skew > 0f ? "  (skewed female — men drafted or lost)" : "  (skewed male)";
             return line;
+        }
+
+        /// <summary>
+        /// A xenotype breakdown for a region — the top races by share — or a plain statement that with
+        /// Biotech off everyone is Baseliner (so the overlay says so rather than painting a flat map as
+        /// if it were data, #12). Null when the region has no settled tiles. Shared by the overlay
+        /// tooltip and the region panel.
+        /// </summary>
+        public static string XenotypeSummary(GeographicProvince province)
+        {
+            if (province == null) return null;
+            RegionDemographics demo = ForRegion(province);
+            if (demo.settledTiles <= 0) return null;
+
+            if (!demo.biotechActive) return "Xenotypes: all Baseliner (Biotech not active)";
+            if (demo.raceShares.Count == 0) return "Xenotypes: (no data)";
+
+            var top = demo.raceShares.OrderByDescending(k => k.Value).Take(5)
+                .Select(k => $"{k.Key.LabelCap} {k.Value:P0}");
+            return "Xenotypes:\n  " + string.Join("   ", top);
+        }
+
+        /// <summary>The single most common xenotype in a region and its share, or null when there is no
+        /// xenotype data (Biotech off, or unsettled). For the dominant-xenotype overlay (#12).</summary>
+        public static XenotypeDef DominantXenotype(RegionDemographics demo, out float share)
+        {
+            share = 0f;
+            XenotypeDef best = null;
+            if (demo?.raceShares == null) return null;
+            foreach (var kv in demo.raceShares)
+                if (kv.Value > share) { share = kv.Value; best = kv.Key; }
+            return best;
         }
 
         /// <summary>Turn per-bucket tile counts into shares and a median age, using the region's average
