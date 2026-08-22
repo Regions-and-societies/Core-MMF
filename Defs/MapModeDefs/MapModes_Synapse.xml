@@ -56,6 +56,17 @@
   </MapModeFramework.MapModeDef>
 
   <MapModeFramework.MapModeDef MayRequireAnyOf="NozoMe.MapModeFramework,koth.RealisticPlanets2">
+    <defName>SynapseWealth</defName>
+    <label>wealth</label>
+    <description>Shades each region by its socioeconomic index, from a poor deep red to an affluent green.</description>
+    <mapModeClass>RegionsAndSocieties.MapMode_Wealth</mapModeClass>
+    <worldLayerClass>MapModeFramework.WorldLayer_MapMode_Terrain</worldLayerClass>
+    <iconPath>UI/MapModes/Default</iconPath>
+    <canCache>true</canCache>
+    <includeWater>false</includeWater>
+  </MapModeFramework.MapModeDef>
+
+  <MapModeFramework.MapModeDef MayRequireAnyOf="NozoMe.MapModeFramework,koth.RealisticPlanets2">
     <defName>SynapseFactionTerritory</defName>
     <label>Territories</label>
     <description>Visualizes national domains and zones of control, shaded by owning faction.</description>

@@ -64,6 +64,13 @@ namespace RegionsAndSocieties
                 options.Add(new FloatMenuOption(eduMode.def.LabelCap, () => MapModeComponent.Instance.RequestMapModeSwitch(eduMode)));
             }
 
+            // Wealth: regions shaded by socioeconomic index (#14).
+            var wealthMode = MapModeComponent.Instance.mapModes.FirstOrDefault(m => m.def.defName == "SynapseWealth");
+            if (wealthMode != null)
+            {
+                options.Add(new FloatMenuOption(wealthMode.def.LabelCap, () => MapModeComponent.Instance.RequestMapModeSwitch(wealthMode)));
+            }
+
             if (options.Any())
             {
                 Find.WindowStack.Add(new FloatMenu(options));

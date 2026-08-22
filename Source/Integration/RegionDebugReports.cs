@@ -1051,6 +1051,11 @@ namespace RegionsAndSocieties.Integration
                 + $"  basic {demo.educationShares[(int)EducationTier.Basic]:P0}"
                 + $"  skilled {demo.educationShares[(int)EducationTier.Skilled]:P0}"
                 + $"  advanced {demo.educationShares[(int)EducationTier.Advanced]:P0}");
+            sb.AppendLine($"socioeconomic (#14): index {demo.sesIndex}/100"
+                + $"    subsistence {demo.sesShares[(int)SesTier.Subsistence]:P0}"
+                + $"  modest {demo.sesShares[(int)SesTier.Modest]:P0}"
+                + $"  prosperous {demo.sesShares[(int)SesTier.Prosperous]:P0}"
+                + $"  affluent {demo.sesShares[(int)SesTier.Affluent]:P0}");
             sb.AppendLine($"tuning: model {(Demographics.DemographicsRules.FalloffModel)WorldObjectIntegrationSettings.demographicFalloffModel}"
                 + $"  reach ×{WorldObjectIntegrationSettings.demographicReach:0.00}  shape {WorldObjectIntegrationSettings.demographicFalloff:0.00}");
 

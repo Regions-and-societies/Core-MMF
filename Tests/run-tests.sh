@@ -114,6 +114,11 @@ run_suite education Exe \
     Tests/EducationRulesTests.cs \
     $SRC/Demographics/EducationRules.cs
 
+# 0.2.0 socioeconomic-tiering core (#14): wealth thresholds -> SES tiers + index. Pure, no game.
+run_suite socioeconomic Exe \
+    Tests/SocioeconomicRulesTests.cs \
+    $SRC/Demographics/SocioeconomicRules.cs
+
 run_suite resource Exe \
     Tests/RimWorldStubs.cs Tests/ResourceTests.cs \
     $INTEGRATION_PURE $SRC/Economy/*.cs
@@ -141,6 +146,7 @@ run_suite typecheck Library \
     $SRC/GeographicProvince.cs $SRC/IRegionDemographicProvider.cs \
     $SRC/Demographics/AgeStructureRules.cs \
     $SRC/Demographics/EducationRules.cs \
+    $SRC/Demographics/SocioeconomicRules.cs \
     $SRC/ProvinceAdjacency.cs \
     \
     $SRC/Patches/Patch_TileFinder_IsValidTileForNewSettlement.cs \

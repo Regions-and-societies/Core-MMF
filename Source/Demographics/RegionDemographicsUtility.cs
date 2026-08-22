@@ -42,6 +42,10 @@ namespace RegionsAndSocieties.Demographics
         // [illiterate, basic, skilled, advanced], plus the collapsed 0-100 attainment index.
         public readonly float[] educationShares = new float[EducationRules.TierCount];
         public int educationIndex;
+        // Socioeconomic structure (#14): the share of settled tiles in each SES tier, indexed by
+        // (int)SesTier [subsistence, modest, prosperous, affluent], plus the collapsed 0-100 index.
+        public readonly float[] sesShares = new float[SocioeconomicRules.TierCount];
+        public int sesIndex;
         public bool biotechActive;
         public bool ideologyActive;
     }
@@ -338,9 +342,73 @@ namespace RegionsAndSocieties.Demographics
 
                 FillAgeStructure(demo, ageCounts, longevityAcc);
                 FillEducation(demo, eduCounts);
+                FillSes(demo, allWealth, RegionWealthMultiplier(province));
             }
 
             return demo;
+        }
+
+        /// <summary>
+        /// Classify the region's per-tile wealth into SES tiers and collapse to a 0-100 index (#14). The
+        /// per-tile wealth already carries faction tech level and settlement size; <paramref name="multiplier"/>
+        /// folds in the region-level signals (resource richness, trade access) before classifying, so a
+        /// rich or well-connected region reads a tier higher. Shared by both aggregators (faction passes 1).
+        /// </summary>
+        private static void FillSes(RegionDemographics demo, List<int> wealth, float multiplier)
+        {
+            if (demo.settledTiles <= 0 || wealth == null || wealth.Count == 0) return;
+            var counts = new int[SocioeconomicRules.TierCount];
+            for (int i = 0; i < wealth.Count; i++)
+                counts[(int)SocioeconomicRules.TierFor((int)(wealth[i] * multiplier))]++;
+            for (int t = 0; t < SocioeconomicRules.TierCount; t++)
+                demo.sesShares[t] = (float)counts[t] / wealth.Count;
+            demo.sesIndex = SocioeconomicRules.Index(demo.sesShares);
+        }
+
+        // --- region-level SES signals (#14) ------------------------------------
+
+        // Per-tile resource ceiling (nutrition + biomass + minerals) that reads as "neutral" richness.
+        private const float RichnessReferenceCapPerTile = 700f;
+
+        /// <summary>The region wealth multiplier from the two region-level #14 signals: how rich the
+        /// terrain is and whether trade roads reach it. Neutral (1.0) baseline; a rich, well-connected
+        /// region reads wealthier, a barren isolated one poorer.</summary>
+        private static float RegionWealthMultiplier(GeographicProvince province)
+        {
+            return ResourceRichness(province) * (1f + 0.2f * TradeAccess(province));
+        }
+
+        /// <summary>Terrain richness as a wealth multiplier ~0.7..1.4, from the region's resource
+        /// ceilings per tile (nutrition + biomass + minerals). Neutral until the region's economy has
+        /// been assessed, so a demographic read never forces economic initialisation as a side effect.</summary>
+        private static float ResourceRichness(GeographicProvince province)
+        {
+            if (province == null || !province.initializedEconomics) return 1f;
+            int tiles = province.tiles != null ? province.tiles.Count : 0;
+            if (tiles <= 0) return 1f;
+            float perTile = (province.CapOf(Economy.ResourceKind.Nutrition)
+                + province.CapOf(Economy.ResourceKind.Biomass)
+                + province.CapOf(Economy.ResourceKind.Minerals)) / tiles;
+            return Mathf.Clamp(perTile / RichnessReferenceCapPerTile, 0.7f, 1.4f);
+        }
+
+        /// <summary>Trade-road access, 0..1: the share of the region's tiles a road passes through.
+        /// Connected regions trade richer, so this feeds a small wealth boost. Reads the grid only, so
+        /// it is safe on any world and needs no economic initialisation.</summary>
+        private static float TradeAccess(GeographicProvince province)
+        {
+            WorldGrid grid = Find.WorldGrid;
+            if (grid == null || province?.tiles == null || province.tiles.Count == 0) return 0f;
+            List<int> tiles = province.tiles;
+            int roaded = 0;
+            for (int i = 0; i < tiles.Count; i++)
+            {
+                int t = tiles[i];
+                if (t < 0 || t >= grid.TilesCount) continue;
+                var roads = grid[t].Roads;
+                if (roads != null && roads.Count > 0) roaded++;
+            }
+            return (float)roaded / tiles.Count;
         }
 
         /// <summary>Turn per-tier tile counts into shares and the collapsed 0-100 education index.
@@ -423,6 +491,23 @@ namespace RegionsAndSocieties.Demographics
                 + $"   Basic {demo.educationShares[(int)EducationTier.Basic]:P0}"
                 + $"   Skilled {demo.educationShares[(int)EducationTier.Skilled]:P0}"
                 + $"   Advanced {demo.educationShares[(int)EducationTier.Advanced]:P0}";
+        }
+
+        /// <summary>
+        /// A socioeconomic breakdown for a region — the 0-100 wealth index and the four SES-tier shares —
+        /// or null when the region has no settled tiles. Shared by the overlay tooltip and the region
+        /// panel (#14).
+        /// </summary>
+        public static string SocioeconomicSummary(GeographicProvince province)
+        {
+            if (province == null) return null;
+            RegionDemographics demo = ForRegion(province);
+            if (demo.settledTiles <= 0) return null;
+            return $"Socioeconomic (index {demo.sesIndex}/100):\n"
+                + $"  Subsistence {demo.sesShares[(int)SesTier.Subsistence]:P0}"
+                + $"   Modest {demo.sesShares[(int)SesTier.Modest]:P0}"
+                + $"   Prosperous {demo.sesShares[(int)SesTier.Prosperous]:P0}"
+                + $"   Affluent {demo.sesShares[(int)SesTier.Affluent]:P0}";
         }
 
         /// <summary>The single most common xenotype in a region and its share, or null when there is no
@@ -527,6 +612,7 @@ namespace RegionsAndSocieties.Demographics
                 demo.overallMedianWealth = DemographicsRules.Median(wealthArr, wealthArr.Length);
                 FillAgeStructure(demo, ageCounts, longevityAcc);
                 FillEducation(demo, eduCounts);
+                FillSes(demo, allWealth, 1f);   // faction-wide: no single region's richness/trade to apply
             }
             return demo;
         }
