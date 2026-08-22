@@ -1046,6 +1046,11 @@ namespace RegionsAndSocieties.Integration
                 + $"    children {demo.ageShares[(int)AgeBucket.Child]:P0}"
                 + $"  working-age {demo.ageShares[(int)AgeBucket.WorkingAge]:P0}"
                 + $"  elders {demo.ageShares[(int)AgeBucket.Elder]:P0}");
+            sb.AppendLine($"education (#15): index {demo.educationIndex}/100"
+                + $"    illiterate {demo.educationShares[(int)EducationTier.Illiterate]:P0}"
+                + $"  basic {demo.educationShares[(int)EducationTier.Basic]:P0}"
+                + $"  skilled {demo.educationShares[(int)EducationTier.Skilled]:P0}"
+                + $"  advanced {demo.educationShares[(int)EducationTier.Advanced]:P0}");
             sb.AppendLine($"tuning: model {(Demographics.DemographicsRules.FalloffModel)WorldObjectIntegrationSettings.demographicFalloffModel}"
                 + $"  reach ×{WorldObjectIntegrationSettings.demographicReach:0.00}  shape {WorldObjectIntegrationSettings.demographicFalloff:0.00}");
 

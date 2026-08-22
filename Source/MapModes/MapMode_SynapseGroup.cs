@@ -57,6 +57,13 @@ namespace RegionsAndSocieties
                 options.Add(new FloatMenuOption(xenoMode.def.LabelCap, () => MapModeComponent.Instance.RequestMapModeSwitch(xenoMode)));
             }
 
+            // Education: regions shaded by education index (#15).
+            var eduMode = MapModeComponent.Instance.mapModes.FirstOrDefault(m => m.def.defName == "SynapseEducation");
+            if (eduMode != null)
+            {
+                options.Add(new FloatMenuOption(eduMode.def.LabelCap, () => MapModeComponent.Instance.RequestMapModeSwitch(eduMode)));
+            }
+
             if (options.Any())
             {
                 Find.WindowStack.Add(new FloatMenu(options));

@@ -109,6 +109,11 @@ run_suite agestructure Exe \
     Tests/AgeStructureRulesTests.cs \
     $SRC/Demographics/AgeStructureRules.cs
 
+# 0.2.0 education-structure core (#15): tech-level base distributions + research/aptitude skews + index.
+run_suite education Exe \
+    Tests/EducationRulesTests.cs \
+    $SRC/Demographics/EducationRules.cs
+
 run_suite resource Exe \
     Tests/RimWorldStubs.cs Tests/ResourceTests.cs \
     $INTEGRATION_PURE $SRC/Economy/*.cs
@@ -135,6 +140,7 @@ run_suite typecheck Library \
     $SRC/RegionalOwnershipUtility.cs \
     $SRC/GeographicProvince.cs $SRC/IRegionDemographicProvider.cs \
     $SRC/Demographics/AgeStructureRules.cs \
+    $SRC/Demographics/EducationRules.cs \
     $SRC/ProvinceAdjacency.cs \
     \
     $SRC/Patches/Patch_TileFinder_IsValidTileForNewSettlement.cs \
