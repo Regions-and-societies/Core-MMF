@@ -2,7 +2,6 @@ using System.Collections.Generic;
 using MapModeFramework;
 using RegionsAndSocieties.Demographics;
 using RimWorld;
-using RimWorld.Planet;
 using UnityEngine;
 using Verse;
 
@@ -14,34 +13,21 @@ namespace RegionsAndSocieties
     /// solid, a mixed region reads pale. Colours are derived deterministically from the xenotype's
     /// defName, so mod-added castes flow through automatically with their own stable colour and no
     /// hardcoded list. With Biotech off there are no xenotypes to show — every pawn is Baseliner — so
-    /// the map is left unshaded and the tooltip says so rather than painting a flat map as if it were
-    /// data. Reads the one shared aggregate (<see cref="RegionDemographicsUtility.ForRegion"/>).
+    /// the region is left unshaded and the tooltip says so rather than painting a flat map as if it
+    /// were data. Categorical, so it builds on <see cref="MapMode_RegionDemographic"/> directly rather
+    /// than the banded-scalar base. Materials are built lazily, one small set per xenotype.
     /// </summary>
     [StaticConstructorOnStartup]
-    public class MapMode_Xenotype : MapMode
+    public class MapMode_Xenotype : MapMode_RegionDemographic
     {
-        // One material per (xenotype, dominance band). Built lazily — the set of xenotypes in a world is
-        // small and stable, so this caps at a handful of materials each.
+        // One material per (xenotype, dominance band). The set of xenotypes in a world is small and
+        // stable, so this caps at a handful of materials each.
         private static readonly Dictionary<XenotypeDef, Material[]> xenotypeMats = new Dictionary<XenotypeDef, Material[]>();
 
         // Alpha per dominance band: a barely-dominant region is faint, a near-monoculture is solid.
         private static readonly float[] BandAlpha = new float[] { 0.35f, 0.52f, 0.70f };
         // Upper bounds (inclusive) of the first two dominant-share bands; above the last is band 2.
         private static readonly float[] BandUpperShare = new float[] { 0.45f, 0.70f };
-
-        public static void CacheData()
-        {
-            PopulationDensityUtility.EnsureCache();
-        }
-
-        public override WorldLayer_MapMode WorldLayer => WorldLayer_MapMode_Terrain.Instance;
-        public override bool CanToggleWater => false;
-
-        public override void DoPreRegenerate()
-        {
-            base.DoPreRegenerate();
-            CacheData();
-        }
 
         public MapMode_Xenotype() { }
         public MapMode_Xenotype(MapModeDef def) : base(def) { }
@@ -73,60 +59,27 @@ namespace RegionsAndSocieties
                 bands = new Material[BandAlpha.Length];
                 Color rgb = BaseColorFor(xenotype);
                 for (int b = 0; b < BandAlpha.Length; b++)
-                {
-                    Color color = new Color(rgb.r, rgb.g, rgb.b, BandAlpha[b]);
-                    Material mat = null;
-                    if (ShaderDatabase.MetaOverlay != null && BaseContent.WhiteTex != null)
-                    {
-                        mat = MaterialPool.MatFrom(BaseContent.WhiteTex, ShaderDatabase.MetaOverlay, color, 3510);
-                    }
-                    if (mat == null) mat = SolidColorMaterials.SimpleSolidColorMaterial(color);
-                    if (mat == null) mat = BaseContent.WhiteMat;
-                    bands[b] = mat;
-                }
+                    bands[b] = MakeOverlayMaterial(new Color(rgb.r, rgb.g, rgb.b, BandAlpha[b]));
                 xenotypeMats[xenotype] = bands;
             }
             return bands[BandForShare(share)];
         }
 
-        private static RegionDemographics DemoForTile(int tile)
+        protected override Material MaterialForRegion(RegionDemographics demo)
         {
-            if (Find.World == null || Find.WorldGrid == null || tile < 0 || tile >= Find.WorldGrid.TilesCount) return null;
-            var mgr = Find.World.GetComponent<SynapseRegionManager>();
-            GeographicProvince province = mgr?.GetProvinceForTile(tile);
-            if (province == null || province.provinceType != ProvinceType.Land) return null;
-            RegionDemographics demo = RegionDemographicsUtility.ForRegion(province);
-            return demo.settledTiles > 0 ? demo : null;
-        }
-
-        public override Material GetMaterial(int tile)
-        {
-            if (Find.WorldGrid == null || tile >= Find.WorldGrid.TilesCount) return BaseContent.ClearMat;
-            if (Find.WorldGrid[tile].WaterCovered) return BaseContent.ClearMat;
-
-            RegionDemographics demo = DemoForTile(tile);
-            if (demo == null || !demo.biotechActive) return BaseContent.ClearMat;   // no xenotypes to show
-
+            if (!demo.biotechActive) return null;   // no xenotypes to show; tooltip states it
             XenotypeDef dominant = RegionDemographicsUtility.DominantXenotype(demo, out float share);
-            if (dominant == null) return BaseContent.ClearMat;
-            return MaterialFor(dominant, share);
+            return dominant != null ? MaterialFor(dominant, share) : null;
         }
 
-        public override string GetTileLabel(int tile)
+        protected override string LabelForRegion(RegionDemographics demo)
         {
-            RegionDemographics demo = DemoForTile(tile);
-            if (demo == null || !demo.biotechActive) return null;
+            if (!demo.biotechActive) return null;
             XenotypeDef dominant = RegionDemographicsUtility.DominantXenotype(demo, out float share);
             return dominant != null ? $"{dominant.LabelCap} {Mathf.RoundToInt(share * 100f)}%" : null;
         }
 
-        public override string GetTooltip(int tile)
-        {
-            if (Find.World == null) return null;
-            var mgr = Find.World.GetComponent<SynapseRegionManager>();
-            GeographicProvince province = mgr?.GetProvinceForTile(tile);
-            if (province == null || province.provinceType != ProvinceType.Land) return null;
-            return RegionDemographicsUtility.XenotypeSummary(province);
-        }
+        protected override string SummaryFor(GeographicProvince province)
+            => RegionDemographicsUtility.XenotypeSummary(province);
     }
 }
