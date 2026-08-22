@@ -199,13 +199,15 @@ namespace RegionsAndSocieties
             sb.AppendLine($"Industrial Goods: {province.industrialGoods:F0}");
             sb.AppendLine($"Spacer Goods: {province.spacerGoods:F0}");
 
-            // Age structure (#10): the deterministic child / working-age / elder split and median age.
-            // The summary is self-labeled ("Age structure (median N): ...") so it needs no extra header.
+            // Age structure (#10) and sex ratio (#11): deterministic demographic reads, each self-
+            // labeled so they need no extra header. Sex shows any active draft/war skew inline.
             string ageSummary = Demographics.RegionDemographicsUtility.AgeStructureSummary(province);
-            if (!string.IsNullOrEmpty(ageSummary))
+            string sexSummary = Demographics.RegionDemographicsUtility.SexRatioSummary(province);
+            if (!string.IsNullOrEmpty(ageSummary) || !string.IsNullOrEmpty(sexSummary))
             {
                 sb.AppendLine();
-                sb.AppendLine(ageSummary);
+                if (!string.IsNullOrEmpty(ageSummary)) sb.AppendLine(ageSummary);
+                if (!string.IsNullOrEmpty(sexSummary)) sb.AppendLine(sexSummary);
             }
 
             if (province.activeCrises.Any())

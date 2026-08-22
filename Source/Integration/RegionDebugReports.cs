@@ -1037,7 +1037,10 @@ namespace RegionsAndSocieties.Integration
             sb.AppendLine("=== R&T region demographics (#36) ===");
             sb.AppendLine($"region #{province.id} {province.name}: {demo.settledTiles}/{demo.tileCount} settled tiles"
                 + $"    biotech={demo.biotechActive}  ideology={demo.ideologyActive}");
-            sb.AppendLine($"female fraction {demo.femaleFraction:P0}    overall median wealth {demo.overallMedianWealth}"
+            float sexSkew = RegionDemographicsStress.CurrentFemaleDelta(province.id);
+            sb.AppendLine($"female fraction {demo.femaleFraction:P0}"
+                + (sexSkew != 0f ? $" (skew {sexSkew:+0%;-0%})" : "")
+                + $"    overall median wealth {demo.overallMedianWealth}"
                 + (RegionDemographicsStress.HasOverride(province.id) ? "  [STRESSED]" : ""));
             sb.AppendLine($"age (#10): median {demo.medianAge}"
                 + $"    children {demo.ageShares[(int)AgeBucket.Child]:P0}"

@@ -43,6 +43,13 @@ namespace RegionsAndSocieties
                 options.Add(new FloatMenuOption(ageMode.def.LabelCap, () => MapModeComponent.Instance.RequestMapModeSwitch(ageMode)));
             }
 
+            // Sex ratio: regions shaded by sex balance (#11), revealing draft/war skews.
+            var sexMode = MapModeComponent.Instance.mapModes.FirstOrDefault(m => m.def.defName == "SynapseSexRatio");
+            if (sexMode != null)
+            {
+                options.Add(new FloatMenuOption(sexMode.def.LabelCap, () => MapModeComponent.Instance.RequestMapModeSwitch(sexMode)));
+            }
+
             if (options.Any())
             {
                 Find.WindowStack.Add(new FloatMenu(options));

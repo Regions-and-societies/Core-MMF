@@ -342,6 +342,25 @@ namespace RegionsAndSocieties.Demographics
                 + $"   Elders {demo.ageShares[(int)AgeBucket.Elder]:P0}";
         }
 
+        /// <summary>
+        /// A one-line sex-ratio readout for a region — percent female / male, with a note when a
+        /// mod-driven skew (draft, war losses) is currently bending it off the baseline — or null when
+        /// the region has no settled tiles. Shared by the overlay tooltip and the region panel (#11).
+        /// </summary>
+        public static string SexRatioSummary(GeographicProvince province)
+        {
+            if (province == null) return null;
+            RegionDemographics demo = ForRegion(province);
+            if (demo.settledTiles <= 0) return null;
+
+            int femalePct = Mathf.RoundToInt(demo.femaleFraction * 100f);
+            string line = $"Sex ratio: {femalePct}% female / {100 - femalePct}% male";
+            float skew = RegionDemographicsStress.CurrentFemaleDelta(province.id);
+            if (Mathf.Abs(skew) >= 0.01f)
+                line += skew > 0f ? "  (skewed female — men drafted or lost)" : "  (skewed male)";
+            return line;
+        }
+
         /// <summary>Turn per-bucket tile counts into shares and a median age, using the region's average
         /// longevity to stretch the elder band. Shared by the region and faction aggregators.</summary>
         private static void FillAgeStructure(RegionDemographics demo, int[] ageCounts, float longevityAcc)
