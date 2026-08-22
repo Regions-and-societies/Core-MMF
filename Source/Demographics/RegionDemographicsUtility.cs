@@ -49,6 +49,10 @@ namespace RegionsAndSocieties.Demographics
         // (int)SesTier [subsistence, modest, prosperous, affluent], plus the collapsed 0-100 index.
         public readonly float[] sesShares = new float[SocioeconomicRules.TierCount];
         public int sesIndex;
+        // Employment structure (#16): the workforce split across occupation sectors, indexed by
+        // (int)OccupationSector [agriculture, industry, military, trade], plus the 0-100 employment rate.
+        public readonly float[] occupationShares = new float[EmploymentRules.SectorCount];
+        public int employmentRate;
         public bool biotechActive;
         public bool ideologyActive;
     }
@@ -368,6 +372,7 @@ namespace RegionsAndSocieties.Demographics
                 FillAgeStructure(demo, ageCounts, longevityAcc);
                 FillEducation(demo, eduCounts);
                 FillSes(demo, allWealth, RegionWealthMultiplier(province));
+                FillEmployment(demo, province);
             }
 
             return demo;
@@ -434,6 +439,91 @@ namespace RegionsAndSocieties.Demographics
                 if (roads != null && roads.Count > 0) roaded++;
             }
             return (float)roaded / tiles.Count;
+        }
+
+        // --- employment (#16) --------------------------------------------------
+
+        /// <summary>
+        /// Compute a region's occupation-sector mix and employment rate (#16) from region-level facts:
+        /// its dominant faction's tech level, the mix of world objects on it (a military base pulls to
+        /// the military sector, extraction outposts/camps to industry, cities to trade), and what its
+        /// terrain supports (fertile land to agriculture, mineral-rich to industry).
+        /// </summary>
+        private static void FillEmployment(RegionDemographics demo, GeographicProvince province)
+        {
+            if (demo.settledTiles <= 0 || province == null) return;
+            int tech = DominantFactionTech(demo);
+
+            CountWorldObjects(province, out int settlements, out int outposts, out int camps, out int military);
+            int total = settlements + outposts + camps + military;
+
+            int tiles = province.tiles != null ? province.tiles.Count : 0;
+            float agTerrain = 0f, indTerrain = 0f;
+            if (province.initializedEconomics && tiles > 0)
+            {
+                agTerrain = Mathf.Clamp(province.CapOf(Economy.ResourceKind.Nutrition) / tiles / 500f, 0f, 1.5f);
+                indTerrain = Mathf.Clamp(province.CapOf(Economy.ResourceKind.Minerals) / tiles / 400f, 0f, 1.5f);
+            }
+
+            float milFrac = total > 0 ? (float)military / total : 0f;
+            float setFrac = total > 0 ? (float)settlements / total : 0f;
+            float extractFrac = total > 0 ? (float)(outposts + camps) / total : 0f;
+            float road = TradeAccess(province);
+
+            float agSignal = agTerrain;
+            float indSignal = indTerrain + 0.7f * extractFrac;
+            float milSignal = milFrac;
+            float tradeSignal = 0.6f * setFrac + road;
+            float development = tiles > 0 ? Mathf.Clamp01((float)total / tiles * 4f) : 0f;
+
+            float[] shares = EmploymentRules.SectorShares(tech, agSignal, indSignal, milSignal, tradeSignal);
+            for (int i = 0; i < EmploymentRules.SectorCount; i++) demo.occupationShares[i] = shares[i];
+            demo.employmentRate = EmploymentRules.EmploymentRate(tech, development);
+        }
+
+        /// <summary>Faction-wide employment: no single region's terrain or object mix, so just the tech
+        /// baseline for the faction. Keeps the faction info readout populated (#16).</summary>
+        private static void FillEmploymentForFaction(RegionDemographics demo, Faction faction)
+        {
+            if (demo.settledTiles <= 0) return;
+            int tech = (int)(faction?.def?.techLevel ?? TechLevel.Industrial);
+            float[] shares = EmploymentRules.SectorShares(tech, 0f, 0f, 0f, 0f);
+            for (int i = 0; i < EmploymentRules.SectorCount; i++) demo.occupationShares[i] = shares[i];
+            demo.employmentRate = EmploymentRules.EmploymentRate(tech, 0f);
+        }
+
+        private static int DominantFactionTech(RegionDemographics demo)
+        {
+            Faction best = null;
+            float share = 0f;
+            foreach (var kv in demo.factionShares)
+                if (kv.Value > share) { share = kv.Value; best = kv.Key; }
+            return (int)(best?.def?.techLevel ?? TechLevel.Industrial);
+        }
+
+        /// <summary>Count the territorial world objects on a region's tiles, by kind — the labour-structure
+        /// signal for employment (#16).</summary>
+        private static void CountWorldObjects(GeographicProvince province, out int settlements, out int outposts, out int camps, out int military)
+        {
+            settlements = outposts = camps = military = 0;
+            if (Find.WorldObjects == null || province?.tiles == null || province.tiles.Count == 0) return;
+
+            var tileSet = new HashSet<int>(province.tiles);
+            List<WorldObject> all = Find.WorldObjects.AllWorldObjects;
+            for (int i = 0; i < all.Count; i++)
+            {
+                WorldObject o = all[i];
+                if (o == null) continue;
+                PlanetTile pt = o.Tile;
+                if (!pt.Valid || !tileSet.Contains(pt.tileId)) continue;
+                switch (WorldObjectClassifier.Classify(o))
+                {
+                    case Integration.WorldObjectKind.Settlement: settlements++; break;
+                    case Integration.WorldObjectKind.Outpost: outposts++; break;
+                    case Integration.WorldObjectKind.Camp: camps++; break;
+                    case Integration.WorldObjectKind.Military: military++; break;
+                }
+            }
         }
 
         /// <summary>Turn per-tier tile counts into shares and the collapsed 0-100 education index.
@@ -611,6 +701,34 @@ namespace RegionsAndSocieties.Demographics
             return n > 0 ? sum / n : -1f;
         }
 
+        /// <summary>
+        /// An employment breakdown for a region — the workforce split across occupation sectors and the
+        /// employment rate — or null when the region has no settled tiles. Shared by the overlay tooltip
+        /// and the region panel (#16).
+        /// </summary>
+        public static string EmploymentSummary(GeographicProvince province)
+        {
+            if (province == null) return null;
+            RegionDemographics demo = ForRegion(province);
+            if (demo.settledTiles <= 0) return null;
+            return $"Employment (rate {demo.employmentRate}%):\n"
+                + $"  Agriculture {demo.occupationShares[(int)OccupationSector.Agriculture]:P0}"
+                + $"   Industry {demo.occupationShares[(int)OccupationSector.Industry]:P0}"
+                + $"   Military {demo.occupationShares[(int)OccupationSector.Military]:P0}"
+                + $"   Trade {demo.occupationShares[(int)OccupationSector.Trade]:P0}";
+        }
+
+        /// <summary>The largest occupation sector in a region and its share. For the employment overlay (#16).</summary>
+        public static OccupationSector DominantSector(RegionDemographics demo, out float share)
+        {
+            share = 0f;
+            int best = 0;
+            if (demo?.occupationShares == null) return OccupationSector.Agriculture;
+            for (int i = 0; i < EmploymentRules.SectorCount; i++)
+                if (demo.occupationShares[i] > share) { share = demo.occupationShares[i]; best = i; }
+            return (OccupationSector)best;
+        }
+
         /// <summary>The single most common xenotype in a region and its share, or null when there is no
         /// xenotype data (Biotech off, or unsettled). For the dominant-xenotype overlay (#12).</summary>
         public static XenotypeDef DominantXenotype(RegionDemographics demo, out float share)
@@ -721,6 +839,7 @@ namespace RegionsAndSocieties.Demographics
                 FillAgeStructure(demo, ageCounts, longevityAcc);
                 FillEducation(demo, eduCounts);
                 FillSes(demo, allWealth, 1f);   // faction-wide: no single region's richness/trade to apply
+                FillEmploymentForFaction(demo, faction);
             }
             return demo;
         }

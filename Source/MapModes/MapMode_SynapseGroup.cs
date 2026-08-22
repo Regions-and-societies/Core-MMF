@@ -78,6 +78,13 @@ namespace RegionsAndSocieties
                 options.Add(new FloatMenuOption(ideoMode.def.LabelCap, () => MapModeComponent.Instance.RequestMapModeSwitch(ideoMode)));
             }
 
+            // Employment: regions tinted by dominant occupation sector (#16).
+            var employMode = MapModeComponent.Instance.mapModes.FirstOrDefault(m => m.def.defName == "SynapseEmployment");
+            if (employMode != null)
+            {
+                options.Add(new FloatMenuOption(employMode.def.LabelCap, () => MapModeComponent.Instance.RequestMapModeSwitch(employMode)));
+            }
+
             if (options.Any())
             {
                 Find.WindowStack.Add(new FloatMenu(options));

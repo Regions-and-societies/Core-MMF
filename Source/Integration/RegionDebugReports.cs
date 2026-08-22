@@ -1056,6 +1056,11 @@ namespace RegionsAndSocieties.Integration
                 + $"  modest {demo.sesShares[(int)SesTier.Modest]:P0}"
                 + $"  prosperous {demo.sesShares[(int)SesTier.Prosperous]:P0}"
                 + $"  affluent {demo.sesShares[(int)SesTier.Affluent]:P0}");
+            sb.AppendLine($"employment (#16): rate {demo.employmentRate}%"
+                + $"    agriculture {demo.occupationShares[(int)OccupationSector.Agriculture]:P0}"
+                + $"  industry {demo.occupationShares[(int)OccupationSector.Industry]:P0}"
+                + $"  military {demo.occupationShares[(int)OccupationSector.Military]:P0}"
+                + $"  trade {demo.occupationShares[(int)OccupationSector.Trade]:P0}");
             sb.AppendLine($"tuning: model {(Demographics.DemographicsRules.FalloffModel)WorldObjectIntegrationSettings.demographicFalloffModel}"
                 + $"  reach ×{WorldObjectIntegrationSettings.demographicReach:0.00}  shape {WorldObjectIntegrationSettings.demographicFalloff:0.00}");
 

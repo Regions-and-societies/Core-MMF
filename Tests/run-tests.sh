@@ -119,6 +119,11 @@ run_suite socioeconomic Exe \
     Tests/SocioeconomicRulesTests.cs \
     $SRC/Demographics/SocioeconomicRules.cs
 
+# 0.2.0 employment core (#16): tech base sector splits + signal-driven shares + employment rate.
+run_suite employment Exe \
+    Tests/EmploymentRulesTests.cs \
+    $SRC/Demographics/EmploymentRules.cs
+
 run_suite resource Exe \
     Tests/RimWorldStubs.cs Tests/ResourceTests.cs \
     $INTEGRATION_PURE $SRC/Economy/*.cs
@@ -147,6 +152,7 @@ run_suite typecheck Library \
     $SRC/Demographics/AgeStructureRules.cs \
     $SRC/Demographics/EducationRules.cs \
     $SRC/Demographics/SocioeconomicRules.cs \
+    $SRC/Demographics/EmploymentRules.cs \
     $SRC/ProvinceAdjacency.cs \
     \
     $SRC/Patches/Patch_TileFinder_IsValidTileForNewSettlement.cs \

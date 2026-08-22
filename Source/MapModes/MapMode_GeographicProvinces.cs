@@ -208,9 +208,11 @@ namespace RegionsAndSocieties
             string ideoSummary = Demographics.RegionDemographicsUtility.IdeologySummary(province);
             string eduSummary = Demographics.RegionDemographicsUtility.EducationSummary(province);
             string sesSummary = Demographics.RegionDemographicsUtility.SocioeconomicSummary(province);
+            string employSummary = Demographics.RegionDemographicsUtility.EmploymentSummary(province);
             if (!string.IsNullOrEmpty(ageSummary) || !string.IsNullOrEmpty(sexSummary)
                 || !string.IsNullOrEmpty(xenoSummary) || !string.IsNullOrEmpty(ideoSummary)
-                || !string.IsNullOrEmpty(eduSummary) || !string.IsNullOrEmpty(sesSummary))
+                || !string.IsNullOrEmpty(eduSummary) || !string.IsNullOrEmpty(sesSummary)
+                || !string.IsNullOrEmpty(employSummary))
             {
                 sb.AppendLine();
                 if (!string.IsNullOrEmpty(ageSummary)) sb.AppendLine(ageSummary);
@@ -219,6 +221,7 @@ namespace RegionsAndSocieties
                 if (!string.IsNullOrEmpty(ideoSummary)) sb.AppendLine(ideoSummary);
                 if (!string.IsNullOrEmpty(eduSummary)) sb.AppendLine(eduSummary);
                 if (!string.IsNullOrEmpty(sesSummary)) sb.AppendLine(sesSummary);
+                if (!string.IsNullOrEmpty(employSummary)) sb.AppendLine(employSummary);
             }
 
             if (province.activeCrises.Any())
