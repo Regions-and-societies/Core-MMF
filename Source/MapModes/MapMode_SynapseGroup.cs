@@ -71,6 +71,13 @@ namespace RegionsAndSocieties
                 options.Add(new FloatMenuOption(wealthMode.def.LabelCap, () => MapModeComponent.Instance.RequestMapModeSwitch(wealthMode)));
             }
 
+            // Ideology: regions tinted by dominant ideo (#13). Only meaningful with the Ideology DLC.
+            var ideoMode = MapModeComponent.Instance.mapModes.FirstOrDefault(m => m.def.defName == "SynapseIdeology");
+            if (ideoMode != null)
+            {
+                options.Add(new FloatMenuOption(ideoMode.def.LabelCap, () => MapModeComponent.Instance.RequestMapModeSwitch(ideoMode)));
+            }
+
             if (options.Any())
             {
                 Find.WindowStack.Add(new FloatMenu(options));

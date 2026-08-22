@@ -1072,6 +1072,14 @@ namespace RegionsAndSocieties.Integration
                 sb.AppendLine($"  {kv.Key.LabelCap}: {kv.Value:P0}    wealth {w}");
             }
 
+            if (demo.ideoShares.Count > 0)
+            {
+                float sim = RegionDemographicsUtility.AverageNeighborSimilarity(province);
+                sb.AppendLine("ideologies (#13)" + (sim >= 0f ? $"  [neighbour similarity {sim:P0}]" : "") + ":");
+                foreach (var kv in demo.ideoShares.OrderByDescending(k => k.Value))
+                    sb.AppendLine($"  {kv.Key.name}: {kv.Value:P0}");
+            }
+
             if (demo.memeShares.Count > 0)
             {
                 sb.AppendLine("memes:");

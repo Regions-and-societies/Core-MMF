@@ -32,6 +32,9 @@ namespace RegionsAndSocieties.Demographics
         public readonly Dictionary<XenotypeDef, float> raceShares = new Dictionary<XenotypeDef, float>();
         public readonly Dictionary<XenotypeDef, int> medianWealthByRace = new Dictionary<XenotypeDef, int>();
         public readonly Dictionary<MemeDef, float> memeShares = new Dictionary<MemeDef, float>();
+        // Ideology structure (#13): the share of settled tiles under each ideo (primary + minor), the
+        // deepening of the meme layer into an ethnicity-style breakdown. Empty with Ideology off.
+        public readonly Dictionary<Ideo, float> ideoShares = new Dictionary<Ideo, float>();
         public float femaleFraction;
         public int overallMedianWealth;
         // Age structure (#10): the share of settled tiles in each bucket, and the resulting median age.
@@ -72,6 +75,7 @@ namespace RegionsAndSocieties.Demographics
         private const int IdeoSalt = 19;
         private const int AgeSalt = 23;
         private const int EduSalt = 29;
+        private const int IdeoPickSalt = 31;   // which of a faction's ideos (primary/minor) a tile follows
 
         private static readonly Dictionary<Faction, FactionDemographicProfile> profileCache = new Dictionary<Faction, FactionDemographicProfile>();
         private static readonly Dictionary<int, RegionDemographics> regionCache = new Dictionary<int, RegionDemographics>();
@@ -230,7 +234,10 @@ namespace RegionsAndSocieties.Demographics
             // load id for determinism) — the society whose norms and demographics dominate this tile.
             Faction ageFaction = PressureWeightedFaction(tileId, pf, pw, top);
             FactionDemographicProfile ageProf = ProfileFor(ageFaction);
-            sample.ideo = ageProf.primaryIdeo;
+            // Ideology (#13): draw among the faction's ideos — its primary plus any minors — rather than
+            // always its primary, so a region reads as a belief mix. Own salt, independent of the draws
+            // above and of the faction pick.
+            sample.ideo = PickIdeo(tileId, ageProf);
 
             // Age bucket: draw from the faction's tech/ideology pyramid, bent by the chosen race's
             // longevity (a long-lived caste holds more elders). Independent salt so it doesn't correlate
@@ -265,6 +272,17 @@ namespace RegionsAndSocieties.Demographics
             return pick >= 0 ? factions[order[pick]] : fallback;
         }
 
+        /// <summary>Which of a faction's ideos a tile follows: a deterministic weighted draw over its
+        /// primary (heavy) and minor (lighter) ideos, so regions read as a belief mix rather than a
+        /// single monoculture. Falls back to the primary when there is nothing to weight.</summary>
+        private static Ideo PickIdeo(int tileId, FactionDemographicProfile prof)
+        {
+            if (prof?.ideos == null || prof.ideos.Length == 0) return prof?.primaryIdeo;
+            uint state = DemographicsRules.TileSeed(WorldSeed, tileId, IdeoPickSalt);
+            int pick = DemographicsRules.WeightedPick(ref state, prof.ideoWeights);
+            return pick >= 0 ? prof.ideos[pick] : prof.primaryIdeo;
+        }
+
         /// <summary>The aggregated makeup of a region, cached. Recomputed when populations/objects change.</summary>
         public static RegionDemographics ForRegion(GeographicProvince province)
         {
@@ -290,6 +308,7 @@ namespace RegionsAndSocieties.Demographics
             var factionCounts = new Dictionary<Faction, int>();
             var wealthByRace = new Dictionary<XenotypeDef, List<int>>();
             var memeCounts = new Dictionary<MemeDef, int>();
+            var ideoCounts = new Dictionary<Ideo, int>();
             var allWealth = new List<int>();
             var ageCounts = new int[AgeStructureRules.BucketCount];
             var eduCounts = new int[EducationRules.TierCount];
@@ -317,9 +336,13 @@ namespace RegionsAndSocieties.Demographics
                 }
                 allWealth.Add(s.wealth);
 
-                if (s.ideo?.memes != null)
-                    foreach (MemeDef m in s.ideo.memes)
-                        if (m != null) { memeCounts.TryGetValue(m, out int mc); memeCounts[m] = mc + 1; }
+                if (s.ideo != null)
+                {
+                    ideoCounts.TryGetValue(s.ideo, out int ic); ideoCounts[s.ideo] = ic + 1;
+                    if (s.ideo.memes != null)
+                        foreach (MemeDef m in s.ideo.memes)
+                            if (m != null) { memeCounts.TryGetValue(m, out int mc); memeCounts[m] = mc + 1; }
+                }
             }
 
             demo.femaleFraction = demo.tileCount > 0 ? (float)female / demo.tileCount : 0f;
@@ -336,6 +359,8 @@ namespace RegionsAndSocieties.Demographics
                 }
                 foreach (var kv in memeCounts)
                     demo.memeShares[kv.Key] = (float)kv.Value / demo.settledTiles;
+                foreach (var kv in ideoCounts)
+                    demo.ideoShares[kv.Key] = (float)kv.Value / demo.settledTiles;
 
                 int[] wealthArr = allWealth.ToArray();
                 demo.overallMedianWealth = DemographicsRules.Median(wealthArr, wealthArr.Length);
@@ -510,6 +535,82 @@ namespace RegionsAndSocieties.Demographics
                 + $"   Affluent {demo.sesShares[(int)SesTier.Affluent]:P0}";
         }
 
+        /// <summary>
+        /// An ideology breakdown for a region — the top ideos by share and how similar its beliefs are to
+        /// its neighbours' — or a plain statement that with Ideology off everyone is secular (so the
+        /// overlay says so rather than painting a flat map, #13). Null when the region has no settled tiles.
+        /// Shared by the overlay tooltip and the region panel.
+        /// </summary>
+        public static string IdeologySummary(GeographicProvince province)
+        {
+            if (province == null) return null;
+            RegionDemographics demo = ForRegion(province);
+            if (demo.settledTiles <= 0) return null;
+
+            if (!demo.ideologyActive) return "Ideology: secular (Ideology not active)";
+            if (demo.ideoShares.Count == 0) return "Ideology: (no data)";
+
+            var top = demo.ideoShares.OrderByDescending(k => k.Value).Take(4)
+                .Select(k => $"{k.Key.name} {k.Value:P0}");
+            string line = "Ideology:\n  " + string.Join("   ", top);
+
+            float sim = AverageNeighborSimilarity(province);
+            if (sim >= 0f) line += $"\n  Belief similarity to neighbours: {sim:P0}";
+            return line;
+        }
+
+        /// <summary>The single most common ideo in a region and its share, or null when there is none
+        /// (Ideology off, or unsettled). For the dominant-ideology overlay (#13).</summary>
+        public static Ideo DominantIdeo(RegionDemographics demo, out float share)
+        {
+            share = 0f;
+            Ideo best = null;
+            if (demo?.ideoShares == null) return null;
+            foreach (var kv in demo.ideoShares)
+                if (kv.Value > share) { share = kv.Value; best = kv.Key; }
+            return best;
+        }
+
+        /// <summary>Meme-level similarity between two regions' belief mixes, 0..1 (#13): the cosine of
+        /// their meme-share vectors over the union of memes present. 1 = the same beliefs, 0 = none shared.</summary>
+        public static float MemeSimilarity(GeographicProvince a, GeographicProvince b)
+        {
+            if (a == null || b == null) return 0f;
+            RegionDemographics da = ForRegion(a), db = ForRegion(b);
+            if (da.memeShares.Count == 0 || db.memeShares.Count == 0) return 0f;
+
+            var keys = new List<MemeDef>(da.memeShares.Keys);
+            foreach (MemeDef k in db.memeShares.Keys) if (!da.memeShares.ContainsKey(k)) keys.Add(k);
+
+            var va = new float[keys.Count];
+            var vb = new float[keys.Count];
+            for (int i = 0; i < keys.Count; i++)
+            {
+                da.memeShares.TryGetValue(keys[i], out va[i]);
+                db.memeShares.TryGetValue(keys[i], out vb[i]);
+            }
+            return DemographicsRules.Cosine(va, vb);
+        }
+
+        /// <summary>A region's average meme similarity to its adjacent land regions, or -1 when it has no
+        /// comparable neighbour. How culturally distinct a region is from its surroundings (#13).</summary>
+        public static float AverageNeighborSimilarity(GeographicProvince province)
+        {
+            var mgr = Find.World?.GetComponent<SynapseRegionManager>();
+            if (mgr?.Provinces == null || province == null) return -1f;
+
+            float sum = 0f;
+            int n = 0;
+            foreach (GeographicProvince p in mgr.Provinces)
+            {
+                if (p == null || p.id == province.id || p.provinceType != ProvinceType.Land) continue;
+                if (!ProvinceAdjacency.AreAdjacent(mgr, province.id, p.id)) continue;
+                sum += MemeSimilarity(province, p);
+                n++;
+            }
+            return n > 0 ? sum / n : -1f;
+        }
+
         /// <summary>The single most common xenotype in a region and its share, or null when there is no
         /// xenotype data (Biotech off, or unsettled). For the dominant-xenotype overlay (#12).</summary>
         public static XenotypeDef DominantXenotype(RegionDemographics demo, out float share)
@@ -561,6 +662,7 @@ namespace RegionsAndSocieties.Demographics
             var raceCounts = new Dictionary<XenotypeDef, int>();
             var wealthByRace = new Dictionary<XenotypeDef, List<int>>();
             var memeCounts = new Dictionary<MemeDef, int>();
+            var ideoCounts = new Dictionary<Ideo, int>();
             var allWealth = new List<int>();
             var ageCounts = new int[AgeStructureRules.BucketCount];
             var eduCounts = new int[EducationRules.TierCount];
@@ -590,9 +692,13 @@ namespace RegionsAndSocieties.Demographics
                         wl.Add(s.wealth);
                     }
                     allWealth.Add(s.wealth);
-                    if (s.ideo?.memes != null)
-                        foreach (MemeDef m in s.ideo.memes)
-                            if (m != null) { memeCounts.TryGetValue(m, out int mc); memeCounts[m] = mc + 1; }
+                    if (s.ideo != null)
+                    {
+                        ideoCounts.TryGetValue(s.ideo, out int ic); ideoCounts[s.ideo] = ic + 1;
+                        if (s.ideo.memes != null)
+                            foreach (MemeDef m in s.ideo.memes)
+                                if (m != null) { memeCounts.TryGetValue(m, out int mc); memeCounts[m] = mc + 1; }
+                    }
                 }
             }
 
@@ -608,6 +714,8 @@ namespace RegionsAndSocieties.Demographics
                 }
                 foreach (var kv in memeCounts)
                     demo.memeShares[kv.Key] = (float)kv.Value / demo.settledTiles;
+                foreach (var kv in ideoCounts)
+                    demo.ideoShares[kv.Key] = (float)kv.Value / demo.settledTiles;
                 int[] wealthArr = allWealth.ToArray();
                 demo.overallMedianWealth = DemographicsRules.Median(wealthArr, wealthArr.Length);
                 FillAgeStructure(demo, ageCounts, longevityAcc);
@@ -872,6 +980,8 @@ namespace RegionsAndSocieties.Demographics
         public int[] raceMedianWealth;
         public int fallbackWealth;
         public Ideo primaryIdeo;
+        public Ideo[] ideos = new Ideo[0];       // primary + minors, the pool a tile's belief is drawn from (#13)
+        public float[] ideoWeights = new float[0];
         public int techLevel;        // RimWorld TechLevel ordinal — shapes the base age/education spreads (#10/#15)
         public float natalistSkew;   // 0..1, from pro-natalist memes; pushes the age pyramid toward children
         public float researchSkew;   // -1..1, from tech vs primitivist memes; bends the education distribution
@@ -913,13 +1023,38 @@ namespace RegionsAndSocieties.Demographics
 
             if (ModLister.IdeologyInstalled)
             {
-                try { p.primaryIdeo = faction.ideos?.PrimaryIdeo; }
+                try
+                {
+                    p.primaryIdeo = faction.ideos?.PrimaryIdeo;
+                    BuildIdeoPool(p, faction);
+                }
                 catch { p.primaryIdeo = null; }
             }
             p.natalistSkew = NatalistSkew(p.primaryIdeo);
             p.researchSkew = ResearchSkew(p.primaryIdeo);
 
             return p;
+        }
+
+        /// <summary>
+        /// Gather the faction's ideos into the draw pool a tile's belief is picked from (#13): its
+        /// primary at full weight plus each minor ideo at a lighter weight, so most of a faction's land
+        /// follows the primary while pockets follow the minors. Degrades to primary-only (or empty) when
+        /// a faction has no minors or no ideos at all.
+        /// </summary>
+        private static void BuildIdeoPool(FactionDemographicProfile p, Faction faction)
+        {
+            var ideos = new List<Ideo>();
+            var weights = new List<float>();
+            if (p.primaryIdeo != null) { ideos.Add(p.primaryIdeo); weights.Add(1f); }
+
+            List<Ideo> minors = faction.ideos?.IdeosMinorListForReading;
+            if (minors != null)
+                foreach (Ideo io in minors)
+                    if (io != null && io != p.primaryIdeo) { ideos.Add(io); weights.Add(0.35f); }
+
+            p.ideos = ideos.ToArray();
+            p.ideoWeights = weights.ToArray();
         }
 
         /// <summary>
