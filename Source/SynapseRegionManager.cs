@@ -539,7 +539,7 @@ namespace RegionsAndSocieties
             // 1-tile-wide appendages; a light majority-vote relaxation folds a tile wrapped more by a
             // neighbour than by its own province back into that neighbour, straightening the ragged
             // edges without touching feature borders (water/impassable neighbours never vote).
-            SmoothRegionBoundaries(3);
+            SmoothRegionBoundaries(5);
 
             // Naming Phase: Contextual Name Resolution
             Log.Message("[RegionsAndSocieties] Running contextual province naming...");
@@ -670,8 +670,21 @@ namespace RegionsAndSocieties
                         if (c > bestCount) { bestCount = c; bestId = np; }
                     }
 
-                    if (landNeighbours >= 3 && same <= 2 && bestId != -1 && bestCount > same)
-                        reassign[t] = bestId;
+                    // Two erosion cases, both requiring a foreign land neighbour to move into:
+                    //   spike   — one neighbour wraps this tile more than its own province does;
+                    //   tendril — more of this tile's land neighbours are foreign than are its own, i.e.
+                    //             it sits on a 1-wide chain, even one running BETWEEN two provinces
+                    //             (which the spike rule alone misses, since neither foreign province
+                    //             need out-wrap the two chain neighbours). Both keep same<=2 so straight
+                    //             and gently-curved borders are untouched; iterated, they shorten a
+                    //             tail one tile per pass from the tip inward.
+                    if (bestId != -1 && same <= 2)
+                    {
+                        int foreign = landNeighbours - same;
+                        bool spike = landNeighbours >= 3 && bestCount > same;
+                        bool tendril = foreign > same;
+                        if (spike || tendril) reassign[t] = bestId;
+                    }
                 }
 
                 if (reassign.Count == 0) break;
@@ -833,15 +846,14 @@ namespace RegionsAndSocieties
                             }
                         }
 
-                        // Orphan rescue (#3): a small pocket whose neighbours are all already at or past
-                        // the size cap — the common case next to a low-value tundra/desert region that
-                        // sprawled to ~200 tiles under the value budget — would otherwise survive as an
-                        // arbitrary leftover island (no natural border, sometimes the same faction as the
-                        // neighbour). Fold it into its dominant land neighbour anyway; a slightly
-                        // oversized low-value region reads far better than a stranded gap. Bounded to
-                        // genuinely small pockets so this never chains medium regions into a monster.
+                        // Orphan rescue (#3, widened #20): a small province whose only neighbours are
+                        // already at or past the size cap would otherwise survive as a stranded sliver
+                        // next to a big region. Fold it into its dominant land neighbour anyway — an
+                        // oversized region reads far better than a too-small one, and large sparse
+                        // regions are natural here. Bounded to genuinely small provinces (< the target
+                        // minimum) so a medium region is never chained into a runaway monster.
                         if (bestNeighbor == null && dominantLand != null &&
-                            p.tiles.Count <= FactionPlacementSettings.minRegionSize / 2)
+                            p.tiles.Count < FactionPlacementSettings.minRegionSize)
                         {
                             bestNeighbor = dominantLand;
                         }
