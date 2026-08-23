@@ -101,14 +101,7 @@ namespace RegionsAndSocieties.Partition
                 {
                     int nid = n.tileId;
                     if (!fillable[nid]) continue;
-                    // Entering high ground costs more, so two floods advancing from neighbouring anchors
-                    // meet ON the ridge/peaks between them — the border follows the mountain range. It is
-                    // a COST, not a wall: a region with no competitor beyond a range still floods across
-                    // it (the fill just paid to climb), so an isolated hill stays interior and only a
-                    // range that actually divides two regions becomes a border. Distance stays dominant,
-                    // so anchors keep the cells convex and no thin strips form.
                     float step = 1f
-                        + HillClimbWeight * signals[nid].HillClass
                         + (signals[cur].BiomeId != signals[nid].BiomeId ? BiomeSnapWeight : 0f)
                         + System.Math.Abs(signals[cur].ForestBucket - signals[nid].ForestBucket) * ForestSnapWeight;
                     float nc = cc + step;
@@ -140,10 +133,6 @@ namespace RegionsAndSocieties.Partition
         // without chasing it — the hybrid of clean convex cells and terrain-faithful borders (#20).
         private const float BiomeSnapWeight = 0.35f;
         private const float ForestSnapWeight = 0.15f;
-        // Per hilliness-class cost to enter a tile (0 Flat .. 3 Mountainous). Moderate, so a range
-        // between two anchors becomes the border (floods meet on the crest) while a region still spans
-        // an isolated hill. Tuned against the fixed test world.
-        private const float HillClimbWeight = 0.6f;
 
         /// <summary>
         /// One anchor per ~<paramref name="target"/> tiles, chosen per connected land component by
