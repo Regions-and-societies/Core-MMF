@@ -534,9 +534,12 @@ namespace RegionsAndSocieties
             // than holes punched in the map (#3).
             AbsorbEnclosedGaps();
 
-            // No boundary-smoothing pass (#20): border-first cells already follow natural features,
-            // so there is no grow-first jaggedness to relax. If the audit shows ragged edges at cell
-            // clips, a smoothing pass can be reintroduced.
+            // Phase 5c: erode pendant tails and single-tile protrusions (#20). Border-first cells
+            // follow natural features, but the watershed clips and feature-edge zigzags still leave
+            // 1-tile-wide appendages; a light majority-vote relaxation folds a tile wrapped more by a
+            // neighbour than by its own province back into that neighbour, straightening the ragged
+            // edges without touching feature borders (water/impassable neighbours never vote).
+            SmoothRegionBoundaries(3);
 
             // Naming Phase: Contextual Name Resolution
             Log.Message("[RegionsAndSocieties] Running contextual province naming...");
@@ -623,6 +626,72 @@ namespace RegionsAndSocieties
             }
         }
 
+        /// <summary>
+        /// Erode pendant tails and 1-tile protrusions from land provinces (#20). A majority-vote
+        /// relaxation: a land tile wrapped by a neighbouring land province more than by its own
+        /// (bestCount &gt; same, with same &lt;= 2 so straight and gently-curved edges are left alone) sits
+        /// on a spike or a chain-tip, and moving it to that neighbour shortens the border. Water,
+        /// rivers-as-edges and impassable tiles never vote, so real coastlines and feature borders are
+        /// preserved. Iterated over a few passes so multi-tile tails resolve from the tip inward. This
+        /// is the border-first counterpart to the grow-first smoothing that was removed with the
+        /// grower — kept deliberately light, targeting only the raggedness the audit flags.
+        /// </summary>
+        private void SmoothRegionBoundaries(int passes)
+        {
+            if (provinces == null || tileToProvinceId == null || Find.WorldGrid == null) return;
+
+            var landIds = new HashSet<int>(provinces
+                .Where(p => p.provinceType == ProvinceType.Land)
+                .Select(p => p.id));
+            if (landIds.Count < 2) return;
+
+            var neighbors = new List<RimWorld.Planet.PlanetTile>();
+            var counts = new Dictionary<int, int>();
+
+            for (int pass = 0; pass < passes; pass++)
+            {
+                var reassign = new Dictionary<int, int>();
+                for (int t = 0; t < tileToProvinceId.Length; t++)
+                {
+                    int pid = tileToProvinceId[t];
+                    if (pid < 0 || !landIds.Contains(pid)) continue;
+
+                    neighbors.Clear();
+                    Find.WorldGrid.GetTileNeighbors(t, neighbors);
+                    counts.Clear();
+                    int same = 0, landNeighbours = 0, bestId = -1, bestCount = 0;
+                    foreach (var n in neighbors)
+                    {
+                        int np = tileToProvinceId[n.tileId];
+                        if (np < 0 || !landIds.Contains(np)) continue;   // coast/river/impassable edge: keep it
+                        landNeighbours++;
+                        if (np == pid) { same++; continue; }
+                        int c; counts.TryGetValue(np, out c); c++; counts[np] = c;
+                        if (c > bestCount) { bestCount = c; bestId = np; }
+                    }
+
+                    if (landNeighbours >= 3 && same <= 2 && bestId != -1 && bestCount > same)
+                        reassign[t] = bestId;
+                }
+
+                if (reassign.Count == 0) break;
+                foreach (var kv in reassign) tileToProvinceId[kv.Key] = kv.Value;
+            }
+
+            // Rebuild land tile lists from the corrected map; water/river provinces are untouched
+            // above so their lists stay valid. Drop any land province emptied by the relaxation.
+            var byId = provinces.ToDictionary(p => p.id, p => p);
+            foreach (var p in provinces)
+                if (landIds.Contains(p.id)) p.tiles = new List<int>();
+            for (int t = 0; t < tileToProvinceId.Length; t++)
+            {
+                int pid = tileToProvinceId[t];
+                GeographicProvince prov;
+                if (pid >= 0 && landIds.Contains(pid) && byId.TryGetValue(pid, out prov))
+                    prov.tiles.Add(t);
+            }
+            provinces.RemoveAll(p => landIds.Contains(p.id) && p.tiles.Count == 0);
+        }
 
         /// <summary>Usable-tile count for a province, as an allocation-free loop (no LINQ closure).
         /// Called in the tight merge loop, where a per-call Count(predicate) closure was a memory sink.</summary>
