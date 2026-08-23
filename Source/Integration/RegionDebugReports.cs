@@ -599,6 +599,116 @@ namespace RegionsAndSocieties.Integration
         }
 
         /// <summary>
+        /// #20 border-first partition audit. The numeric harness for the new generator: land coverage,
+        /// the land-province size distribution, an average shape index (share of a province's tile
+        /// edges that face its own tiles — higher is more blob-like), and a tail/neck detector counting
+        /// provinces with pendant tiles (a tile with a single same-province neighbour — the chain-tip
+        /// signature the old river-absorption produced). The tail count should be zero or near it; a
+        /// non-zero worst-shape list is where to look when eyeballing the map.
+        /// </summary>
+        public static string PartitionAuditReport()
+        {
+            if (!UnityData.IsInMainThread) return "must run on the main thread";
+            if (Find.World == null) return "no world loaded";
+
+            var mgr = Find.World.GetComponent<SynapseRegionManager>();
+            if (mgr?.Provinces == null || mgr.Provinces.Count == 0) return "no regions generated";
+            mgr.EnsureTopology();
+
+            WorldGrid grid = Find.WorldGrid;
+            int totalTiles = grid.TilesCount;
+
+            // Coverage: of the usable land tiles, how many landed in some province.
+            int usableLand = 0, assignedLand = 0;
+            for (int t = 0; t < totalTiles; t++)
+            {
+                if (!SynapseRegionManager.IsTileUsable(t)) continue;
+                usableLand++;
+                if (mgr.GetProvinceId(t) >= 0) assignedLand++;
+            }
+
+            var landSizes = new List<int>();
+            int tailProvinces = 0, tailTiles = 0;
+            double shapeSum = 0;
+            var neighbors = new List<PlanetTile>();
+            // worst shapes: lowest shape index (most spidery), a few examples
+            var shapeById = new List<KeyValuePair<int, float>>();
+
+            foreach (var p in mgr.Provinces)
+            {
+                if (p.provinceType != ProvinceType.Land || p.tiles == null || p.tiles.Count == 0) continue;
+                int area = p.tiles.Count;
+                landSizes.Add(area);
+
+                int internalEdges = 0, boundaryEdges = 0, pendants = 0;
+                foreach (int t in p.tiles)
+                {
+                    int same = 0;
+                    neighbors.Clear();
+                    grid.GetTileNeighbors(t, neighbors);
+                    foreach (var n in neighbors)
+                    {
+                        if (mgr.GetProvinceId(n.tileId) == p.id) { same++; internalEdges++; }
+                        else boundaryEdges++;
+                    }
+                    if (same == 1 && area > 2) pendants++;
+                }
+
+                float shape = (internalEdges + boundaryEdges) > 0
+                    ? (float)internalEdges / (internalEdges + boundaryEdges) : 1f;
+                shapeSum += shape;
+                shapeById.Add(new KeyValuePair<int, float>(p.id, shape));
+                if (pendants > 0) { tailProvinces++; tailTiles += pendants; }
+            }
+
+            var sb = new StringBuilder();
+            sb.AppendLine("=== R&T border-first partition audit (#20) ===");
+            sb.AppendLine($"coverage: {assignedLand}/{usableLand} usable land tiles assigned"
+                + (usableLand > 0 ? $" ({100.0 * assignedLand / usableLand:0.0}%)" : ""));
+
+            if (landSizes.Count == 0)
+            {
+                sb.Append("no land provinces");
+                return sb.ToString();
+            }
+
+            landSizes.Sort();
+            int n2 = landSizes.Count;
+            double mean = landSizes.Average();
+            int median = landSizes[n2 / 2];
+            sb.AppendLine($"land provinces={n2}; size min={landSizes[0]} median={median} mean={mean:0.0} max={landSizes[n2 - 1]}");
+
+            // Size histogram in coarse buckets.
+            int[] buckets = { 0, 0, 0, 0, 0, 0 };
+            string[] labels = { "<25", "25-49", "50-99", "100-149", "150-249", "250+" };
+            foreach (int s in landSizes)
+            {
+                if (s < 25) buckets[0]++;
+                else if (s < 50) buckets[1]++;
+                else if (s < 100) buckets[2]++;
+                else if (s < 150) buckets[3]++;
+                else if (s < 250) buckets[4]++;
+                else buckets[5]++;
+            }
+            var hist = new StringBuilder();
+            for (int i = 0; i < buckets.Length; i++) hist.Append($"{labels[i]}={buckets[i]}  ");
+            sb.AppendLine("size histogram: " + hist.ToString().TrimEnd());
+
+            sb.AppendLine($"avg shape index (share of tile edges internal; higher=blobbier)={shapeSum / n2:0.00}");
+            sb.AppendLine($"tails/necks: {tailProvinces} land province(s) have pendant tiles ({tailTiles} tile(s) total) — target 0");
+
+            shapeById.Sort((a, b) => a.Value.CompareTo(b.Value));
+            var worst = new StringBuilder();
+            for (int i = 0; i < shapeById.Count && i < 6; i++)
+            {
+                var kv = shapeById[i];
+                worst.Append($"#{kv.Key}({kv.Value:0.00})  ");
+            }
+            sb.Append("most spidery provinces: " + worst.ToString().TrimEnd());
+            return sb.ToString().TrimEnd();
+        }
+
+        /// <summary>
         /// #72 test tooling: force a synthetic ownership on a province so the overlay's SOLID / CONTESTED /
         /// LOOSE seams can be eyeballed without engineering real holdings. Writes <c>province.ownershipData</c>
         /// directly; the overlay's own <c>RecalculateProvinceOwners</c> early-returns while the epoch is

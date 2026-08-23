@@ -64,6 +64,11 @@ namespace RegionsAndSocieties.Integration
                 "R&T player placement (#61): whether the player may settle a tile. Args: {} = sample one province per rival ownership tier; {\"tileId\":N} = probe one tile.",
                 new { type = "object", properties = new { tileId = new { type = "integer" } } },
                 (Func<string, string>)PlacementProbeHandler);
+
+            TryRegister(register, "rt_partition_audit",
+                "R&T border-first partition (#20): land coverage, province-size distribution + histogram, average shape index, and a tail/neck detector (pendant-tile count; target 0). The numeric check on the new river-basin generator.",
+                new { type = "object", properties = new { } },
+                (Func<string, string>)(_ => Safe(RegionDebugReports.PartitionAuditReport)));
         }
 
         // The report methods return a human-readable multi-line string, but the game-tool bridge
