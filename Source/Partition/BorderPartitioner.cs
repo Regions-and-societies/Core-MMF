@@ -28,6 +28,10 @@ namespace RegionsAndSocieties.Partition
         private const float WoodedTreeDensity = 0.25f;
         private const float ThickTreeDensity = 0.6f;
 
+        // Master switch for the pass-neck feature (#20). Off until a selective pass rule replaces the
+        // over-firing opposite-sides primitive.
+        private const bool EnableNeckDetection = false;
+
         /// <summary>
         /// Partition the unclaimed land of the world into province tile-groups. Water, ocean and lake
         /// tiles are expected to be already claimed in <paramref name="tileToProvinceId"/> (their
@@ -56,13 +60,29 @@ namespace RegionsAndSocieties.Partition
                 isLand[t] = tileToProvinceId[t] < 0 && !signals[t].Water && !signals[t].Impassable;
             }
 
-            // Wall-flood into cells: connect two adjacent land tiles only across a non-wall edge, so
-            // each connected component is bounded by coasts, ridges, biome edges and forest bands.
+            // Mountain passes / isthmuses: a passable tile pinched between two hard walls on OPPOSITE
+            // sides within a few tiles is a neck, and a neck is an extension of the hard border (#20).
+            // Excluded from the cell flood so the two basins it joins fall into separate cells; the neck
+            // tiles themselves are handed back to the flanking basins afterwards, so the border runs
+            // through the pass and coverage stays complete.
+            // Pass-neck detection is gated OFF pending a selective saddle/bottleneck rule: the
+            // opposite-sides-within-K primitive over-fires massively in rolling terrain (~37% of land),
+            // fragmenting the map. The detector is kept for iteration against the fixed test world.
+            var isNeck = EnableNeckDetection ? MarkPassNecks(grid, isLand, signals, total) : new bool[total];
+            if (EnableNeckDetection)
+            {
+                int neckCount = 0; for (int i = 0; i < total; i++) if (isNeck[i]) neckCount++;
+                Log.Message($"[RegionsAndSocieties] Border-first: {neckCount} pass-neck tiles walled off.");
+            }
+
+            // Wall-flood into cells: connect two adjacent floodable tiles only across a non-wall edge,
+            // so each connected component is bounded by coasts, ridges, biome edges, forest bands and
+            // pass necks.
             var cellVisited = new bool[total];
             var neighbors = new List<PlanetTile>();
             for (int seed = 0; seed < total; seed++)
             {
-                if (!isLand[seed] || cellVisited[seed]) continue;
+                if (!isLand[seed] || isNeck[seed] || cellVisited[seed]) continue;
 
                 var cell = new List<int>();
                 var queue = new Queue<int>();
@@ -77,7 +97,7 @@ namespace RegionsAndSocieties.Partition
                     foreach (var n in neighbors)
                     {
                         int nid = n.tileId;
-                        if (!isLand[nid] || cellVisited[nid]) continue;
+                        if (!isLand[nid] || isNeck[nid] || cellVisited[nid]) continue;
                         float strength = BorderRules.BoundaryStrength(signals[cur], signals[nid], weights);
                         if (BorderRules.IsWall(strength, BorderRules.DefaultWallThreshold)) continue; // border edge
                         cellVisited[nid] = true;
@@ -95,7 +115,121 @@ namespace RegionsAndSocieties.Partition
                 }
             }
 
+            AssignNeckTiles(grid, isLand, isNeck, result, total);
             return result;
+        }
+
+        /// <summary>
+        /// Hand the excluded pass-neck tiles back to the flanking basins (#20): each neck tile joins the
+        /// group most of its already-assigned neighbours belong to, so the pass splits down the middle
+        /// between the two provinces it connects and no tile is left unassigned. Iterated so a
+        /// multi-tile neck resolves inward from both ends; ties break to the lower group index for
+        /// determinism.
+        /// </summary>
+        private static void AssignNeckTiles(WorldGrid grid, bool[] isLand, bool[] isNeck, List<List<int>> groups, int total)
+        {
+            var groupOf = new Dictionary<int, int>();
+            for (int g = 0; g < groups.Count; g++)
+                foreach (int t in groups[g]) groupOf[t] = g;
+
+            var pending = new List<int>();
+            for (int t = 0; t < total; t++) if (isLand[t] && isNeck[t] && !groupOf.ContainsKey(t)) pending.Add(t);
+
+            var neighbors = new List<PlanetTile>();
+            var counts = new Dictionary<int, int>();
+            int safety = 0;
+            while (pending.Count > 0 && safety++ < 16)
+            {
+                var next = new List<int>();
+                bool any = false;
+                foreach (int t in pending)
+                {
+                    neighbors.Clear();
+                    grid.GetTileNeighbors(t, neighbors);
+                    counts.Clear();
+                    int best = -1, bestCount = 0;
+                    foreach (var n in neighbors)
+                    {
+                        if (!groupOf.TryGetValue(n.tileId, out int g)) continue;
+                        int c; counts.TryGetValue(g, out c); c++; counts[g] = c;
+                        if (c > bestCount || (c == bestCount && g < best)) { bestCount = c; best = g; }
+                    }
+                    if (best >= 0) { groups[best].Add(t); groupOf[t] = best; any = true; }
+                    else next.Add(t);
+                }
+                pending = next;
+                if (!any) break;
+            }
+            // Any neck tile still unplaced (ringed only by walls/necks) is left for AbsorbEnclosedGaps.
+        }
+
+        // Pass-neck detection. K=3 tiles matches the agreed "within two or three tiles of the next
+        // border"; the dot cutoff means the two flanking walls point more than ~105 degrees apart, i.e.
+        // they pinch the tile from genuinely opposing sides rather than lying on a single flank. A tile
+        // counts as a flanking "wall" if it is a hard border (water / impassable) OR high ground
+        // (LargeHills+) — because a RimWorld mountain range is mostly PASSABLE Mountainous tiles, so a
+        // pass is a low saddle between high ground, not between impassable peaks.
+        private const int NeckRadius = 3;
+        private const float NeckOppositeDot = -0.25f;
+        private const int NeckWallHillClass = 2;   // LargeHills and above flank a pass
+        private const int NeckLowHillClass = 1;    // only Flat / SmallHills tiles can BE a saddle
+
+        /// <summary>
+        /// Flag low saddle tiles pinched between high ground / hard walls on opposite sides — mountain
+        /// passes and isthmuses (#20). Only a low tile (Flat/SmallHills) is a candidate; a bounded BFS
+        /// (depth <see cref="NeckRadius"/>, travelling only over other low land) collects the bearings
+        /// to any flanking wall — water, impassable, or high ground — it reaches, and if two bearings
+        /// oppose each other the tile sits in a neck and becomes an extension of the border. High ground
+        /// on only one flank (a foothill where a plain meets a range) is never flagged, so a region
+        /// still flows up into the mountains; a plateau interior is excluded because it is not low.
+        /// </summary>
+        private static bool[] MarkPassNecks(WorldGrid grid, bool[] isLand, TileSignal[] signals, int total)
+        {
+            var isNeck = new bool[total];
+            var neighbors = new List<PlanetTile>();
+            var dirs = new List<UnityEngine.Vector3>();
+            var depth = new Dictionary<int, int>();
+            var q = new Queue<int>();
+            for (int t = 0; t < total; t++)
+            {
+                // Only a low, passable land tile can be a saddle.
+                if (!isLand[t] || signals[t].HillClass > NeckLowHillClass) continue;
+
+                dirs.Clear(); depth.Clear(); q.Clear();
+                q.Enqueue(t); depth[t] = 0;
+                UnityEngine.Vector3 ct = grid.GetTileCenter(t);
+                bool neck = false;
+                while (q.Count > 0 && !neck)
+                {
+                    int cur = q.Dequeue();
+                    int d = depth[cur];
+                    neighbors.Clear();
+                    grid.GetTileNeighbors(cur, neighbors);
+                    foreach (var n in neighbors)
+                    {
+                        int nid = n.tileId;
+                        bool flankWall = !isLand[nid] || signals[nid].HillClass >= NeckWallHillClass;
+                        if (flankWall)
+                        {
+                            // A flanking wall reached within the radius: note its bearing.
+                            UnityEngine.Vector3 dir = grid.GetTileCenter(nid) - ct;
+                            if (dir.sqrMagnitude < 1e-6f) continue;
+                            dir = dir.normalized;
+                            foreach (var e in dirs) { if (UnityEngine.Vector3.Dot(e, dir) < NeckOppositeDot) { neck = true; break; } }
+                            if (neck) break;
+                            dirs.Add(dir);
+                        }
+                        else if (d < NeckRadius && !depth.ContainsKey(nid))
+                        {
+                            // Traverse only low land while measuring the saddle's width.
+                            depth[nid] = d + 1;
+                            q.Enqueue(nid);
+                        }
+                    }
+                }
+                isNeck[t] = neck;
+            }
+            return isNeck;
         }
 
         /// <summary>Reduce a tile to the classified signals the boundary rules read.</summary>

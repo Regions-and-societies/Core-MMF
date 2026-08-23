@@ -709,6 +709,24 @@ namespace RegionsAndSocieties.Integration
         }
 
         /// <summary>
+        /// #20 fixed-seed tooling: re-run the partition on the loaded world, then report the audit. A
+        /// save keeps its scribed provinces, so loading the fixed test world and calling this is what
+        /// re-partitions the SAME terrain with the current code — the deterministic tune-and-compare
+        /// loop. Refreshes ownership so the map modes redraw.
+        /// </summary>
+        public static string RegenerateAndAudit()
+        {
+            if (!UnityData.IsInMainThread) return "must run on the main thread";
+            if (Find.World == null) return "no world loaded";
+            var mgr = Find.World.GetComponent<SynapseRegionManager>();
+            if (mgr == null) return "no region manager";
+            mgr.GenerateProvinces();
+            mgr.MarkOwnersDirty();
+            mgr.RecalculateProvinceOwners();
+            return PartitionAuditReport();
+        }
+
+        /// <summary>
         /// #20 visualization dump: write every tile's partition assignment to a CSV so the border-first
         /// result can be rendered as a full-globe map for dissection. One row per tile:
         /// tileId, longitude, latitude, provinceId, provinceType(int), river(0/1). Longitude/latitude
@@ -724,8 +742,8 @@ namespace RegionsAndSocieties.Integration
             WorldGrid grid = Find.WorldGrid;
             int total = grid.TilesCount;
             var neigh = new List<PlanetTile>();
-            var sb = new StringBuilder(total * 24);
-            sb.Append("tileId,lon,lat,provinceId,provinceType,river\n");
+            var sb = new StringBuilder(total * 26);
+            sb.Append("tileId,lon,lat,provinceId,provinceType,river,hill\n");
             for (int t = 0; t < total; t++)
             {
                 UnityEngine.Vector3 c = grid.GetTileCenter(t);
@@ -749,10 +767,23 @@ namespace RegionsAndSocieties.Integration
                     if (grid.GetRiverDef(t, n.tileId) != null || grid.GetRiverDef(n.tileId, t) != null) { river = 1; break; }
                 }
 
+                // Hilliness class 0..4 (Flat, SmallHills, LargeHills, Mountainous, Impassable) so the
+                // offline visualization can show pass/high-ground structure.
+                Tile td = grid[t];
+                int hill;
+                switch (td.hilliness)
+                {
+                    case Hilliness.SmallHills: hill = 1; break;
+                    case Hilliness.LargeHills: hill = 2; break;
+                    case Hilliness.Mountainous: hill = 3; break;
+                    case Hilliness.Impassable: hill = 4; break;
+                    default: hill = 0; break;
+                }
+
                 sb.Append(t).Append(',')
                   .Append(lon.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)).Append(',')
                   .Append(lat.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)).Append(',')
-                  .Append(pid).Append(',').Append(ptype).Append(',').Append(river).Append('\n');
+                  .Append(pid).Append(',').Append(ptype).Append(',').Append(river).Append(',').Append(hill).Append('\n');
             }
 
             string path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "rt_partition_dump.csv");
