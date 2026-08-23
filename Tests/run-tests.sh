@@ -124,6 +124,11 @@ run_suite employment Exe \
     Tests/EmploymentRulesTests.cs \
     $SRC/Demographics/EmploymentRules.cs
 
+# 0.2.0 territory-shape core (#19): embeddedness, desired-ratio scoring, domain compactness.
+run_suite compactness Exe \
+    Tests/CompactnessRulesTests.cs \
+    $SRC/Placement/CompactnessRules.cs
+
 run_suite resource Exe \
     Tests/RimWorldStubs.cs Tests/ResourceTests.cs \
     $INTEGRATION_PURE $SRC/Economy/*.cs

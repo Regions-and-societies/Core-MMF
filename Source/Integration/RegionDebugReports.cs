@@ -1198,6 +1198,17 @@ namespace RegionsAndSocieties.Integration
 
             sb.AppendLine($"world objects={total}; vanilla Settlements={vanillaSettlements}; classified territorial={classifiedTerritorial} (settlement={classifiedSettlement})");
             sb.AppendLine($"holdings mapped to a province={mappedToProvince}; UNMAPPED (provinceId<0)={unmapped}; null faction={nullFaction}");
+
+            // #19: domain shape per faction — 1.0 is a closed blob, near 0 is a pure spider. The value
+            // the territory-compactness slider is meant to raise.
+            sb.AppendLine("domain compactness (#19, 1 = blob, 0 = spider):");
+            foreach (Faction f in Find.FactionManager.AllFactionsListForReading)
+            {
+                if (f == null || f.IsPlayer || f.Hidden) continue;
+                if (!all.Any(o => o?.Faction == f && WorldObjectClassifier.Classify(o) == WorldObjectKind.Settlement)) continue;
+                sb.AppendLine($"  {f.Name}: {TerritoryCompactnessUtility.DomainCompactness(f):0.00}");
+            }
+
             sb.AppendLine("Sample holdings:");
             sb.Append(examples.ToString().TrimEnd());
             return sb.ToString().TrimEnd();
