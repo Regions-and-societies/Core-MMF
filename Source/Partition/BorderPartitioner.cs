@@ -300,6 +300,105 @@ namespace RegionsAndSocieties.Partition
             return Sorted(markers);
         }
 
+        /// <summary>
+        /// Bounding-box-free elongation of a tile set: the ratio of its two principal axes in the local
+        /// tangent plane (1 = round, higher = a long ribbon). Computed by PCA over the tiles' 3D centres
+        /// projected onto an east/north frame at their centroid, so it is independent of world
+        /// orientation and of the equirectangular distortion a lon/lat box would carry.
+        /// </summary>
+        public static float Elongation(List<int> tiles)
+        {
+            WorldGrid grid = Find.WorldGrid;
+            if (grid == null || tiles == null || tiles.Count < 3) return 1f;
+
+            UnityEngine.Vector3 c = UnityEngine.Vector3.zero;
+            foreach (int t in tiles) c += grid.GetTileCenter(t);
+            c /= tiles.Count;
+
+            UnityEngine.Vector3 up = c.normalized;
+            UnityEngine.Vector3 refA = UnityEngine.Mathf.Abs(UnityEngine.Vector3.Dot(up, UnityEngine.Vector3.up)) > 0.99f
+                ? UnityEngine.Vector3.right : UnityEngine.Vector3.up;
+            UnityEngine.Vector3 east = UnityEngine.Vector3.Cross(up, refA).normalized;
+            UnityEngine.Vector3 north = UnityEngine.Vector3.Cross(east, up).normalized;
+
+            double sxx = 0, syy = 0, sxy = 0;
+            foreach (int t in tiles)
+            {
+                UnityEngine.Vector3 d = grid.GetTileCenter(t) - c;
+                double x = UnityEngine.Vector3.Dot(d, east), y = UnityEngine.Vector3.Dot(d, north);
+                sxx += x * x; syy += y * y; sxy += x * y;
+            }
+            double n = tiles.Count;
+            double a = sxx / n, b = sxy / n, cc = syy / n;
+            double tr = a + cc, det = a * cc - b * b;
+            double disc = System.Math.Sqrt(System.Math.Max(0, tr * tr / 4 - det));
+            double l1 = tr / 2 + disc, l2 = tr / 2 - disc;
+            if (l2 <= 1e-6) return 6f;
+            return (float)System.Math.Sqrt(l1 / l2);
+        }
+
+        /// <summary>
+        /// Split a connected tile set into <paramref name="pieces"/> compact groups: farthest-point
+        /// anchors (which land at the extremes of the long axis) claimed by a hop-count watershed, so an
+        /// elongated province divides across its short axis into blob-like halves. Deterministic (anchors
+        /// resolved in id order). Returns the whole set unsplit if pieces &lt;= 1 or it is too small.
+        /// </summary>
+        public static List<List<int>> SplitTiles(List<int> tiles, int pieces)
+        {
+            WorldGrid grid = Find.WorldGrid;
+            if (grid == null || pieces <= 1 || tiles == null || tiles.Count < pieces)
+                return new List<List<int>> { tiles };
+
+            var set = new HashSet<int>(tiles);
+            var sorted = new List<int>(tiles); sorted.Sort();
+
+            // Farthest-point sampling for the anchors.
+            var anchors = new List<int> { sorted[0] };
+            var neigh = new List<PlanetTile>();
+            while (anchors.Count < pieces)
+            {
+                int best = -1; float bestD = -1f;
+                foreach (int t in sorted)
+                {
+                    if (anchors.Contains(t)) continue;
+                    float md = float.MaxValue;
+                    foreach (int a in anchors) { float d = grid.ApproxDistanceInTiles(t, a); if (d < md) md = d; }
+                    if (md > bestD) { bestD = md; best = t; }
+                }
+                if (best == -1) break;
+                anchors.Add(best);
+            }
+            anchors.Sort();
+
+            // Multi-source hop-count BFS confined to the set; nearest anchor wins, ties to smaller id.
+            var owner = new Dictionary<int, int>();
+            var dist = new Dictionary<int, int>();
+            var q = new Queue<int>();
+            foreach (int a in anchors) { owner[a] = a; dist[a] = 0; q.Enqueue(a); }
+            while (q.Count > 0)
+            {
+                int cur = q.Dequeue();
+                neigh.Clear(); grid.GetTileNeighbors(cur, neigh);
+                foreach (var nb in neigh)
+                {
+                    int nid = nb.tileId;
+                    if (!set.Contains(nid)) continue;
+                    int nd = dist[cur] + 1;
+                    if (!dist.TryGetValue(nid, out int old) || nd < old || (nd == old && owner[cur] < owner[nid]))
+                    {
+                        dist[nid] = nd; owner[nid] = owner[cur]; q.Enqueue(nid);
+                    }
+                }
+            }
+
+            var groups = new Dictionary<int, List<int>>();
+            foreach (int a in anchors) groups[a] = new List<int>();
+            foreach (int t in tiles) { int o = owner.TryGetValue(t, out int oo) ? oo : anchors[0]; groups[o].Add(t); }
+            var outG = new List<List<int>>();
+            foreach (int a in anchors) if (groups[a].Count > 0) outG.Add(groups[a]);
+            return outG;
+        }
+
         private static bool HasRiver(WorldGrid grid, int tileId)
         {
             var neighbors = new List<PlanetTile>();

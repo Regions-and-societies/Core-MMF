@@ -22,18 +22,26 @@ namespace BorderRulesTests
             Check("identical tiles -> 0", BorderRules.BoundaryStrength(Land(), Land(), w) == 0f);
             float biome = BorderRules.BoundaryStrength(Land(), WithBiome(Land(), 7), w);
             Check("biome change contributes", Close(biome, w.BiomeChange));
-            // A one-class hill step into non-high ground (Flat->SmallHills) is step*HillStep only.
-            float gentle = BorderRules.BoundaryStrength(Flat(), Hill(1), w);
-            Check("gentle rise = one hill step", Close(gentle, w.HillStep));
-            // A step into high ground adds the ridge bonus on top of the class delta.
-            float ridge = BorderRules.BoundaryStrength(Flat(), Hill(2), w);
-            Check("ridge into high ground is stronger than a gentle rise", ridge > gentle);
-            Check("ridge = 2 steps + high-ground bonus", Close(ridge, 2 * w.HillStep + w.HighGround));
             float forest = BorderRules.BoundaryStrength(Forest(0), Forest(2), w);
             Check("thick-forest edge contributes per bucket", Close(forest, 2 * w.ForestStep));
             float swamp = BorderRules.BoundaryStrength(Land(), WithSwamp(Land()), w);
             Check("swamp edge contributes once", Close(swamp, w.SwampEdge));
             Check("boundary strength never negative", BorderRules.BoundaryStrength(Hill(3), Flat(), w) >= 0f);
+
+            Section("hilliness is not a border by default (#20)");
+            // A hill or mountain range is too narrow to bound; the default weights ignore it so a
+            // region flows across high ground rather than stopping at the mountain-foot.
+            Check("default HillStep off", BoundaryWeights.Default.HillStep == 0f);
+            Check("default HighGround off", BoundaryWeights.Default.HighGround == 0f);
+            Check("flat vs mountain is not a boundary under defaults", BorderRules.BoundaryStrength(Flat(), Hill(3), w) == 0f);
+            // The hilliness mechanic itself still works when weighted (kept for reversibility): a step
+            // into high ground beats a gentle rise.
+            var wHill = BoundaryWeights.Default; wHill.HillStep = 0.5f; wHill.HighGround = 0.5f;
+            float gentle = BorderRules.BoundaryStrength(Flat(), Hill(1), wHill);
+            float ridge = BorderRules.BoundaryStrength(Flat(), Hill(2), wHill);
+            Check("weighted: gentle rise = one hill step", Close(gentle, wHill.HillStep));
+            Check("weighted: ridge into high ground is stronger", ridge > gentle);
+            Check("weighted: ridge = 2 steps + high-ground bonus", Close(ridge, 2 * wHill.HillStep + wHill.HighGround));
 
             Section("rivers are not a boundary");
             // There is no river field on TileSignal by design: a river between two otherwise-identical

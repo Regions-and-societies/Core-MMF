@@ -66,11 +66,19 @@ namespace RegionsAndSocieties.Partition
         /// <summary>Per unit of rainfall difference (weak; off by default).</summary>
         public float RainfallPerUnit;
 
-        /// <summary>First-pass weights: signals 1-5 on, swamp low, temperature/rainfall off (#20).</summary>
+        /// <summary>
+        /// Default weights (#20). Hilliness is deliberately <b>off</b> (HillStep = HighGround = 0): a
+        /// hill or mountain range is too narrow a feature to be a border, and weighting it made regions
+        /// stop at the mountain-foot and snake in thin strips along the range instead of flowing across
+        /// the high ground into the next valley. Passable high ground is interior terrain the region
+        /// spans; only <b>impassable</b> peaks remain hard walls (handled outside these weights). Real
+        /// borders come from biome changes, thick-forest edges, and coasts. Temperature/rainfall stay
+        /// off until the audit calls for them.
+        /// </summary>
         public static BoundaryWeights Default => new BoundaryWeights
         {
-            HillStep = 0.5f,
-            HighGround = 0.5f,
+            HillStep = 0f,
+            HighGround = 0f,
             BiomeChange = 1f,
             ForestStep = 0.5f,
             SwampEdge = 0.25f,

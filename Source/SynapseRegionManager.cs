@@ -534,6 +534,14 @@ namespace RegionsAndSocieties
             // than holes punched in the map (#3).
             AbsorbEnclosedGaps();
 
+            // Phase 5b3: split ribbon-shaped provinces (#20). A cell sized just over the guide rounds
+            // to one basin and can stay a long snaking valley; break any province whose principal-axis
+            // ratio is too high into compact halves across its short axis. Runs AFTER the merge so the
+            // halves are not immediately re-absorbed. The viability floor is deliberately below the
+            // merge minimum so a moderately-sized ribbon still splits — a pair of small blobs reads
+            // far better than one long snake.
+            SplitElongatedProvinces(FactionPlacementSettings.minRegionSize * 2 / 3);
+
             // Phase 5c: erode pendant tails and single-tile protrusions (#20). Border-first cells
             // follow natural features, but the watershed clips and feature-edge zigzags still leave
             // 1-tile-wide appendages; a light majority-vote relaxation folds a tile wrapped more by a
@@ -624,6 +632,69 @@ namespace RegionsAndSocieties
             {
                 Log.Message($"[RegionsAndSocieties] Absorbed {absorbed} enclosed impassable/unclaimed tiles into their surrounding regions.");
             }
+        }
+
+        // Split a province when its principal-axis ratio exceeds this — a long ribbon rather than a
+        // basin. ~1.7 is the target (golden-ish) shape; 2.2 is where it reads as a fail.
+        private const float ElongationTrigger = 2.2f;
+        private const float ElongationTarget = 1.7f;
+
+        /// <summary>
+        /// Break ribbon-shaped land provinces into compact pieces (#20). Region size is allowed to vary,
+        /// but a province stretched into a long valley reads as a partition failure even at a normal
+        /// size. For each land province whose <see cref="Partition.BorderPartitioner.Elongation"/>
+        /// exceeds <see cref="ElongationTrigger"/> and which is big enough for the pieces to stay viable,
+        /// split it across its short axis into 2-3 blobs. Deterministic; runs after the merge so the
+        /// pieces survive, and its seams are tidied by the smoothing pass that follows.
+        /// </summary>
+        private void SplitElongatedProvinces(int minViable)
+        {
+            if (provinces == null || tileToProvinceId == null || Find.WorldGrid == null) return;
+            if (minViable < 20) minViable = 20;
+
+            int nextId = provinces.Count > 0 ? provinces.Max(p => p.id) + 1 : 0;
+            var toAdd = new List<GeographicProvince>();
+            int split = 0;
+
+            // Snapshot: we mutate the list as we go.
+            foreach (var p in provinces.ToList())
+            {
+                if (p.provinceType != ProvinceType.Land || p.tiles == null) continue;
+                if (p.tiles.Count < 2 * minViable) continue;
+
+                float aspect = Partition.BorderPartitioner.Elongation(p.tiles);
+                if (aspect < ElongationTrigger) continue;
+
+                int byAspect = Mathf.RoundToInt(aspect / ElongationTarget);
+                int byViable = p.tiles.Count / minViable;
+                int pieces = Mathf.Clamp(Mathf.Min(byAspect, byViable), 2, 3);
+                if (pieces < 2) continue;
+
+                var groups = Partition.BorderPartitioner.SplitTiles(p.tiles, pieces);
+                if (groups.Count < 2) continue;
+
+                // Largest piece keeps p's identity; the rest become new provinces.
+                groups.Sort((a, b) => b.Count.CompareTo(a.Count));
+                p.tiles = groups[0];
+                foreach (int t in p.tiles) tileToProvinceId[t] = p.id;
+                p.primaryBiome = GetPrimaryBiome(p.tiles);
+
+                for (int g = 1; g < groups.Count; g++)
+                {
+                    var np = new GeographicProvince(nextId++);
+                    np.tiles = groups[g];
+                    np.provinceType = ProvinceType.Land;
+                    np.primaryBiome = GetPrimaryBiome(groups[g]);
+                    np.name = GenerateProvinceName(np.id, np.primaryBiome, np.provinceType);
+                    foreach (int t in groups[g]) tileToProvinceId[t] = np.id;
+                    toAdd.Add(np);
+                }
+                split++;
+            }
+
+            provinces.AddRange(toAdd);
+            if (split > 0)
+                Log.Message($"[RegionsAndSocieties] Split {split} elongated province(s) into {split + toAdd.Count} pieces.");
         }
 
         /// <summary>
