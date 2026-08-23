@@ -529,6 +529,12 @@ namespace RegionsAndSocieties
             MergeTinyDomains(minWithFeatures, minNoFeatures);
             Log.Message("[RegionsAndSocieties] Finished MergeTinyDomains.");
 
+            // Phase 5b1: dissolve small inland lakes into the surrounding land (#20). Phase 2.5 floods
+            // every barren water body — including a small inland lake — into its own water province; a
+            // lake ringed entirely by land reads better as part of that land region than as a stranded
+            // pond province, so fold it into its dominant land neighbour.
+            AbsorbInlandLakes();
+
             // Phase 5b2: fold impassable-mountain (and other unclaimed, non-water) pockets that are
             // fully enclosed by a single region INTO that region, so they read as owned terrain rather
             // than holes punched in the map (#3).
@@ -558,6 +564,67 @@ namespace RegionsAndSocieties
             BuildProvinceTopology();
 
             Log.Message($"[RegionsAndSocieties] Generated {provinces.Count} Geographic Domains.");
+        }
+
+        /// <summary>Largest inland lake (in tiles) still folded into its surrounding land (#20). Bigger
+        /// water bodies stay their own provinces.</summary>
+        private const int InlandLakeMaxTiles = 40;
+
+        /// <summary>
+        /// Dissolve small inland lakes into their dominant land neighbour (#20). A water province that is
+        /// small and touches no other water province is a pond ringed by land; its tiles read better as
+        /// part of that land region. Larger lakes and any water touching the sea are left alone.
+        /// </summary>
+        private void AbsorbInlandLakes()
+        {
+            if (provinces == null || tileToProvinceId == null || Find.WorldGrid == null) return;
+
+            var byId = provinces.ToDictionary(p => p.id, p => p);
+            var neighbors = new List<RimWorld.Planet.PlanetTile>();
+            var toRemove = new List<GeographicProvince>();
+            int absorbed = 0;
+
+            foreach (var lake in provinces)
+            {
+                if (lake.provinceType != ProvinceType.Ocean || lake.tiles == null) continue;
+                if (lake.tiles.Count == 0 || lake.tiles.Count > InlandLakeMaxTiles) continue;
+
+                // Tally land neighbours by shared edges; bail if it touches any other water province
+                // (then it is a sea inlet, not an enclosed pond).
+                var landEdges = new Dictionary<int, int>();
+                bool touchesWater = false;
+                foreach (int t in lake.tiles)
+                {
+                    neighbors.Clear();
+                    Find.WorldGrid.GetTileNeighbors(t, neighbors);
+                    foreach (var n in neighbors)
+                    {
+                        int npid = GetProvinceId(n.tileId);
+                        if (npid < 0 || npid == lake.id) continue;
+                        if (!byId.TryGetValue(npid, out var np)) continue;
+                        if (np.provinceType == ProvinceType.Ocean) { touchesWater = true; break; }
+                        if (np.provinceType == ProvinceType.Land)
+                        {
+                            int c; landEdges.TryGetValue(npid, out c); landEdges[npid] = c + 1;
+                        }
+                    }
+                    if (touchesWater) break;
+                }
+                if (touchesWater || landEdges.Count == 0) continue;
+
+                int bestId = -1, bestEdges = -1;
+                foreach (var kv in landEdges)
+                    if (kv.Value > bestEdges || (kv.Value == bestEdges && kv.Key < bestId)) { bestEdges = kv.Value; bestId = kv.Key; }
+                if (bestId < 0 || !byId.TryGetValue(bestId, out var host)) continue;
+
+                foreach (int t in lake.tiles) { host.tiles.Add(t); tileToProvinceId[t] = host.id; }
+                toRemove.Add(lake);
+                absorbed += lake.tiles.Count;
+            }
+
+            foreach (var p in toRemove) provinces.Remove(p);
+            if (absorbed > 0)
+                Log.Message($"[RegionsAndSocieties] Absorbed {toRemove.Count} inland lake(s) ({absorbed} tiles) into surrounding land.");
         }
 
         /// <summary>

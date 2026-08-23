@@ -46,7 +46,7 @@ namespace RegionsAndSocieties.Partition
             if (grid == null || tileToProvinceId == null) return result;
 
             int total = grid.TilesCount;
-            var weights = BoundaryWeights.Default;
+            int target = maxRegionTiles > 0 ? maxRegionTiles : 150;
 
             // Stable biome identity: first-encounter order over ascending tile ids is deterministic.
             var biomeIds = new Dictionary<BiomeDef, int>();
@@ -60,63 +60,182 @@ namespace RegionsAndSocieties.Partition
                 isLand[t] = tileToProvinceId[t] < 0 && !signals[t].Water && !signals[t].Impassable;
             }
 
-            // Mountain passes / isthmuses: a passable tile pinched between two hard walls on OPPOSITE
-            // sides within a few tiles is a neck, and a neck is an extension of the hard border (#20).
-            // Excluded from the cell flood so the two basins it joins fall into separate cells; the neck
-            // tiles themselves are handed back to the flanking basins afterwards, so the border runs
-            // through the pass and coverage stays complete.
-            // Pass-neck detection is gated OFF pending a selective saddle/bottleneck rule: the
-            // opposite-sides-within-K primitive over-fires massively in rolling terrain (~37% of land),
-            // fragmenting the map. The detector is kept for iteration against the fixed test world.
+            // Pass-neck detection (gated OFF pending a selective saddle rule; kept for iteration).
             var isNeck = EnableNeckDetection ? MarkPassNecks(grid, isLand, signals, total) : new bool[total];
+#pragma warning disable 0162 // unreachable while EnableNeckDetection is const false
             if (EnableNeckDetection)
             {
                 int neckCount = 0; for (int i = 0; i < total; i++) if (isNeck[i]) neckCount++;
                 Log.Message($"[RegionsAndSocieties] Border-first: {neckCount} pass-neck tiles walled off.");
             }
+#pragma warning restore 0162
 
-            // Wall-flood into cells: connect two adjacent floodable tiles only across a non-wall edge,
-            // so each connected component is bounded by coasts, ridges, biome edges, forest bands and
-            // pass necks.
-            var cellVisited = new bool[total];
-            var neighbors = new List<PlanetTile>();
-            for (int seed = 0; seed < total; seed++)
+            var fillable = new bool[total];
+            for (int t = 0; t < total; t++) fillable[t] = isLand[t] && !isNeck[t];
+
+            // Anchors: one region centre per ~target tiles, per connected land component, spaced by
+            // farthest-point so cells come out evenly sized. Nearest-anchor cells give the clean,
+            // convex ~6-sided borders; biomes/forests only nudge a border (below), never draw it.
+            var anchors = SelectAnchors(grid, fillable, total, target);
+            if (anchors.Count == 0) return result;
+
+            // Hybrid fill: multi-source Dijkstra from the anchors. The step cost is dominated by
+            // distance (1 per tile) with a SMALL surcharge for crossing a biome / forest edge, so a
+            // border sits on the straight bisector between two anchors unless a real terrain edge runs
+            // close to it — in which case the two floods meet ON that edge and the border snaps to it.
+            // Hard walls (water / impassable) and neck tiles are never traversed, so a cell hugs a
+            // coastline or mountain range for free without that irregularity distorting its open sides.
+            var owner = new int[total];
+            var cost = new float[total];
+            for (int i = 0; i < total; i++) { owner[i] = -1; cost[i] = float.PositiveInfinity; }
+            var heap = new MinHeap(anchors.Count + 16);
+            foreach (int a in anchors) { owner[a] = a; cost[a] = 0f; heap.Push(a, 0f); }
+            var nb = new List<PlanetTile>();
+            while (heap.Count > 0)
             {
-                if (!isLand[seed] || isNeck[seed] || cellVisited[seed]) continue;
-
-                var cell = new List<int>();
-                var queue = new Queue<int>();
-                queue.Enqueue(seed);
-                cellVisited[seed] = true;
-                while (queue.Count > 0)
+                heap.Pop(out int cur, out float cc);
+                if (cc > cost[cur]) continue;   // stale heap entry
+                nb.Clear();
+                grid.GetTileNeighbors(cur, nb);
+                foreach (var n in nb)
                 {
-                    int cur = queue.Dequeue();
-                    cell.Add(cur);
-                    neighbors.Clear();
-                    grid.GetTileNeighbors(cur, neighbors);
-                    foreach (var n in neighbors)
+                    int nid = n.tileId;
+                    if (!fillable[nid]) continue;
+                    float step = 1f
+                        + (signals[cur].BiomeId != signals[nid].BiomeId ? BiomeSnapWeight : 0f)
+                        + System.Math.Abs(signals[cur].ForestBucket - signals[nid].ForestBucket) * ForestSnapWeight;
+                    float nc = cc + step;
+                    // Relax on lower cost; on a tie prefer the smaller owning-anchor id for determinism.
+                    if (nc < cost[nid] || (nc == cost[nid] && owner[cur] < owner[nid]))
                     {
-                        int nid = n.tileId;
-                        if (!isLand[nid] || isNeck[nid] || cellVisited[nid]) continue;
-                        float strength = BorderRules.BoundaryStrength(signals[cur], signals[nid], weights);
-                        if (BorderRules.IsWall(strength, BorderRules.DefaultWallThreshold)) continue; // border edge
-                        cellVisited[nid] = true;
-                        queue.Enqueue(nid);
+                        cost[nid] = nc;
+                        owner[nid] = owner[cur];
+                        heap.Push(nid, nc);
                     }
-                }
-
-                if (cell.Count <= maxRegionTiles)
-                {
-                    result.Add(cell);            // within the size band: kept whole, size follows terrain
-                }
-                else
-                {
-                    result.AddRange(SubdivideCell(grid, cell, signals, weights, maxRegionTiles));
                 }
             }
 
+            // Group tiles by owning anchor.
+            var groupByAnchor = new Dictionary<int, List<int>>();
+            for (int t = 0; t < total; t++)
+            {
+                if (!fillable[t] || owner[t] < 0) continue;
+                if (!groupByAnchor.TryGetValue(owner[t], out var g)) { g = new List<int>(); groupByAnchor[owner[t]] = g; }
+                g.Add(t);
+            }
+            foreach (var kv in groupByAnchor) result.Add(kv.Value);
+
             AssignNeckTiles(grid, isLand, isNeck, result, total);
             return result;
+        }
+
+        // Small surcharges (distance-dominant) that let a border SNAP onto a nearby biome / forest edge
+        // without chasing it — the hybrid of clean convex cells and terrain-faithful borders (#20).
+        private const float BiomeSnapWeight = 0.35f;
+        private const float ForestSnapWeight = 0.15f;
+
+        /// <summary>
+        /// One anchor per ~<paramref name="target"/> tiles, chosen per connected land component by
+        /// farthest-point sampling so region centres spread evenly and every component (island included)
+        /// gets at least one. Components are the maximal runs of fillable land — bounded only by hard
+        /// walls, since biomes no longer cut them. Returned in ascending id order for determinism.
+        /// </summary>
+        private static List<int> SelectAnchors(WorldGrid grid, bool[] fillable, int total, int target)
+        {
+            var anchors = new List<int>();
+            var seen = new bool[total];
+            var nb = new List<PlanetTile>();
+            for (int s = 0; s < total; s++)
+            {
+                if (!fillable[s] || seen[s]) continue;
+                var comp = new List<int>();
+                var q = new Queue<int>();
+                q.Enqueue(s); seen[s] = true;
+                while (q.Count > 0)
+                {
+                    int c = q.Dequeue();
+                    comp.Add(c);
+                    nb.Clear();
+                    grid.GetTileNeighbors(c, nb);
+                    foreach (var n in nb)
+                    {
+                        int nid = n.tileId;
+                        if (fillable[nid] && !seen[nid]) { seen[nid] = true; q.Enqueue(nid); }
+                    }
+                }
+                int k = System.Math.Max(1, (int)System.Math.Round((double)comp.Count / target));
+                anchors.AddRange(FarthestPointAnchors(grid, comp, k));
+            }
+            anchors.Sort();
+            return anchors;
+        }
+
+        /// <summary>Pick <paramref name="k"/> farthest-point anchors from a tile set: the first is the
+        /// smallest id (determinism), each subsequent is the tile maximising the minimum distance to
+        /// those already chosen. Uses a running per-tile min-distance array so it is O(area * k) — the
+        /// naive re-scan is O(area * k^2) and hangs a big landmass with hundreds of anchors.</summary>
+        private static List<int> FarthestPointAnchors(WorldGrid grid, List<int> tiles, int k)
+        {
+            var sorted = new List<int>(tiles); sorted.Sort();
+            int n = sorted.Count;
+            var anchors = new List<int> { sorted[0] };
+            var minD = new float[n];
+            for (int i = 0; i < n; i++) minD[i] = grid.ApproxDistanceInTiles(sorted[i], sorted[0]);
+            while (anchors.Count < k)
+            {
+                int bi = -1; float bd = -1f;
+                for (int i = 0; i < n; i++) { if (minD[i] > bd) { bd = minD[i]; bi = i; } }
+                if (bi < 0 || bd <= 0f) break;   // no tile left with positive distance to all anchors
+                int a = sorted[bi];
+                anchors.Add(a);
+                minD[bi] = 0f;
+                for (int i = 0; i < n; i++)
+                {
+                    if (minD[i] <= 0f) continue;
+                    float d = grid.ApproxDistanceInTiles(sorted[i], a);
+                    if (d < minD[i]) minD[i] = d;
+                }
+            }
+            return anchors;
+        }
+
+        /// <summary>Binary min-heap keyed by float priority — Dijkstra's frontier. .NET Framework has no
+        /// built-in PriorityQueue, and the list-scan queue used for the small per-cell fills is O(n) per
+        /// pop, far too slow for a whole-world Dijkstra.</summary>
+        private sealed class MinHeap
+        {
+            private int[] items;
+            private float[] prio;
+            private int count;
+            public MinHeap(int cap) { cap = System.Math.Max(cap, 16); items = new int[cap]; prio = new float[cap]; }
+            public int Count { get { return count; } }
+            public void Push(int item, float p)
+            {
+                if (count == items.Length) { System.Array.Resize(ref items, count * 2); System.Array.Resize(ref prio, count * 2); }
+                int i = count++;
+                items[i] = item; prio[i] = p;
+                while (i > 0) { int par = (i - 1) / 2; if (prio[par] <= prio[i]) break; Swap(i, par); i = par; }
+            }
+            public void Pop(out int item, out float p)
+            {
+                item = items[0]; p = prio[0];
+                count--;
+                items[0] = items[count]; prio[0] = prio[count];
+                int i = 0;
+                while (true)
+                {
+                    int l = 2 * i + 1, r = 2 * i + 2, m = i;
+                    if (l < count && prio[l] < prio[m]) m = l;
+                    if (r < count && prio[r] < prio[m]) m = r;
+                    if (m == i) break;
+                    Swap(i, m); i = m;
+                }
+            }
+            private void Swap(int a, int b)
+            {
+                int ti = items[a]; items[a] = items[b]; items[b] = ti;
+                float tp = prio[a]; prio[a] = prio[b]; prio[b] = tp;
+            }
         }
 
         /// <summary>
@@ -277,164 +396,6 @@ namespace RegionsAndSocieties.Partition
         }
 
         /// <summary>
-        /// Split an oversized cell into basins. River tiles seed the markers (a province per river
-        /// system); a featureless cell with no river is split into evenly-spaced anchors. A
-        /// marker-controlled watershed — least accumulated <c>1 + boundary strength</c> — then assigns
-        /// every tile to its nearest marker, so the divides fall on the strongest interior high ground.
-        /// </summary>
-        private static List<List<int>> SubdivideCell(
-            WorldGrid grid, List<int> cell, TileSignal[] signals, BoundaryWeights weights, int maxRegionTiles)
-        {
-            var markers = SelectMarkers(grid, cell, maxRegionTiles);
-            if (markers.Count <= 1)
-            {
-                return new List<List<int>> { cell };   // a single natural basin: kept whole
-            }
-
-            var cellSet = new HashSet<int>(cell);
-            var owner = new Dictionary<int, int>();       // tile -> marker id
-            var cost = new Dictionary<int, float>();
-            var pq = new SimplePriorityQueue<int>();
-            foreach (int m in markers)
-            {
-                owner[m] = m;
-                cost[m] = 0f;
-                pq.Enqueue(m, 0f);
-            }
-
-            var neighbors = new List<PlanetTile>();
-            while (pq.Count > 0)
-            {
-                int cur = pq.Dequeue();
-                float curCost = cost[cur];
-                int curOwner = owner[cur];
-
-                neighbors.Clear();
-                grid.GetTileNeighbors(cur, neighbors);
-                foreach (var n in neighbors)
-                {
-                    int nid = n.tileId;
-                    if (!cellSet.Contains(nid)) continue;
-                    float step = 1f + BorderRules.BoundaryStrength(signals[cur], signals[nid], weights);
-                    float nc = curCost + step;
-                    // Relax on strictly-lower cost; on an exact tie prefer the smaller marker id so the
-                    // partition is regenerate-identical regardless of dequeue order.
-                    if (!cost.TryGetValue(nid, out float existing)
-                        || nc < existing
-                        || (nc == existing && curOwner < owner[nid]))
-                    {
-                        cost[nid] = nc;
-                        owner[nid] = curOwner;
-                        pq.Enqueue(nid, nc);
-                    }
-                }
-            }
-
-            var groups = new Dictionary<int, List<int>>();
-            foreach (int m in markers) groups[m] = new List<int>();
-            foreach (int t in cell)
-            {
-                int o = owner.TryGetValue(t, out int oo) ? oo : markers[0];
-                groups[o].Add(t);
-            }
-
-            var outGroups = new List<List<int>>();
-            foreach (int m in markers)
-            {
-                if (groups[m].Count > 0) outGroups.Add(groups[m]);
-            }
-            return outGroups;
-        }
-
-        /// <summary>
-        /// Choose the watershed markers for an oversized cell. Each connected river system in the cell
-        /// contributes one marker (basins centre on rivers); if the cell still wants more basins than
-        /// its rivers provide — or has no river at all — the rest are farthest-point anchors so an open
-        /// basin divides evenly. Marker ids are the seeding tile ids, returned in ascending order for
-        /// determinism.
-        /// </summary>
-        private static List<int> SelectMarkers(WorldGrid grid, List<int> cell, int maxRegionTiles)
-        {
-            int desired = BorderRules.AnchorCount(cell.Count, maxRegionTiles);
-
-            var markers = new List<int>();
-            var claimed = new HashSet<int>();
-
-            // River systems: cluster connected river tiles, one marker (smallest tile id) per cluster.
-            var cellSet = new HashSet<int>(cell);
-            var riverVisited = new HashSet<int>();
-            var neighbors = new List<PlanetTile>();
-            var sortedCell = new List<int>(cell);
-            sortedCell.Sort();
-            foreach (int t in sortedCell)
-            {
-                if (riverVisited.Contains(t) || !HasRiver(grid, t)) continue;
-
-                int rep = t;
-                var q = new Queue<int>();
-                q.Enqueue(t);
-                riverVisited.Add(t);
-                while (q.Count > 0)
-                {
-                    int cur = q.Dequeue();
-                    if (cur < rep) rep = cur;
-                    claimed.Add(cur);
-                    neighbors.Clear();
-                    grid.GetTileNeighbors(cur, neighbors);
-                    foreach (var n in neighbors)
-                    {
-                        int nid = n.tileId;
-                        if (cellSet.Contains(nid) && !riverVisited.Contains(nid) && HasRiver(grid, nid))
-                        {
-                            riverVisited.Add(nid);
-                            q.Enqueue(nid);
-                        }
-                    }
-                }
-                markers.Add(rep);
-            }
-
-            // Enough basins already? A cell with more river systems than the size guide asks for keeps
-            // one basin per river — its size is set by geography, which is the intent.
-            if (markers.Count >= desired) return Sorted(markers);
-
-            // Supplement with farthest-point anchors so an open (or under-seeded) basin divides evenly.
-            foreach (int m in markers) claimed.Add(m);
-            while (markers.Count < desired)
-            {
-                int best = -1;
-                float bestDist = -1f;
-                foreach (int t in sortedCell)
-                {
-                    if (claimed.Contains(t)) continue;
-                    float minDist = float.MaxValue;
-                    if (markers.Count == 0)
-                    {
-                        minDist = 0f;   // first anchor: any tile; ascending order makes it deterministic
-                    }
-                    else
-                    {
-                        foreach (int m in markers)
-                        {
-                            float d = grid.ApproxDistanceInTiles(t, m);
-                            if (d < minDist) minDist = d;
-                        }
-                    }
-                    if (minDist > bestDist)
-                    {
-                        bestDist = minDist;
-                        best = t;
-                    }
-                }
-                if (best == -1) break;
-                markers.Add(best);
-                claimed.Add(best);
-            }
-
-            return Sorted(markers);
-        }
-
-        /// <summary>
         /// Bounding-box-free elongation of a tile set: the ratio of its two principal axes in the local
         /// tangent plane (1 = round, higher = a long ribbon). Computed by PCA over the tiles' 3D centres
         /// projected onto an east/north frame at their centroid, so it is independent of world
@@ -533,24 +494,5 @@ namespace RegionsAndSocieties.Partition
             return outG;
         }
 
-        private static bool HasRiver(WorldGrid grid, int tileId)
-        {
-            var neighbors = new List<PlanetTile>();
-            grid.GetTileNeighbors(tileId, neighbors);
-            foreach (var n in neighbors)
-            {
-                if (grid.GetRiverDef(tileId, n.tileId) != null || grid.GetRiverDef(n.tileId, tileId) != null)
-                {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        private static List<int> Sorted(List<int> ids)
-        {
-            ids.Sort();
-            return ids;
-        }
     }
 }
