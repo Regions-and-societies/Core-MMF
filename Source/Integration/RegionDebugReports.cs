@@ -709,6 +709,59 @@ namespace RegionsAndSocieties.Integration
         }
 
         /// <summary>
+        /// #20 visualization dump: write every tile's partition assignment to a CSV so the border-first
+        /// result can be rendered as a full-globe map for dissection. One row per tile:
+        /// tileId, longitude, latitude, provinceId, provinceType(int), river(0/1). Longitude/latitude
+        /// come from the tile's 3D centre (equirectangular). Written to %TEMP%\rt_partition_dump.csv.
+        /// </summary>
+        public static string DumpPartitionCsv()
+        {
+            if (!UnityData.IsInMainThread) return "must run on the main thread";
+            if (Find.World == null) return "no world loaded";
+            var mgr = Find.World.GetComponent<SynapseRegionManager>();
+            if (mgr?.Provinces == null || mgr.Provinces.Count == 0) return "no regions generated";
+
+            WorldGrid grid = Find.WorldGrid;
+            int total = grid.TilesCount;
+            var neigh = new List<PlanetTile>();
+            var sb = new StringBuilder(total * 24);
+            sb.Append("tileId,lon,lat,provinceId,provinceType,river\n");
+            for (int t = 0; t < total; t++)
+            {
+                UnityEngine.Vector3 c = grid.GetTileCenter(t);
+                UnityEngine.Vector3 u = c.normalized;
+                double lat = System.Math.Asin(System.Math.Max(-1.0, System.Math.Min(1.0, u.y))) * 57.29577951308232;
+                double lon = System.Math.Atan2(u.z, u.x) * 57.29577951308232;
+
+                int pid = mgr.GetProvinceId(t);
+                int ptype = -1;
+                if (pid >= 0)
+                {
+                    var p = mgr.GetProvince(pid);
+                    if (p != null) ptype = (int)p.provinceType;
+                }
+
+                int river = 0;
+                neigh.Clear();
+                grid.GetTileNeighbors(t, neigh);
+                foreach (var n in neigh)
+                {
+                    if (grid.GetRiverDef(t, n.tileId) != null || grid.GetRiverDef(n.tileId, t) != null) { river = 1; break; }
+                }
+
+                sb.Append(t).Append(',')
+                  .Append(lon.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)).Append(',')
+                  .Append(lat.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)).Append(',')
+                  .Append(pid).Append(',').Append(ptype).Append(',').Append(river).Append('\n');
+            }
+
+            string path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "rt_partition_dump.csv");
+            try { System.IO.File.WriteAllText(path, sb.ToString()); }
+            catch (Exception ex) { return "failed to write dump: " + ex.Message; }
+            return $"wrote {total} tiles to {path} ({mgr.Provinces.Count} provinces)";
+        }
+
+        /// <summary>
         /// #72 test tooling: force a synthetic ownership on a province so the overlay's SOLID / CONTESTED /
         /// LOOSE seams can be eyeballed without engineering real holdings. Writes <c>province.ownershipData</c>
         /// directly; the overlay's own <c>RecalculateProvinceOwners</c> early-returns while the epoch is
