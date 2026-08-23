@@ -1,1 +1,5 @@
-ea2743bcd4240147713487aae331c4a7ad4abc445b09847d9b27ae0db8b679c8 *RegionsAndSocieties.dll
+# RimSynapse Core-MMF — shipped assembly manifest
+# version: 0.2.0
+# commit:  8c96686 (working tree had other uncommitted changes)
+# format:  sha256sum — verify with 'verify-binaries.ps1' or 'sha256sum -c'
+5ab8db8cbd5eb14961398fe477ab774f6d7bf904821813f8f258af969053ff07  RegionsAndSocieties.dll
