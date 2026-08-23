@@ -129,6 +129,12 @@ run_suite compactness Exe \
     Tests/CompactnessRulesTests.cs \
     $SRC/Placement/CompactnessRules.cs
 
+# 0.3.0 border-first partition core (#20): boundary strength from tile-definition shifts, wall
+# thresholding, anchor sizing/spacing, undersized-merge, weakest-border merge target. Pure, no game.
+run_suite border Exe \
+    Tests/BorderRulesTests.cs \
+    $SRC/Partition/BorderRules.cs
+
 run_suite resource Exe \
     Tests/RimWorldStubs.cs Tests/ResourceTests.cs \
     $INTEGRATION_PURE $SRC/Economy/*.cs
@@ -158,6 +164,7 @@ run_suite typecheck Library \
     $SRC/Demographics/EducationRules.cs \
     $SRC/Demographics/SocioeconomicRules.cs \
     $SRC/Demographics/EmploymentRules.cs \
+    $SRC/Partition/BorderRules.cs \
     $SRC/ProvinceAdjacency.cs \
     \
     $SRC/Patches/Patch_TileFinder_IsValidTileForNewSettlement.cs \
