@@ -392,6 +392,13 @@ namespace RegionsAndSocieties.Patches
                 Dictionary<GeographicProvince, float> provinceScores = new Dictionary<GeographicProvince, float>();
                 foreach (var p in allProvinces)
                 {
+                    // Water is never a settlement candidate — skip the ~50k-tile ocean province instead
+                    // of running the per-tile LINQ over it once per faction just to score it -9999 (#20).
+                    if (p.provinceType != ProvinceType.Land)
+                    {
+                        provinceScores[p] = -9999f;
+                        continue;
+                    }
                     // Do not place settlements in area of less than 20 tiles
                     if (p.tiles == null)
                     {

@@ -292,6 +292,10 @@ namespace RegionsAndSocieties.Demographics
         {
             EnsureFresh();
             if (province?.tiles == null || province.tiles.Count == 0) return new RegionDemographics();
+            // Only land has demographics. Skipping water avoids aggregating the (now real, ~50k-tile)
+            // ocean province — an O(tiles × settlement sources) walk that would freeze on first read and
+            // report a fabricated ocean population/age/wealth (#20).
+            if (province.provinceType != ProvinceType.Land) return new RegionDemographics();
             if (regionCache.TryGetValue(province.id, out RegionDemographics cached)) return cached;
 
             var demo = Aggregate(province);

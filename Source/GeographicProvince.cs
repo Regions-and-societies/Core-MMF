@@ -64,6 +64,13 @@ namespace RegionsAndSocieties
             int version = PopulationDensityUtility.CacheVersion;
             if (_populationVersion == version) return;
 
+            // Open water carries no population; skip the per-tile sum so the huge ocean province (now a
+            // real, ~50k-tile province) is not walked every cache version (#20).
+            if (provinceType == ProvinceType.Ocean)
+            {
+                _currentPopulation = 0; _totalDwellings = 0; _populationVersion = version; return;
+            }
+
             int total = 0;
             if (tiles != null)
             {
@@ -257,6 +264,9 @@ namespace RegionsAndSocieties
         {
             initializedEconomics = true;
             if (tiles == null || tiles.Count == 0 || Find.WorldGrid == null) return;
+            // Open water has no economy; skip so the ocean province isn't walked (and doesn't report a
+            // nonsense "richest province on the planet" from ~50k tiles × 500) (#20).
+            if (provinceType == ProvinceType.Ocean) return;
 
             float totalPlantDensity = 0f;
             float totalForageability = 0f;

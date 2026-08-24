@@ -1280,6 +1280,11 @@ namespace RegionsAndSocieties
                 if (pid < 0) continue;
                 GeographicProvince prov;
                 if (!byId.TryGetValue(pid, out prov)) continue;
+                // Water provinces are never owned or contested, so they need no perimeter/border-share
+                // topology. Skipping them also stops the (huge, claimed) ocean from accumulating a
+                // border-share to every coastal land province — the source of the "coastal faction
+                // holds the sea" ownership bleed once the ocean became a real province (#20).
+                if (prov.provinceType == ProvinceType.Ocean) continue;
 
                 neighbors.Clear();
                 Find.WorldGrid.GetTileNeighbors(t, neighbors);
@@ -1386,6 +1391,11 @@ namespace RegionsAndSocieties
             var ownerByProvince = new Dictionary<int, Faction>(provinces.Count);
             foreach (var province in provinces)
             {
+                // Open water is never owned — skip it so a coastal faction is not written in as
+                // "holding" the sea (which would leak supply anchors and foothold adjacency along the
+                // whole coastline now that the ocean is a real province, #20).
+                if (province.provinceType == ProvinceType.Ocean) { province.owningFactionIds.Clear(); continue; }
+
                 List<RimWorld.Planet.WorldObject> regionObjects;
                 if (!objectsByProvince.TryGetValue(province.id, out regionObjects)) regionObjects = EmptyWorldObjects;
                 province.ownershipData = RegionalOwnershipUtility.CalculateOwnershipBase(province, regionObjects);
@@ -1398,6 +1408,7 @@ namespace RegionsAndSocieties
             // where "region 487 changed owner -> recompute 326's borders" stays cheap (#44).
             foreach (var province in provinces)
             {
+                if (province.provinceType == ProvinceType.Ocean) continue;
                 RegionalOwnershipUtility.ApplyBordersAndNormalize(province.ownershipData, province, ownerByProvince);
 
                 province.owningFactionIds.Clear();
