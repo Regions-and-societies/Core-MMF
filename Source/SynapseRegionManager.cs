@@ -434,50 +434,49 @@ namespace RegionsAndSocieties
             int minWithFeatures = baseMin - 5;
             int minNoFeatures = baseMin + 5;
 
-            // Phase 2.5: Water wastes. Flood-fill contiguous barren WATER (ocean, sea ice) into their
-            // own regions and claim their tiles so the land partition skips them — these are the hard
-            // walls the border-first fill never spans. Dry barren land (desert) is deliberately NOT
-            // claimed here: it flows into the border-first partition below, so a desert splits at its
-            // natural boundaries like any other land rather than being stranded as enclaves (#3/#49).
+            // Phase 2.5: Water. Flood-fill every contiguous WATER body — ocean, sea ice, lakes — into
+            // its own Ocean-type province and claim the tiles, so the land partition skips them (water
+            // is the hard wall the border-first fill never spans) and the open sea is owned rather than
+            // left as a black hole. NOTE: RimWorld's Ocean biome is itself flagged impassable, so this
+            // must NOT filter on biome.impassable (that skipped the entire ocean and left it unclaimed,
+            // #20) — WaterCovered alone selects water. Impassable LAND (mountain peaks) is a different
+            // case and is left for AbsorbEnclosedGaps below. Small inland lakes claimed here are folded
+            // back into their surrounding land by AbsorbInlandLakes; the big ocean bodies stay as
+            // provinces.
             {
-                var barrenNbrs = new List<RimWorld.Planet.PlanetTile>();
+                var waterNbrs = new List<RimWorld.Planet.PlanetTile>();
                 for (int i = 0; i < totalTiles; i++)
                 {
                     if (tileToProvinceId[i] != -1) continue;
                     Tile td = Find.WorldGrid[i];
-                    if (td.hilliness == Hilliness.Impassable || (td.PrimaryBiome != null && td.PrimaryBiome.impassable)) continue;
-                    // Water wastes only (ocean, sea ice). Dry barren land flows into the border-first
-                    // partition below instead of being claimed as a water province here.
-                    if (!td.WaterCovered || !GeographicProvince.IsBarrenBiome(td.PrimaryBiome)) continue;
+                    if (!td.WaterCovered) continue;
 
-                    var barren = new List<int>();
+                    var body = new List<int>();
                     var bq = new Queue<int>();
                     bq.Enqueue(i);
                     tileToProvinceId[i] = provinceIdCounter;
                     while (bq.Count > 0)
                     {
                         int cur = bq.Dequeue();
-                        barren.Add(cur);
-                        barrenNbrs.Clear();
-                        Find.WorldGrid.GetTileNeighbors(cur, barrenNbrs);
-                        foreach (var n in barrenNbrs)
+                        body.Add(cur);
+                        waterNbrs.Clear();
+                        Find.WorldGrid.GetTileNeighbors(cur, waterNbrs);
+                        foreach (var n in waterNbrs)
                         {
                             int nid = n.tileId;
                             if (tileToProvinceId[nid] != -1) continue;
-                            Tile nd = Find.WorldGrid[nid];
-                            if (nd.hilliness == Hilliness.Impassable || (nd.PrimaryBiome != null && nd.PrimaryBiome.impassable)) continue;
-                            if (!nd.WaterCovered || !GeographicProvince.IsBarrenBiome(nd.PrimaryBiome)) continue;
+                            if (!Find.WorldGrid[nid].WaterCovered) continue;
                             tileToProvinceId[nid] = provinceIdCounter;
                             bq.Enqueue(nid);
                         }
                     }
 
-                    var barrenDom = new GeographicProvince(provinceIdCounter);
-                    barrenDom.tiles = barren;
-                    barrenDom.provinceType = ProvinceType.Ocean;
-                    barrenDom.primaryBiome = GetPrimaryBiome(barren);
-                    barrenDom.name = GenerateProvinceName(provinceIdCounter, barrenDom.primaryBiome, barrenDom.provinceType);
-                    provinces.Add(barrenDom);
+                    var waterDom = new GeographicProvince(provinceIdCounter);
+                    waterDom.tiles = body;
+                    waterDom.provinceType = ProvinceType.Ocean;
+                    waterDom.primaryBiome = GetPrimaryBiome(body);
+                    waterDom.name = GenerateProvinceName(provinceIdCounter, waterDom.primaryBiome, waterDom.provinceType);
+                    provinces.Add(waterDom);
                     provinceIdCounter++;
                 }
             }
