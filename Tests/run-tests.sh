@@ -98,6 +98,12 @@ run_suite outpostrules Exe \
     Tests/RimWorldStubs.cs Tests/OutpostRulesTests.cs \
     $SRC/Integration/WorldObjectKind.cs $SRC/Sizing/*.cs
 
+# 0.3.0 settlement birthrate-growth core (#6): tech-informed rate + logistic step toward the target.
+# Pure, no game — needs only the standalone BirthrateRules.
+run_suite birthrate Exe \
+    Tests/BirthrateRulesTests.cs \
+    $SRC/Sizing/BirthrateRules.cs
+
 # 0.8 demographics core: the deterministic per-tile seed + RNG + weighted picking. Pure, no game.
 run_suite demographics Exe \
     Tests/DemographicsRulesTests.cs \
