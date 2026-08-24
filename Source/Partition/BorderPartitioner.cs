@@ -79,12 +79,28 @@ namespace RegionsAndSocieties.Partition
             var anchors = SelectAnchors(grid, fillable, total, target);
             if (anchors.Count == 0) return result;
 
-            // Hybrid fill: multi-source Dijkstra from the anchors. The step cost is dominated by
-            // distance (1 per tile) with a SMALL surcharge for crossing a biome / forest edge, so a
-            // border sits on the straight bisector between two anchors unless a real terrain edge runs
-            // close to it — in which case the two floods meet ON that edge and the border snaps to it.
-            // Hard walls (water / impassable) and neck tiles are never traversed, so a cell hugs a
-            // coastline or mountain range for free without that irregularity distorting its open sides.
+            // Box fill: each tile joins the anchor with the smallest CHEBYSHEV distance — max(|x|,|y|)
+            // in that anchor's local east/north frame — instead of Euclidean distance. Euclidean
+            // nearest-anchor gives hexagonal blobs; the Chebyshev (L-infinity) metric grows a region as
+            // a square/rectangle (it advances its short axis to stay balanced), so regions come out as
+            // boxes of varying size. The flood only crosses non-wall tiles, so the boxes still clip to
+            // hard boundaries (coast / impassable) — squares that snap to the terrain. The cost stored
+            // for a tile is its Chebyshev distance to its owning anchor (not a path sum), so the nearest
+            // box wins; ties break to the smaller anchor id for determinism.
+            var frameC = new Dictionary<int, UnityEngine.Vector3>(anchors.Count);
+            var frameE = new Dictionary<int, UnityEngine.Vector3>(anchors.Count);
+            var frameN = new Dictionary<int, UnityEngine.Vector3>(anchors.Count);
+            foreach (int a in anchors)
+            {
+                UnityEngine.Vector3 c = grid.GetTileCenter(a);
+                UnityEngine.Vector3 up = c.normalized;
+                UnityEngine.Vector3 refA = UnityEngine.Mathf.Abs(UnityEngine.Vector3.Dot(up, UnityEngine.Vector3.up)) > 0.99f
+                    ? UnityEngine.Vector3.right : UnityEngine.Vector3.up;
+                UnityEngine.Vector3 east = UnityEngine.Vector3.Cross(up, refA).normalized;
+                frameC[a] = c; frameE[a] = east; frameN[a] = UnityEngine.Vector3.Cross(east, up).normalized;
+            }
+            float tileSpacing = TileSpacing(grid);
+
             var owner = new int[total];
             var cost = new float[total];
             for (int i = 0; i < total; i++) { owner[i] = -1; cost[i] = float.PositiveInfinity; }
@@ -95,21 +111,23 @@ namespace RegionsAndSocieties.Partition
             {
                 heap.Pop(out int cur, out float cc);
                 if (cc > cost[cur]) continue;   // stale heap entry
+                int a2 = owner[cur];
+                UnityEngine.Vector3 ac = frameC[a2], ae = frameE[a2], an = frameN[a2];
                 nb.Clear();
                 grid.GetTileNeighbors(cur, nb);
                 foreach (var n in nb)
                 {
                     int nid = n.tileId;
                     if (!fillable[nid]) continue;
-                    float step = 1f
-                        + (signals[cur].BiomeId != signals[nid].BiomeId ? BiomeSnapWeight : 0f)
-                        + System.Math.Abs(signals[cur].ForestBucket - signals[nid].ForestBucket) * ForestSnapWeight;
-                    float nc = cc + step;
-                    // Relax on lower cost; on a tie prefer the smaller owning-anchor id for determinism.
-                    if (nc < cost[nid] || (nc == cost[nid] && owner[cur] < owner[nid]))
+                    // Chebyshev distance of this neighbour to the anchor a2, in a2's box frame.
+                    UnityEngine.Vector3 d = grid.GetTileCenter(nid) - ac;
+                    float x = UnityEngine.Vector3.Dot(d, ae) / tileSpacing;
+                    float y = UnityEngine.Vector3.Dot(d, an) / tileSpacing;
+                    float nc = System.Math.Max(System.Math.Abs(x), System.Math.Abs(y));
+                    if (nc < cost[nid] || (nc == cost[nid] && a2 < owner[nid]))
                     {
                         cost[nid] = nc;
-                        owner[nid] = owner[cur];
+                        owner[nid] = a2;
                         heap.Push(nid, nc);
                     }
                 }
@@ -133,6 +151,16 @@ namespace RegionsAndSocieties.Partition
         // without chasing it — the hybrid of clean convex cells and terrain-faithful borders (#20).
         private const float BiomeSnapWeight = 0.35f;
         private const float ForestSnapWeight = 0.15f;
+
+        /// <summary>World-units per one-tile step (tile 0 to its first neighbour) — converts 3D chord
+        /// offsets into tile units for the box metric.</summary>
+        private static float TileSpacing(WorldGrid grid)
+        {
+            var nb = new List<PlanetTile>();
+            grid.GetTileNeighbors(0, nb);
+            if (nb.Count == 0) return 1f;
+            return System.Math.Max(0.0001f, (grid.GetTileCenter(0) - grid.GetTileCenter(nb[0].tileId)).magnitude);
+        }
 
         /// <summary>
         /// One anchor per ~<paramref name="target"/> tiles, chosen per connected land component by
