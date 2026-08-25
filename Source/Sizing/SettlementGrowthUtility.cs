@@ -18,9 +18,9 @@ namespace RegionsAndSocieties.Sizing
         /// female, and ~two-thirds of working age (15-64) is fertile age (15-45).</summary>
         private const float FertileShareOfWorkingAge = 0.5f * 0.66f;
 
-        /// <summary>A newly-modeled settlement starts at this fraction of its target, so it visibly
-        /// grows toward the ⅔-max target rather than popping in full.</summary>
-        public const float SeedFractionOfTarget = 1f / 3f;
+        /// <summary>A newly-modeled settlement starts at this fraction of its capacity, so it visibly
+        /// grows up toward (and past) its cap rather than popping in full.</summary>
+        public const float SeedFractionOfCapacity = 1f / 3f;
 
         /// <summary>
         /// Build the growth-factor inputs for a settlement from its faction (tech → mortality) and its
@@ -58,12 +58,12 @@ namespace RegionsAndSocieties.Sizing
         }
 
         /// <summary>The starting modeled population for a settlement with no stored value yet: a third of
-        /// its target, floored so growth can begin. Zero for an untiered holding.</summary>
+        /// its capacity, floored so growth can begin. Zero for an untiered holding.</summary>
         public static float SeedPopulation(WorldObject settlement)
         {
-            int target = SettlementSizeUtility.TargetPopulationOf(settlement);
-            if (target <= 0) return 0f;
-            float seed = target * SeedFractionOfTarget;
+            int cap = SettlementSizeUtility.MaxPopulationOf(settlement);
+            if (cap <= 0) return 0f;
+            float seed = cap * SeedFractionOfCapacity;
             return seed < BirthrateRules.SeedFloor ? BirthrateRules.SeedFloor : seed;
         }
     }

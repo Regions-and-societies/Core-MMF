@@ -302,10 +302,8 @@ namespace RegionsAndSocieties
                 settlementModeledPop[tile] = pop;
             }
 
-            int max = Sizing.SettlementSizeUtility.MaxPopulationOf(settlement);
-            int v = (int)Math.Round(pop, MidpointRounding.AwayFromZero);
-            if (max > 0 && v > max) v = max;
-            return v < 0 ? 0 : v;
+            int cap = Sizing.SettlementSizeUtility.MaxPopulationOf(settlement);
+            return ClampToCeiling((int)Math.Round(pop, MidpointRounding.AwayFromZero), cap);
         }
 
         /// <summary>
@@ -314,10 +312,13 @@ namespace RegionsAndSocieties
         /// the elapsed years. Prunes settlements that no longer exist and marks the population cache
         /// dirty so overlays reflect the new sizes. The player colony is skipped — real pawns only.
         /// </summary>
-        private static int ClampToCap(int v, int max)
+        // Population may overshoot the cap up to the birth-stagnation ceiling (150%); clamp there, not
+        // at the cap, so a well-fed settlement can crowd above its comfortable size (#6).
+        private static int ClampToCeiling(int v, int cap)
         {
             if (v < 0) v = 0;
-            if (max > 0 && v > max) v = max;
+            int ceil = (int)Math.Round(cap * Sizing.BirthrateRules.BirthStagnationRatio, MidpointRounding.AwayFromZero);
+            if (cap > 0 && v > ceil) v = ceil;
             return v;
         }
 
@@ -340,16 +341,20 @@ namespace RegionsAndSocieties
                 if (!settlementModeledPop.TryGetValue(tile, out float pop))
                     pop = Sizing.SettlementGrowthUtility.SeedPopulation(obj);
 
-                int target = Sizing.SettlementSizeUtility.TargetPopulationOf(obj);
-                int max = Sizing.SettlementSizeUtility.MaxPopulationOf(obj);
-                float rate = Sizing.BirthrateRules.NetAnnualRate(Sizing.SettlementGrowthUtility.BuildInputs(obj));
-                float next = Sizing.BirthrateRules.GrowStep(pop, target, max, rate, years);
+                int cap = Sizing.SettlementSizeUtility.MaxPopulationOf(obj);
+                var inputs = Sizing.SettlementGrowthUtility.BuildInputs(obj);
+                // Scale births and deaths together by the pacing multiplier — the balance point is
+                // unchanged, only the speed. Growth runs toward the cap and stagnates at 150%.
+                float mult = Integration.WorldObjectIntegrationSettings.growthRateMultiplier;
+                float fertility = Sizing.BirthrateRules.Fertility(inputs) * mult;
+                float mortality = Sizing.BirthrateRules.Mortality(inputs) * mult;
+                float next = Sizing.BirthrateRules.GrowStep(pop, cap, fertility, mortality, years);
                 settlementModeledPop[tile] = next;
 
                 // Publish the change at the integer level so a consumer sees growth events (no-op with
-                // no consumer). Rounded+capped the same way GetModeledSettlementPopulation reports it.
-                int before = ClampToCap((int)Math.Round(pop, MidpointRounding.AwayFromZero), max);
-                int after = ClampToCap((int)Math.Round(next, MidpointRounding.AwayFromZero), max);
+                // no consumer). Rounded+clamped the same way GetModeledSettlementPopulation reports it.
+                int before = ClampToCeiling((int)Math.Round(pop, MidpointRounding.AwayFromZero), cap);
+                int after = ClampToCeiling((int)Math.Round(next, MidpointRounding.AwayFromZero), cap);
                 Sizing.SettlementGrowthHooks.Report(obj, before, after);
             }
 

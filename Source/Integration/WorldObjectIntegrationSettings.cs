@@ -50,6 +50,14 @@ namespace RegionsAndSocieties.Integration
         /// Player-tunable via the mod-menu slider. Default 10 → T1 caps at 10, T5 at 150 (industrial).</summary>
         public static float populationCapMultiplier = 10f;
 
+        /// <summary>How fast settlement populations grow, as a multiple of real-world demographic rates
+        /// (#6). Real growth (~1-2%/yr) is invisible over a playthrough, so the default 10× makes a
+        /// healthy town grow ~10-15%/yr. Scales births and deaths together, so the balance point is
+        /// unchanged — only the pace. Player-tunable 0.5×–20×.</summary>
+        public static float growthRateMultiplier = 10f;
+        public const float GrowthRateMultiplierMin = 0.5f;
+        public const float GrowthRateMultiplierMax = 20f;
+
         /// <summary>Demographic pressure reach multiplier: a settlement's radius is its population × this.
         /// Higher = beliefs carry further; lower = borders contest sooner. Live-tunable.</summary>
         public static float demographicReach = 1.0f;
@@ -85,6 +93,7 @@ namespace RegionsAndSocieties.Integration
             Scribe_Values.Look(ref outpostSeeding, "integration_outpostSeeding", true);
             Scribe_Values.Look(ref populationCaps, "integration_populationCaps", true);
             Scribe_Values.Look(ref populationCapMultiplier, "integration_populationCapMultiplier", 10f);
+            Scribe_Values.Look(ref growthRateMultiplier, "integration_growthRateMultiplier", 10f);
             Scribe_Values.Look(ref demographicReach, "integration_demographicReach", 1.0f);
             Scribe_Values.Look(ref demographicFalloff, "integration_demographicFalloff", 1.0f);
             Scribe_Values.Look(ref demographicFalloffModel, "integration_demographicFalloffModel", 0);

@@ -67,6 +67,14 @@ namespace RegionsAndSocieties
                     $"   Population cap multiplier: {mult:0}  (metropolis ≈ {15 * mult:0} pawns, village ≈ {mult:0})",
                     mult, 1f, 30f));
                 Integration.WorldObjectIntegrationSettings.populationCapMultiplier = mult;
+
+                float growth = Integration.WorldObjectIntegrationSettings.growthRateMultiplier;
+                growth = l.SliderLabeled(
+                    $"   Population growth rate: {growth:0.0}× real  (a healthy town grows ~{1.5f * growth:0}%/yr)",
+                    growth,
+                    Integration.WorldObjectIntegrationSettings.GrowthRateMultiplierMin,
+                    Integration.WorldObjectIntegrationSettings.GrowthRateMultiplierMax);
+                Integration.WorldObjectIntegrationSettings.growthRateMultiplier = (float)System.Math.Round(growth, 1);
             }
 
             l.CheckboxLabeled("Demographic pressure tuning", ref demographicTuningExpanded, "Show the reach/falloff sliders that shape how far a settlement's make-up carries and how contested its borders are.");
