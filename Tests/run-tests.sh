@@ -168,6 +168,10 @@ run_suite sprawl Exe \
 run_suite roads Exe \
     Tests/RoadPathRulesTests.cs \
     $SRC/Roads/RoadPathRules.cs
+# 0.4.0 trade-route core: traversal cost model + minimum-cost spanning network (Kruskal). Pure, no game.
+run_suite traderoute Exe \
+    Tests/TradeRouteRulesTests.cs \
+    $SRC/Trade/TradeRouteRules.cs
 
 run_suite resource Exe \
     Tests/RimWorldStubs.cs Tests/ResourceTests.cs \
