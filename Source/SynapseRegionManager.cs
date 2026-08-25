@@ -314,6 +314,13 @@ namespace RegionsAndSocieties
         /// the elapsed years. Prunes settlements that no longer exist and marks the population cache
         /// dirty so overlays reflect the new sizes. The player colony is skipped — real pawns only.
         /// </summary>
+        private static int ClampToCap(int v, int max)
+        {
+            if (v < 0) v = 0;
+            if (max > 0 && v > max) v = max;
+            return v;
+        }
+
         private void AdvanceSettlementGrowth(int intervalTicks)
         {
             if (Find.WorldObjects == null) return;
@@ -336,7 +343,14 @@ namespace RegionsAndSocieties
                 int target = Sizing.SettlementSizeUtility.TargetPopulationOf(obj);
                 int max = Sizing.SettlementSizeUtility.MaxPopulationOf(obj);
                 float rate = Sizing.BirthrateRules.NetAnnualRate(Sizing.SettlementGrowthUtility.BuildInputs(obj));
-                settlementModeledPop[tile] = Sizing.BirthrateRules.GrowStep(pop, target, max, rate, years);
+                float next = Sizing.BirthrateRules.GrowStep(pop, target, max, rate, years);
+                settlementModeledPop[tile] = next;
+
+                // Publish the change at the integer level so a consumer sees growth events (no-op with
+                // no consumer). Rounded+capped the same way GetModeledSettlementPopulation reports it.
+                int before = ClampToCap((int)Math.Round(pop, MidpointRounding.AwayFromZero), max);
+                int after = ClampToCap((int)Math.Round(next, MidpointRounding.AwayFromZero), max);
+                Sizing.SettlementGrowthHooks.Report(obj, before, after);
             }
 
             if (settlementModeledPop.Count > live.Count)

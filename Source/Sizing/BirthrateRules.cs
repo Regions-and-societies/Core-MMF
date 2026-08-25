@@ -62,17 +62,20 @@ namespace RegionsAndSocieties.Sizing
         /// from a fresh (near-zero) settlement instead of being stuck at zero.</summary>
         public const float SeedFloor = 1f;
 
-        /// <summary>Typical fertile-age-women share when the age structure is unknown.</summary>
-        public const float DefaultFertileFraction = 0.25f;
+        /// <summary>Typical fertile-age-women share when the age structure is unknown. Fertile-age women
+        /// are only ~a tenth of a population (roughly working-age ⅔ × female ½ × fertile ⅔).</summary>
+        public const float DefaultFertileFraction = 0.12f;
 
         // Tuning constants (annual rates). Rates are scaled well ABOVE real-world demography for game
         // pacing (#6): a settlement should visibly fill within a playthrough, so a healthy town grows
-        // ~10-15%/yr (doubling every ~5-7 years), not the real ~1-2%. The fertility/mortality SPLIT is
-        // kept so the transition SHAPE still reads — industrializing grows fastest, wealth softens it —
-        // and famine/war can still push a settlement into decline; the ends stay modestly positive
-        // rather than the realistic near-zero, because a stagnant settlement reads as broken in game.
-        private const float BirthsPerFertileWomanYear = 0.68f;   // fertility scale (~17%/yr at a 0.25 fertile share)
-        private const float WealthFertilityPenaltyMax = 0.080f;  // full-wealth fertility suppression
+        // ~10-15%/yr (doubling every ~5-7 years), not the real ~1-2%. Calibrated to the ACTUAL fertile
+        // share the region age structure yields (~0.11), not an idealized quarter. The fertility/
+        // mortality SPLIT is kept so the transition SHAPE still reads — industrializing grows fastest,
+        // wealth softens it — and famine/war can still push a settlement into decline; the fed ends stay
+        // modestly positive rather than the realistic near-zero, since a stagnant settlement reads as
+        // broken in game.
+        private const float BirthsPerFertileWomanYear = 1.60f;   // fertility scale (~18%/yr at a 0.11 fertile share)
+        private const float WealthFertilityPenaltyMax = 0.060f;  // full-wealth fertility suppression
         private const float FamineMortalityMax = 0.180f;         // total starvation death rate
         private const float NetRateFloor = -0.12f;               // clamp for a collapsing population
         private const float NetRateCeil = 0.25f;                 // clamp for a boom
@@ -94,13 +97,13 @@ namespace RegionsAndSocieties.Sizing
         {
             switch (techLevel)
             {
-                case 2: return 0.100f;   // Neolithic
-                case 3: return 0.075f;   // Medieval
+                case 2: return 0.090f;   // Neolithic
+                case 3: return 0.060f;   // Medieval
                 case 4: return 0.030f;   // Industrial
                 case 5: return 0.025f;   // Spacer
                 case 6:
                 case 7: return 0.020f;   // Ultra / Archotech
-                default: return 0.050f;
+                default: return 0.045f;
             }
         }
 

@@ -86,7 +86,7 @@ INTEGRATION_PURE=$(ls $SRC/Integration/*.cs | grep -v -e RegionDebugReports -e R
 
 # Sizing tables are pure EXCEPT the game-coupled glue (SettlementGrowthUtility reads Find / region
 # demographics), which cannot compile against the stubs — the real build covers it, like the other glue.
-SIZING_PURE=$(ls $SRC/Sizing/*.cs | grep -v -e SettlementGrowthUtility)
+SIZING_PURE=$(ls $SRC/Sizing/*.cs | grep -v -e SettlementGrowthUtility -e SettlementGrowthHooks)
 
 run_suite integration Exe \
     Tests/RimWorldStubs.cs Tests/IntegrationTests.cs \
