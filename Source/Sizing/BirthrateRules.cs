@@ -65,13 +65,17 @@ namespace RegionsAndSocieties.Sizing
         /// <summary>Typical fertile-age-women share when the age structure is unknown.</summary>
         public const float DefaultFertileFraction = 0.25f;
 
-        // First-pass tuning constants (annual rates). Chosen so the fertility/mortality split yields the
-        // real transition shape: Neolithic net ≈ 0, industrial net ≈ +1.5–2%, rich spacer ≈ 0/negative.
-        private const float BirthsPerFertileWomanYear = 0.14f;   // fertility scale
-        private const float WealthFertilityPenaltyMax = 0.030f;  // full-wealth fertility suppression
-        private const float FamineMortalityMax = 0.050f;         // total starvation death rate
-        private const float NetRateFloor = -0.06f;               // clamp for a collapsing population
-        private const float NetRateCeil = 0.055f;                // clamp for a boom
+        // Tuning constants (annual rates). Rates are scaled well ABOVE real-world demography for game
+        // pacing (#6): a settlement should visibly fill within a playthrough, so a healthy town grows
+        // ~10-15%/yr (doubling every ~5-7 years), not the real ~1-2%. The fertility/mortality SPLIT is
+        // kept so the transition SHAPE still reads — industrializing grows fastest, wealth softens it —
+        // and famine/war can still push a settlement into decline; the ends stay modestly positive
+        // rather than the realistic near-zero, because a stagnant settlement reads as broken in game.
+        private const float BirthsPerFertileWomanYear = 0.68f;   // fertility scale (~17%/yr at a 0.25 fertile share)
+        private const float WealthFertilityPenaltyMax = 0.080f;  // full-wealth fertility suppression
+        private const float FamineMortalityMax = 0.180f;         // total starvation death rate
+        private const float NetRateFloor = -0.12f;               // clamp for a collapsing population
+        private const float NetRateCeil = 0.25f;                 // clamp for a boom
 
         // --- individual additive factors (each pure and independently testable) ---
 
@@ -90,13 +94,13 @@ namespace RegionsAndSocieties.Sizing
         {
             switch (techLevel)
             {
-                case 2: return 0.035f;   // Neolithic
-                case 3: return 0.028f;   // Medieval
-                case 4: return 0.010f;   // Industrial
-                case 5: return 0.009f;   // Spacer
+                case 2: return 0.100f;   // Neolithic
+                case 3: return 0.075f;   // Medieval
+                case 4: return 0.030f;   // Industrial
+                case 5: return 0.025f;   // Spacer
                 case 6:
-                case 7: return 0.007f;   // Ultra / Archotech
-                default: return 0.020f;
+                case 7: return 0.020f;   // Ultra / Archotech
+                default: return 0.050f;
             }
         }
 

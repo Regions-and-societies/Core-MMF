@@ -20,14 +20,14 @@ namespace BirthrateRulesTests
                 BirthrateRules.WealthFertilityPenalty(0f) == 0f && BirthrateRules.WealthFertilityPenalty(1f) > 0f);
             Check("famine only when food is short", BirthrateRules.FamineMortality(1f) == 0f && BirthrateRules.FamineMortality(0.2f) > 0f);
 
-            Section("net rate reproduces the demographic transition");
+            Section("transition shape at game pace");
             float neo = BirthrateRules.NetAnnualRate(Inputs(2, 0.25f, 0f));           // pre-industrial, poor
             float industrializing = BirthrateRules.NetAnnualRate(Inputs(4, 0.25f, 0.3f)); // industrial, developing
             float richSpacer = BirthrateRules.NetAnnualRate(Inputs(5, 0.25f, 1.0f));  // wealthy post-industrial
-            Check($"pre-industrial net growth is ~0 (got {neo:0.000})", Close(neo, 0f, 0.006f));
-            Check("industrializing peaks above pre-industrial", industrializing > neo);
-            Check("wealthy post-industrial falls below industrializing (the hump)", richSpacer < industrializing);
-            Check("a wealthy, low-fertility society can decline (below replacement)", richSpacer < 0f);
+            Check($"a healthy developing town grows at a game pace ~10-15% (got {industrializing:0.000})", Between(industrializing, 0.09f, 0.16f));
+            Check("pre-industrial still grows (not stagnant), just slower than industrializing", neo > 0.03f && neo < industrializing);
+            Check("wealthy post-industrial falls below industrializing (the hump holds)", richSpacer < industrializing);
+            Check("but the ends stay positive at game pace (no stagnant settlements)", richSpacer > 0f);
 
             Section("factors are additive and degrade gracefully");
             var baseIn = Inputs(4, 0.25f, 0.3f);
@@ -43,8 +43,12 @@ namespace BirthrateRulesTests
             Check("a food shortfall lowers the rate (famine mortality)", BirthrateRules.NetAnnualRate(starving) < baseNet);
             var atWar = baseIn; atWar.WarLossRate = 0.03f;
             Check("war losses lower the rate", BirthrateRules.NetAnnualRate(atWar) < baseNet);
+            // Famine/war can still overwhelm growth and push a settlement into decline.
+            float besieged = BirthrateRules.NetAnnualRate(Inputs(5, 0.25f, 1.0f, 0.2f, 0.02f));
+            Check("heavy famine + war pushes a settlement below zero (it shrinks)", besieged < 0f);
             Check("net rate is clamped to a sane band",
-                BirthrateRules.NetAnnualRate(Inputs(4, 5f, 0f)) <= 0.06f && BirthrateRules.NetAnnualRate(Inputs(2, 0f, 1f, 1f, 0.5f)) >= -0.07f);
+                Between(BirthrateRules.NetAnnualRate(Inputs(4, 5f, 0f)), 0.20f, 0.25f)
+                && Between(BirthrateRules.NetAnnualRate(Inputs(2, 0f, 1f, 0.1f, 0.5f)), -0.12f, -0.10f));
 
             Section("one growth step");
             float r = 0.03f;
