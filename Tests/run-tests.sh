@@ -84,6 +84,10 @@ run_suite() {
 # their real shapes by the type-check below instead.
 INTEGRATION_PURE=$(ls $SRC/Integration/*.cs | grep -v -e RegionDebugReports -e RegionMcpTools -e TerritoryClaimHooks -e VoeOutpostCreator -e HoldingCreatorRegistry -e IHoldingCreator)
 
+# Sizing tables are pure EXCEPT the game-coupled glue (SettlementGrowthUtility reads Find / region
+# demographics), which cannot compile against the stubs — the real build covers it, like the other glue.
+SIZING_PURE=$(ls $SRC/Sizing/*.cs | grep -v -e SettlementGrowthUtility)
+
 run_suite integration Exe \
     Tests/RimWorldStubs.cs Tests/IntegrationTests.cs \
     $INTEGRATION_PURE
@@ -96,7 +100,7 @@ run_suite placement Exe \
 # only the Sizing tables and the WorldObjectKind enum they read.
 run_suite outpostrules Exe \
     Tests/RimWorldStubs.cs Tests/OutpostRulesTests.cs \
-    $SRC/Integration/WorldObjectKind.cs $SRC/Sizing/*.cs
+    $SRC/Integration/WorldObjectKind.cs $SIZING_PURE
 
 # 0.3.0 settlement birthrate-growth core (#6): tech-informed rate + logistic step toward the target.
 # Pure, no game — needs only the standalone BirthrateRules.
@@ -168,7 +172,7 @@ pre_typecheck_failures=$failures
 run_suite typecheck Library \
     Tests/RimWorldStubs.cs Tests/RimWorldStubsExt.cs \
     $INTEGRATION_PURE $SRC/Placement/*.cs $SRC/Economy/*.cs \
-    $SRC/RegionalDomainStatus.cs $SRC/Sizing/*.cs $SRC/Demographics/DemographicsRules.cs \
+    $SRC/RegionalDomainStatus.cs $SIZING_PURE $SRC/Demographics/DemographicsRules.cs \
     $SRC/WorldObjectPlacementUtility.cs $SRC/OutpostPlacementUtility.cs \
     $SRC/RegionalOwnershipUtility.cs \
     $SRC/GeographicProvince.cs $SRC/IRegionDemographicProvider.cs \
