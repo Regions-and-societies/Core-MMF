@@ -1,5 +1,5 @@
 [b]Discord Community:[/b] [url=https://discord.gg/eVBebZ2N9s]https://discord.gg/eVBebZ2N9s[/url]
-[b]Version:[/b] v0.2.0 (Target: RimWorld 1.5 / 1.6)
+[b]Version:[/b] v0.2.1 (Target: RimWorld 1.5 / 1.6)
 
 [img]https://i.imgur.com/tWWMap9.png[/img]
 [img]https://i.imgur.com/TfTAgoV.png[/img]
@@ -40,6 +40,11 @@ Removing it from an in-progress save will log errors about missing province data
 [/list]
 
 ---
+
+[h2]Changelog (v0.2.1) - Hotfix[/h2]
+[list]
+[*] Fixed: the in-game debug actions menu (dev mode) failed to open while the mod was installed. A debug action carried a parameter, which RimWorld cannot bind, so building the menu threw and it never opened. Removed the offending action; the menu now opens normally. No gameplay or save changes.
+[/list]
 
 [h2]Changelog (v0.2.0) - Regional Demographics[/h2]
 [list]
