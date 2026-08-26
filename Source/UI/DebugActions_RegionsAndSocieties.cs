@@ -322,7 +322,8 @@ namespace RegionsAndSocieties.UI
         // throws for a method with parameters — inside the Dialog_Debug constructor, so the ENTIRE debug
         // actions menu fails to open for anyone with the mod installed. The old IntVec3 province-id
         // helper here is removed; use the parameterless "R&S: ownership derivation (#69)" (selected
-        // tile) instead. Never give a [DebugAction] method a parameter.
+        // tile), or the headless MCP tool rt_ownership_derivation (RegionMcpTools) for a province by id.
+        // Never give a [DebugAction] method a parameter.
 
         /// <summary>
         /// #77 validation. The demographic pressure field is surface-only; before the fix an off-surface or
