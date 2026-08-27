@@ -41,10 +41,11 @@ namespace RegionsAndSocieties.Sizing
     /// <summary>
     /// Birthrate-informed growth of a settlement's modeled population (#6), as an additive factor model
     /// split into a <b>fertility</b> rate and a <b>mortality</b> rate. Births grow the population at full
-    /// rate up to 100% of dwelling capacity, taper between 100% and 150% (crowding), and stagnate past
-    /// 150%; the balance point is set by mortality, which food and security drive (famine, war). So a
-    /// well-fed, secure settlement overshoots its cap toward ~150% and a starved or besieged one falls —
-    /// the cap is the comfortable size, not a hard ceiling.
+    /// rate up to 100% of the passed <b>capacity</b> — the comfortable/target size — taper between 100%
+    /// and 150% (crowding), and stagnate past 150%; the balance point is set by mortality, which food and
+    /// security drive (famine, war). So a well-fed, secure settlement crowds above its target toward the
+    /// 150% ceiling and a starved or besieged one falls. The caller decides what capacity means: the game
+    /// passes the ⅔-max target, so 150% of it lands exactly on the tier max (the hard ceiling).
     ///
     /// <para>Rates here are at REAL-WORLD scale; the game applies a player-set multiplier (default 10×)
     /// for pacing, scaling births and deaths together so the balance point is unchanged and only the

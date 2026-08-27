@@ -302,8 +302,11 @@ namespace RegionsAndSocieties
                 settlementModeledPop[tile] = pop;
             }
 
-            int cap = Sizing.SettlementSizeUtility.MaxPopulationOf(settlement);
-            return ClampToCeiling((int)Math.Round(pop, MidpointRounding.AwayFromZero), cap);
+            // Growth capacity is the ⅔-max TARGET, not the tier max. Full births run up to the target;
+            // above it births taper, stagnating at 150% of the target — which, since target = ⅔ max, is
+            // exactly the tier max. So a healthy settlement crowds toward but never past its tier max.
+            int capacity = Sizing.SettlementSizeUtility.TargetPopulationOf(settlement);
+            return ClampToCeiling((int)Math.Round(pop, MidpointRounding.AwayFromZero), capacity);
         }
 
         /// <summary>
@@ -312,13 +315,14 @@ namespace RegionsAndSocieties
         /// the elapsed years. Prunes settlements that no longer exist and marks the population cache
         /// dirty so overlays reflect the new sizes. The player colony is skipped — real pawns only.
         /// </summary>
-        // Population may overshoot the cap up to the birth-stagnation ceiling (150%); clamp there, not
-        // at the cap, so a well-fed settlement can crowd above its comfortable size (#6).
-        private static int ClampToCeiling(int v, int cap)
+        // Population may crowd above the ⅔-max target up to the birth-stagnation ceiling (150% of the
+        // target = the tier max); clamp at the ceiling, so a well-fed settlement can grow past its
+        // comfortable size but never past its tier max (#6).
+        private static int ClampToCeiling(int v, int capacity)
         {
             if (v < 0) v = 0;
-            int ceil = (int)Math.Round(cap * Sizing.BirthrateRules.BirthStagnationRatio, MidpointRounding.AwayFromZero);
-            if (cap > 0 && v > ceil) v = ceil;
+            int ceil = (int)Math.Round(capacity * Sizing.BirthrateRules.BirthStagnationRatio, MidpointRounding.AwayFromZero);
+            if (capacity > 0 && v > ceil) v = ceil;
             return v;
         }
 
@@ -341,20 +345,21 @@ namespace RegionsAndSocieties
                 if (!settlementModeledPop.TryGetValue(tile, out float pop))
                     pop = Sizing.SettlementGrowthUtility.SeedPopulation(obj);
 
-                int cap = Sizing.SettlementSizeUtility.MaxPopulationOf(obj);
+                // Capacity is the ⅔-max target; births taper above it and stagnate at 150% of it (= tier max).
+                int capacity = Sizing.SettlementSizeUtility.TargetPopulationOf(obj);
                 var inputs = Sizing.SettlementGrowthUtility.BuildInputs(obj);
                 // Scale births and deaths together by the pacing multiplier — the balance point is
-                // unchanged, only the speed. Growth runs toward the cap and stagnates at 150%.
+                // unchanged, only the speed. Growth runs toward the target and stagnates at the tier max.
                 float mult = Integration.WorldObjectIntegrationSettings.growthRateMultiplier;
                 float fertility = Sizing.BirthrateRules.Fertility(inputs) * mult;
                 float mortality = Sizing.BirthrateRules.Mortality(inputs) * mult;
-                float next = Sizing.BirthrateRules.GrowStep(pop, cap, fertility, mortality, years);
+                float next = Sizing.BirthrateRules.GrowStep(pop, capacity, fertility, mortality, years);
                 settlementModeledPop[tile] = next;
 
                 // Publish the change at the integer level so a consumer sees growth events (no-op with
                 // no consumer). Rounded+clamped the same way GetModeledSettlementPopulation reports it.
-                int before = ClampToCeiling((int)Math.Round(pop, MidpointRounding.AwayFromZero), cap);
-                int after = ClampToCeiling((int)Math.Round(next, MidpointRounding.AwayFromZero), cap);
+                int before = ClampToCeiling((int)Math.Round(pop, MidpointRounding.AwayFromZero), capacity);
+                int after = ClampToCeiling((int)Math.Round(next, MidpointRounding.AwayFromZero), capacity);
                 Sizing.SettlementGrowthHooks.Report(obj, before, after);
             }
 

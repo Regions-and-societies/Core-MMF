@@ -58,12 +58,13 @@ namespace RegionsAndSocieties.Sizing
         }
 
         /// <summary>The starting modeled population for a settlement with no stored value yet: a third of
-        /// its capacity, floored so growth can begin. Zero for an untiered holding.</summary>
+        /// its ⅔-max target (the growth capacity), floored so growth can begin, so a fresh settlement
+        /// starts small and visibly climbs toward its target. Zero for an untiered holding.</summary>
         public static float SeedPopulation(WorldObject settlement)
         {
-            int cap = SettlementSizeUtility.MaxPopulationOf(settlement);
-            if (cap <= 0) return 0f;
-            float seed = cap * SeedFractionOfCapacity;
+            int capacity = SettlementSizeUtility.TargetPopulationOf(settlement);
+            if (capacity <= 0) return 0f;
+            float seed = capacity * SeedFractionOfCapacity;
             return seed < BirthrateRules.SeedFloor ? BirthrateRules.SeedFloor : seed;
         }
     }

@@ -1064,29 +1064,32 @@ namespace RegionsAndSocieties.Integration
             if (target == null) return tileId >= 0 ? "no NPC settlement on the selected tile" : "no NPC settlement found";
 
             var inputs = SettlementGrowthUtility.BuildInputs(target);
-            int cap = SettlementSizeUtility.MaxPopulationOf(target);
+            // Growth capacity is the ⅔-max target; the tier max is the hard ceiling (150% of target).
+            int capacity = SettlementSizeUtility.TargetPopulationOf(target);
+            int tierMax = SettlementSizeUtility.MaxPopulationOf(target);
             int now = mgr.GetModeledSettlementPopulation(target);
 
             float mult = WorldObjectIntegrationSettings.growthRateMultiplier;
             float fertility = BirthrateRules.Fertility(inputs) * mult;
             float mortality = BirthrateRules.Mortality(inputs) * mult;
-            float netAtCap = fertility - mortality;   // headline rate below capacity (crowding 1)
+            float netBelowTarget = fertility - mortality;   // headline rate below the target (crowding 1)
 
             var sb = new StringBuilder();
             sb.AppendLine("=== R&T settlement growth (#6) ===");
             sb.AppendLine($"{target.LabelCap}  faction={Name(target.Faction)}  tech={target.Faction?.def?.techLevel}  tier={SettlementSizeUtility.TierOf(target)}");
-            sb.AppendLine($"cap={cap}  ceiling(150%)={(int)System.Math.Round(cap * BirthrateRules.BirthStagnationRatio)}  current modeled pop={now}");
+            sb.AppendLine($"target(⅔max)={capacity}  tierMax(ceiling)={tierMax}  current modeled pop={now}");
             sb.AppendLine($"factors: fertileFraction={inputs.FertileFraction:0.000}  wealthLevel={inputs.WealthLevel:0.00}  food={inputs.FoodBalance:0.00}  ideoBias={inputs.IdeologyBias:0.000}  xenoBias={inputs.XenotypeBias:0.000}");
-            sb.AppendLine($"growth mult={mult:0.0}×  births={fertility * 100f:0.0}%/yr  deaths={mortality * 100f:0.0}%/yr  net(below cap)={netAtCap * 100f:0.0}%/yr");
+            sb.AppendLine($"growth mult={mult:0.0}×  births={fertility * 100f:0.0}%/yr  deaths={mortality * 100f:0.0}%/yr  net(below target)={netBelowTarget * 100f:0.0}%/yr");
 
             // Preview the curve forward, one year per step, under today's constant factors — it should
-            // climb toward the cap, cross it, and settle near where births taper to the death rate.
+            // climb toward the target, crowd above it, and settle just below the tier max as births taper
+            // to the death rate.
             sb.AppendLine("year : modeled pop  (preview, constant factors)");
             float sim = now;
             for (int year = 0; year <= 40; year++)
             {
-                if (year % 5 == 0) sb.AppendLine($"  {year,3} : {sim:0.0}  ({(cap > 0 ? sim / cap * 100f : 0f):0}% of cap)");
-                sim = BirthrateRules.GrowStep(sim, cap, fertility, mortality, 1f);
+                if (year % 5 == 0) sb.AppendLine($"  {year,3} : {sim:0.0}  ({(tierMax > 0 ? sim / tierMax * 100f : 0f):0}% of tier max)");
+                sim = BirthrateRules.GrowStep(sim, capacity, fertility, mortality, 1f);
             }
             return sb.ToString().TrimEnd();
         }
