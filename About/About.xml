@@ -4,7 +4,7 @@
     <author>Regions and Societies Team</author>
     <packageId>RegionsAndSocieties.Core</packageId>
     <url>https://github.com/Regions-and-societies/Core-MMF</url>
-    <modVersion>0.2.1</modVersion>
+    <modVersion>0.2.2</modVersion>
     <supportedVersions>
         <li>1.5</li>
         <li>1.6</li>
@@ -29,7 +29,7 @@
     </loadAfter>
     <description>
 Discord Community: https://discord.gg/eVBebZ2N9s
-Version: v0.2.1 (Target: RimWorld 1.5 / 1.6)
+Version: v0.2.2 (Target: RimWorld 1.5 / 1.6)
 
 Regions and Societies
 Official Wiki and Documentation: https://github.com/Regions-and-societies/Core-MMF/wiki
@@ -51,16 +51,10 @@ A world generated with the mod installed gets everything, including placement ru
 
 Requires: Map Mode Framework, Harmony
 
---- Changelog (v0.2.1) - Hotfix ---
-- Fixed: the in-game debug actions menu (dev mode) failed to open while the mod was installed. A debug action carried a parameter, which RimWorld cannot bind, so building the menu threw and it never opened. Removed the offending action; the menu now opens normally. No gameplay or save changes.
-
---- Changelog (v0.2.0) - Regional Demographics ---
-- Seven demographic axes per region, each with a map overlay, region-panel breakdown and public endpoint: age structure (tech-level pyramids, natalist memes, longevity genes), sex ratio, xenotype castes, ideoligion shares with neighbour belief-similarity, wealth/SES tiers (terrain richness and trade roads count), education tiers, and an occupation mix with employment rate.
-- Everything is derived on read from the world seed - deterministic on every machine, nothing added to the save file.
-- Honest DLC degradation: without Biotech the xenotype overlay says "all Baseliner"; without Ideology every region is secular - no flat map pretending to be data.
-- DemographicHooks API: companion mods can report drafts in progress (transient sex-ratio skew) or combat losses (a generational scar recovering over a configurable number of years, default 15, slider provided).
-- Territory compactness: faction domains square off instead of spidering, tunable with a new slider; expansion mods can rank candidate provinces with the same public metric.
-- Dwellings readout: the population tooltip answers for every habitable tile (zero included) as a compass block of the tile and its neighbours.
+--- Changelog (v0.2.2) - Worldgen fixes and performance ---
+- Fixed: black world on generate. Faction generation built each faction's ideoligion without the faction context and planet layer vanilla supplies, and classic (no-expansion) ideoligion role naming crashed world generation - the planet never rendered. Generation now mirrors vanilla's own call exactly, and a per-faction guard degrades any future faction failure to a logged skip instead of a dead world.
+- The player always has somewhere to land: at small worlds or low coverage, NPC placement could claim every settleable province and the starting-site chooser found no valid tile. Placement now always leaves at least one settleable land province unclaimed.
+- Worldgen performance at scale: terrain features are read from the world grid once instead of once per faction, and the tribal betweenness bonus no longer rebuilds its industrial-base map per candidate province - large planets (high planet scale, 100% coverage) generate dramatically faster.
 
 Source code: https://github.com/Regions-and-societies/Core-MMF
 Steam Workshop: https://steamcommunity.com/sharedfiles/filedetails/?id=3784666060
