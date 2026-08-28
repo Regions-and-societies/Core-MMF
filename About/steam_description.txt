@@ -1,6 +1,16 @@
 [b]Discord Community:[/b] [url=https://discord.gg/eVBebZ2N9s]https://discord.gg/eVBebZ2N9s[/url]
 [b]Version:[/b] v0.2.2 (Target: RimWorld 1.5 / 1.6)
 
+[h2]Compatibility Patches[/h2]
+Regions and Societies extends its demographic hooks to the mods below — install the matching patch and their factions, settlements, and events stay in sync with each region's live demographics, ownership, and population:
+[list]
+[*] [url=https://steamcommunity.com/sharedfiles/filedetails/?id=3784870393]Regions and Societies: Empire Patch[/url]
+[*] [url=https://steamcommunity.com/sharedfiles/filedetails/?id=3784875532]Regions and Societies: Vanilla Factions Expanded Patch[/url]
+[*] [url=https://steamcommunity.com/sharedfiles/filedetails/?id=3784875379]Regions and Societies: Outposts Expanded Patch[/url]
+[*] [url=https://steamcommunity.com/sharedfiles/filedetails/?id=3784875681]Regions and Societies: World Domination Patch[/url]
+[/list]
+[b]Alternative edition:[/b] using Realistic Planets 2? Install [url=https://steamcommunity.com/sharedfiles/filedetails/?id=3784666526]Regions and Societies (Realistic Planets 2)[/url] instead of this one.
+
 [img]https://i.imgur.com/tWWMap9.png[/img]
 [img]https://i.imgur.com/TfTAgoV.png[/img]
 [img]https://i.imgur.com/Kjvsy4j.png[/img]
