@@ -187,6 +187,42 @@ namespace RegionsAndSocieties.UI
             Log.Message(RegionDebugReports.SettlementGrowthReport(SelectedWorldTile()));
         }
 
+        [DebugAction("Regions and Societies", "R&S: outpost archetype preview (#18)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        private static void OutpostArchetypePreview()
+        {
+            // #18: for the selected land province (or the first found), report the archetype the
+            // position/faction-aware scorer would pick per candidate tile — without placing anything, so
+            // it works with no outpost creator (VOE) installed. Validates the worldgen-fed inputs + choice.
+            var mgr = Find.World?.GetComponent<SynapseRegionManager>();
+            if (mgr == null) { Log.Warning("[R&S] outpost preview: no region manager"); return; }
+
+            int tile = SelectedWorldTile();
+            GeographicProvince province = tile >= 0 ? mgr.GetProvinceForTile(tile) : null;
+            if (province == null || province.provinceType != ProvinceType.Land)
+            {
+                province = null;
+                var all = mgr.Provinces;
+                if (all != null)
+                    for (int i = 0; i < all.Count; i++)
+                        if (all[i] != null && all[i].provinceType == ProvinceType.Land) { province = all[i]; break; }
+            }
+            if (province == null) { Log.Warning("[R&S] outpost preview: no land province found"); return; }
+
+            // Prefer a province that has an anchor settlement, so the preview shows the position/faction
+            // pattern rather than the terrain-only degrade path.
+            string preview = OutpostSeedingUtility.PreviewArchetypes(province);
+            if (preview.Contains("no anchor") && mgr.Provinces != null)
+            {
+                foreach (var p in mgr.Provinces)
+                {
+                    if (p == null || p.provinceType != ProvinceType.Land) continue;
+                    string pr = OutpostSeedingUtility.PreviewArchetypes(p);
+                    if (!pr.Contains("no anchor")) { preview = pr; break; }
+                }
+            }
+            Log.Message(preview);
+        }
+
         // #72 border-overlay test tooling. Each reads the selected world tile (select a province on the
         // planet, then run) and falls back to the first land province when nothing is selected, so the
         // menu path and the headless run_debug_action path both work. Forced styles survive the repaint
