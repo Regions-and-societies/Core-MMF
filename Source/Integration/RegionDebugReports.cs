@@ -1242,9 +1242,10 @@ namespace RegionsAndSocieties.Integration
                 + $"  elders {demo.ageShares[(int)AgeBucket.Elder]:P0}");
             sb.AppendLine($"education (#15): index {demo.educationIndex}/100"
                 + $"    illiterate {demo.educationShares[(int)EducationTier.Illiterate]:P0}"
-                + $"  basic {demo.educationShares[(int)EducationTier.Basic]:P0}"
-                + $"  skilled {demo.educationShares[(int)EducationTier.Skilled]:P0}"
-                + $"  advanced {demo.educationShares[(int)EducationTier.Advanced]:P0}");
+                + $"  primary {demo.educationShares[(int)EducationTier.Primary]:P0}"
+                + $"  secondary {demo.educationShares[(int)EducationTier.Secondary]:P0}"
+                + $"  undergrad {demo.educationShares[(int)EducationTier.Undergrad]:P0}"
+                + $"  postgrad {demo.educationShares[(int)EducationTier.Postgrad]:P0}");
             sb.AppendLine($"socioeconomic (#14): index {demo.sesIndex}/100"
                 + $"    subsistence {demo.sesShares[(int)SesTier.Subsistence]:P0}"
                 + $"  modest {demo.sesShares[(int)SesTier.Modest]:P0}"

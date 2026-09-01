@@ -24,13 +24,14 @@ namespace RegionsAndSocieties.UI
         public static readonly Color Female = new Color(0.82f, 0.32f, 0.66f);
         public static readonly Color Male = new Color(0.28f, 0.52f, 0.86f);
 
-        // Education: illiterate -> advanced, brown -> blue (matches MapMode_Education).
+        // Education: illiterate -> postgrad, brown -> indigo (matches MapMode_Education's gradient).
         public static readonly Color[] Education =
         {
-            new Color(0.50f, 0.36f, 0.22f),   // Illiterate — brown
-            new Color(0.74f, 0.62f, 0.32f),   // Basic — tan
-            new Color(0.38f, 0.70f, 0.72f),   // Skilled — teal
-            new Color(0.24f, 0.50f, 0.86f),   // Advanced — blue
+            new Color(0.52f, 0.37f, 0.22f),   // Illiterate — brown
+            new Color(0.78f, 0.66f, 0.36f),   // Primary — tan
+            new Color(0.42f, 0.68f, 0.52f),   // Secondary — sage green
+            new Color(0.28f, 0.56f, 0.84f),   // Undergrad — blue
+            new Color(0.45f, 0.42f, 0.80f),   // Postgrad — indigo
         };
 
         // Socioeconomic: subsistence -> affluent, drab -> gold.

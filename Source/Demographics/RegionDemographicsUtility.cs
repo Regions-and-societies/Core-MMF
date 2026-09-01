@@ -256,7 +256,7 @@ namespace RegionsAndSocieties.Demographics
             float[] eduDist = EducationRules.Pyramid(ageProf.techLevel, ageProf.researchSkew, AptitudeOf(chosen));
             uint eduState = DemographicsRules.TileSeed(WorldSeed, tileId, EduSalt);
             int eduPick = DemographicsRules.WeightedPick(ref eduState, eduDist);
-            sample.educationTier = eduPick >= 0 ? (EducationTier)eduPick : EducationTier.Basic;
+            sample.educationTier = eduPick >= 0 ? (EducationTier)eduPick : EducationTier.Primary;
             return sample;
         }
 
@@ -607,9 +607,10 @@ namespace RegionsAndSocieties.Demographics
             if (demo.settledTiles <= 0) return null;
             return $"Education (index {demo.educationIndex}/100):\n"
                 + $"  Illiterate {demo.educationShares[(int)EducationTier.Illiterate]:P0}"
-                + $"   Basic {demo.educationShares[(int)EducationTier.Basic]:P0}"
-                + $"   Skilled {demo.educationShares[(int)EducationTier.Skilled]:P0}"
-                + $"   Advanced {demo.educationShares[(int)EducationTier.Advanced]:P0}";
+                + $"   Primary {demo.educationShares[(int)EducationTier.Primary]:P0}"
+                + $"   Secondary {demo.educationShares[(int)EducationTier.Secondary]:P0}"
+                + $"   Undergrad {demo.educationShares[(int)EducationTier.Undergrad]:P0}"
+                + $"   Postgrad {demo.educationShares[(int)EducationTier.Postgrad]:P0}";
         }
 
         /// <summary>

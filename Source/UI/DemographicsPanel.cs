@@ -51,9 +51,10 @@ namespace RegionsAndSocieties.UI
             y = BarSection(rect, y, $"Education  —  index {demo.educationIndex}/100", new List<BarSegment>
             {
                 new BarSegment("Illiterate", demo.educationShares[(int)EducationTier.Illiterate], DemographicColors.Education[0]),
-                new BarSegment("Basic", demo.educationShares[(int)EducationTier.Basic], DemographicColors.Education[1]),
-                new BarSegment("Skilled", demo.educationShares[(int)EducationTier.Skilled], DemographicColors.Education[2]),
-                new BarSegment("Advanced", demo.educationShares[(int)EducationTier.Advanced], DemographicColors.Education[3]),
+                new BarSegment("Primary", demo.educationShares[(int)EducationTier.Primary], DemographicColors.Education[1]),
+                new BarSegment("Secondary", demo.educationShares[(int)EducationTier.Secondary], DemographicColors.Education[2]),
+                new BarSegment("Undergrad", demo.educationShares[(int)EducationTier.Undergrad], DemographicColors.Education[3]),
+                new BarSegment("Postgrad", demo.educationShares[(int)EducationTier.Postgrad], DemographicColors.Education[4]),
             });
 
             y = BarSection(rect, y, $"Socioeconomic  —  index {demo.sesIndex}/100", new List<BarSegment>
