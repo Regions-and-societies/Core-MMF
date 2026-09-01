@@ -114,6 +114,12 @@ run_suite education Exe \
     Tests/EducationRulesTests.cs \
     $SRC/Demographics/EducationRules.cs
 
+# 0.3.0 faction-character core (#27): base/DLC archetype classification + knowledge/wealth skews, and the
+# end-to-end effect on education. Pure, no game — needs the character rules and the education core.
+run_suite factioncharacter Exe \
+    Tests/FactionCharacterRulesTests.cs \
+    $SRC/Demographics/FactionCharacterRules.cs $SRC/Demographics/EducationRules.cs
+
 # 0.2.0 socioeconomic-tiering core (#14): wealth thresholds -> SES tiers + index. Pure, no game.
 run_suite socioeconomic Exe \
     Tests/SocioeconomicRulesTests.cs \
@@ -162,6 +168,7 @@ run_suite typecheck Library \
     $SRC/GeographicProvince.cs $SRC/IRegionDemographicProvider.cs \
     $SRC/Demographics/AgeStructureRules.cs \
     $SRC/Demographics/EducationRules.cs \
+    $SRC/Demographics/FactionCharacterRules.cs \
     $SRC/Demographics/SocioeconomicRules.cs \
     $SRC/Demographics/EmploymentRules.cs \
     $SRC/Partition/BorderRules.cs \

@@ -142,6 +142,28 @@ namespace RegionsAndSocieties.UI
             Log.Message($"[R&S] opened region demographics panel for region {province.id} ({province.name}).");
         }
 
+        [DebugAction("Regions and Societies", "R&S: faction character report (#27)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        private static void FactionCharacterReport()
+        {
+            // #27 validation: for every humanlike NPC faction, its archetype and the knowledge/wealth
+            // skews it now carries, plus the resulting education index — so a raider reading low and an
+            // empire reading high is verifiable headlessly, independent of who owns which region.
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("=== R&S faction character (#27) ===");
+            sb.AppendLine("faction | tech | archetype | knowSkew | wealthMult | eduIdx | baseWealth");
+            foreach (Faction f in Find.FactionManager.AllFactionsListForReading)
+            {
+                if (f?.def == null || !f.def.humanlikeFaction || f.IsPlayer) continue;
+                int tech = (int)f.def.techLevel;
+                var arch = Demographics.FactionCharacterRules.Classify(f.def.defName, tech, f.def.permanentEnemy);
+                var ch = Demographics.FactionCharacterRules.CharacterOf(arch);
+                var prof = Demographics.RegionDemographicsUtility.ProfileFor(f);
+                int eduIdx = Demographics.EducationRules.Index(Demographics.EducationRules.Pyramid(tech, prof.researchSkew, 0f));
+                sb.AppendLine($"{f.Name} | {f.def.techLevel} | {arch} | {ch.knowledgeSkew:+0.00;-0.00} | {ch.wealthMultiplier:0.00}x | edu {eduIdx}/100 | wealth {prof.fallbackWealth}");
+            }
+            Log.Message(sb.ToString());
+        }
+
         // #72 border-overlay test tooling. Each reads the selected world tile (select a province on the
         // planet, then run) and falls back to the first land province when nothing is selected, so the
         // menu path and the headless run_debug_action path both work. Forced styles survive the repaint
