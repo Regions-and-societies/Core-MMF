@@ -10,12 +10,14 @@ namespace RegionsAndSocieties.UI
         public string label;
         public float fraction;   // 0..1, of the whole bar
         public Color color;
+        public string tooltip;   // optional context shown on hover; falls back to "label: pct"
 
-        public BarSegment(string label, float fraction, Color color)
+        public BarSegment(string label, float fraction, Color color, string tooltip = null)
         {
             this.label = label;
             this.fraction = fraction;
             this.color = color;
+            this.tooltip = tooltip;
         }
     }
 
@@ -77,7 +79,10 @@ namespace RegionsAndSocieties.UI
                 if (Mouse.IsOver(segRect))
                 {
                     Widgets.DrawBox(segRect);
-                    TooltipHandler.TipRegion(segRect, $"{seg.label}: {seg.fraction:P0}");
+                    string tip = string.IsNullOrEmpty(seg.tooltip)
+                        ? $"{seg.label}: {seg.fraction:P0}"
+                        : $"{seg.label} — {seg.fraction:P0}\n{seg.tooltip}";
+                    TooltipHandler.TipRegion(segRect, tip);
                 }
                 x += w;
             }

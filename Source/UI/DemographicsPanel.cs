@@ -48,29 +48,33 @@ namespace RegionsAndSocieties.UI
                 new BarSegment("Male", 1f - demo.femaleFraction, DemographicColors.Male),
             });
 
-            y = BarSection(rect, y, $"Education  —  index {demo.educationIndex}/100", new List<BarSegment>
+            // Education — each band carries the real-world level's meaning (skills, passion, economic
+            // role) from EducationRules.Profiles, and the header names the level most people reached.
+            EducationProfile[] edu = EducationRules.Profiles;
+            int eduModal = ModalIndex(demo.educationShares);
+            y = BarSection(rect, y, $"Education  —  index {demo.educationIndex}/100 · mostly {edu[eduModal].label}", new List<BarSegment>
             {
-                new BarSegment("Illiterate", demo.educationShares[(int)EducationTier.Illiterate], DemographicColors.Education[0]),
-                new BarSegment("Primary", demo.educationShares[(int)EducationTier.Primary], DemographicColors.Education[1]),
-                new BarSegment("Secondary", demo.educationShares[(int)EducationTier.Secondary], DemographicColors.Education[2]),
-                new BarSegment("Undergrad", demo.educationShares[(int)EducationTier.Undergrad], DemographicColors.Education[3]),
-                new BarSegment("Postgrad", demo.educationShares[(int)EducationTier.Postgrad], DemographicColors.Education[4]),
+                new BarSegment("Illiterate", demo.educationShares[(int)EducationTier.Illiterate], DemographicColors.Education[0], EduTip(edu, (int)EducationTier.Illiterate)),
+                new BarSegment("Primary", demo.educationShares[(int)EducationTier.Primary], DemographicColors.Education[1], EduTip(edu, (int)EducationTier.Primary)),
+                new BarSegment("Secondary", demo.educationShares[(int)EducationTier.Secondary], DemographicColors.Education[2], EduTip(edu, (int)EducationTier.Secondary)),
+                new BarSegment("Undergrad", demo.educationShares[(int)EducationTier.Undergrad], DemographicColors.Education[3], EduTip(edu, (int)EducationTier.Undergrad)),
+                new BarSegment("Postgrad", demo.educationShares[(int)EducationTier.Postgrad], DemographicColors.Education[4], EduTip(edu, (int)EducationTier.Postgrad)),
             });
 
             y = BarSection(rect, y, $"Socioeconomic  —  index {demo.sesIndex}/100", new List<BarSegment>
             {
-                new BarSegment("Subsistence", demo.sesShares[(int)SesTier.Subsistence], DemographicColors.Ses[0]),
-                new BarSegment("Modest", demo.sesShares[(int)SesTier.Modest], DemographicColors.Ses[1]),
-                new BarSegment("Prosperous", demo.sesShares[(int)SesTier.Prosperous], DemographicColors.Ses[2]),
-                new BarSegment("Affluent", demo.sesShares[(int)SesTier.Affluent], DemographicColors.Ses[3]),
+                new BarSegment("Subsistence", demo.sesShares[(int)SesTier.Subsistence], DemographicColors.Ses[0], "hand-to-mouth; no surplus to invest"),
+                new BarSegment("Modest", demo.sesShares[(int)SesTier.Modest], DemographicColors.Ses[1], "getting by; small savings"),
+                new BarSegment("Prosperous", demo.sesShares[(int)SesTier.Prosperous], DemographicColors.Ses[2], "comfortable; disposable income"),
+                new BarSegment("Affluent", demo.sesShares[(int)SesTier.Affluent], DemographicColors.Ses[3], "wealthy; capital to invest"),
             });
 
             y = BarSection(rect, y, $"Employment  —  {demo.employmentRate}% employed", new List<BarSegment>
             {
-                new BarSegment("Agriculture", demo.occupationShares[(int)OccupationSector.Agriculture], DemographicColors.Employment[0]),
-                new BarSegment("Industry", demo.occupationShares[(int)OccupationSector.Industry], DemographicColors.Employment[1]),
-                new BarSegment("Military", demo.occupationShares[(int)OccupationSector.Military], DemographicColors.Employment[2]),
-                new BarSegment("Trade", demo.occupationShares[(int)OccupationSector.Trade], DemographicColors.Employment[3]),
+                new BarSegment("Agriculture", demo.occupationShares[(int)OccupationSector.Agriculture], DemographicColors.Employment[0], "farming, foraging, herding — working the land"),
+                new BarSegment("Industry", demo.occupationShares[(int)OccupationSector.Industry], DemographicColors.Employment[1], "mining, crafting, manufacture"),
+                new BarSegment("Military", demo.occupationShares[(int)OccupationSector.Military], DemographicColors.Employment[2], "garrisons, standing forces"),
+                new BarSegment("Trade", demo.occupationShares[(int)OccupationSector.Trade], DemographicColors.Employment[3], "merchants, hauling, services"),
             });
 
             y += SectionGap;
@@ -96,6 +100,22 @@ namespace RegionsAndSocieties.UI
                     .ToList(), cacheKeyBase + "_ideo");
 
             return y - rect.y;
+        }
+
+        /// <summary>The hover context for an education band: the skills and passion a pawn of that level
+        /// brings (feeds #28) and the economic capability it unlocks (feeds the 0.4.0 economy).</summary>
+        private static string EduTip(EducationProfile[] p, int tier)
+            => $"skills {p[tier].skillLow}–{p[tier].skillHigh}, {p[tier].passion}\n{p[tier].economicRole}";
+
+        /// <summary>Index of the largest share — the tier/band most people fall in.</summary>
+        private static int ModalIndex(float[] shares)
+        {
+            int best = 0;
+            float bv = -1f;
+            if (shares != null)
+                for (int i = 0; i < shares.Length; i++)
+                    if (shares[i] > bv) { bv = shares[i]; best = i; }
+            return best;
         }
 
         private static float BarSection(Rect rect, float y, string header, List<BarSegment> segs)
