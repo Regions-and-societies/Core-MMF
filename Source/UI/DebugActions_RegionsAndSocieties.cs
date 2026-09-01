@@ -142,26 +142,43 @@ namespace RegionsAndSocieties.UI
             Log.Message($"[R&S] opened region demographics panel for region {province.id} ({province.name}).");
         }
 
-        [DebugAction("Regions and Societies", "R&S: faction character report (#27)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        [DebugAction("Regions and Societies", "R&S: faction character matrix (#27)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void FactionCharacterReport()
         {
-            // #27 validation: for every humanlike NPC faction, its archetype and the knowledge/wealth
-            // skews it now carries, plus the resulting education index — so a raider reading low and an
-            // empire reading high is verifiable headlessly, independent of who owns which region.
+            // #27: the canonical modifier matrix, one row per humanlike faction DEF across the base game
+            // and every active DLC — its module, tech level, archetype, and the knowledge/wealth skews it
+            // carries, plus the resulting education index and characteristic wealth. This is the data
+            // behind the faction-character infographic; deterministic, no live world needed.
             var sb = new System.Text.StringBuilder();
-            sb.AppendLine("=== R&S faction character (#27) ===");
-            sb.AppendLine("faction | tech | archetype | knowSkew | wealthMult | eduIdx | baseWealth");
-            foreach (Faction f in Find.FactionManager.AllFactionsListForReading)
+            sb.AppendLine("=== R&S faction character matrix (#27) ===");
+            sb.AppendLine("defName | module | tech | archetype | knowSkew | wealthMult | eduIdx | wealth");
+            foreach (var def in DefDatabase<FactionDef>.AllDefs)
             {
-                if (f?.def == null || !f.def.humanlikeFaction || f.IsPlayer) continue;
-                int tech = (int)f.def.techLevel;
-                var arch = Demographics.FactionCharacterRules.Classify(f.def.defName, tech, f.def.permanentEnemy);
+                if (def == null || !def.humanlikeFaction || def.isPlayer) continue;
+                int tech = (int)def.techLevel;
+                var arch = Demographics.FactionCharacterRules.Classify(def.defName, tech, def.permanentEnemy);
                 var ch = Demographics.FactionCharacterRules.CharacterOf(arch);
-                var prof = Demographics.RegionDemographicsUtility.ProfileFor(f);
-                int eduIdx = Demographics.EducationRules.Index(Demographics.EducationRules.Pyramid(tech, prof.researchSkew, 0f));
-                sb.AppendLine($"{f.Name} | {f.def.techLevel} | {arch} | {ch.knowledgeSkew:+0.00;-0.00} | {ch.wealthMultiplier:0.00}x | edu {eduIdx}/100 | wealth {prof.fallbackWealth}");
+                int eduIdx = Demographics.EducationRules.Index(Demographics.EducationRules.Pyramid(tech, ch.knowledgeSkew, 0f));
+                int wealth = (int)System.Math.Round(BaseWealthFor(tech) * ch.wealthMultiplier);
+                string module = def.modContentPack?.Name ?? "?";
+                sb.AppendLine($"{def.defName} | {module} | {def.techLevel} | {arch} | {ch.knowledgeSkew:+0.00;-0.00} | {ch.wealthMultiplier:0.00} | {eduIdx} | {wealth}");
             }
             Log.Message(sb.ToString());
+        }
+
+        // Mirror of FactionDemographicProfile.BaseWealth for the matrix report (kept local so the report
+        // has no reason to widen that private table's visibility).
+        private static int BaseWealthFor(int tech)
+        {
+            switch (tech)
+            {
+                case 1: case 2: return 120;   // Animal / Neolithic
+                case 3: return 250;           // Medieval
+                case 4: return 500;           // Industrial
+                case 5: return 1000;          // Spacer
+                case 6: case 7: return 2000;  // Ultra / Archotech
+                default: return 400;
+            }
         }
 
         // #72 border-overlay test tooling. Each reads the selected world tile (select a province on the
