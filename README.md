@@ -1,6 +1,15 @@
 # Regions and Societies (Core, Map Mode Framework edition)
 A comprehensive layer for creating world population and resource calculations
 
+## Roadmap
+
+Where the mod is and where it's headed — describe the people, let them live and change,
+refine what they are, then run an economy on them. Detail lives in the
+[issue tracker](https://github.com/Regions-and-societies/Core-MMF/issues) and
+[milestones](https://github.com/Regions-and-societies/Core-MMF/milestones).
+
+![Regions and Societies development roadmap](About/Roadmap.png)
+
 ## Release provenance
 
 Every release ships `Assemblies/CHECKSUMS.sha256`, generated from the final release build
