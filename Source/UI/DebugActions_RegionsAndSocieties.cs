@@ -104,6 +104,15 @@ namespace RegionsAndSocieties.UI
             Log.Message(RegionDebugReports.PartitionAuditReport());
         }
 
+        [DebugAction("Regions and Societies", "R&S: world + region shape report (#20)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        private static void WorldShapeReport()
+        {
+            // The world's reproduction key (seed + settings) + the worst-shaped regions. Because the
+            // partition is deterministic from the terrain, this is what lets a "region N is horrid" report
+            // be regenerated and fixed. Also auto-logged at worldgen.
+            Log.Message(RegionDebugReports.WorldShapeReport());
+        }
+
         [DebugAction("Regions and Societies", "R&S: dump partition to CSV (#20)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void DumpPartitionCsv()
         {

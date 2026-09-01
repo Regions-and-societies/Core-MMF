@@ -606,6 +606,53 @@ namespace RegionsAndSocieties.Integration
         /// signature the old river-absorption produced). The tail count should be zero or near it; a
         /// non-zero worst-shape list is where to look when eyeballing the map.
         /// </summary>
+        /// <summary>
+        /// The reproduction key for a world plus a region-shape audit (#20). Because the partition is a
+        /// deterministic function of the terrain — which is deterministic from seed + world settings +
+        /// modlist + game version — logging the seed and settings lets any "horrid region N" report be
+        /// reproduced exactly. Auto-logged at worldgen and available on demand; the worst-shaped list
+        /// (perimeter-per-tile, higher = spidery/ribbon) points at the regions to fix.
+        /// </summary>
+        public static string WorldShapeReport()
+        {
+            // No main-thread guard: this only READS world info and province data and builds a string (it
+            // creates no Unity objects), so it is safe to auto-log from the worldgen worker thread.
+            World world = Find.World;
+            if (world == null) return "no world loaded";
+            WorldInfo info = world.info;
+
+            var sb = new StringBuilder();
+            sb.AppendLine("=== R&S world + region-shape report (#20) ===");
+            sb.AppendLine($"world '{info?.name}'   seed \"{info?.seedString}\" (int {info?.Seed})");
+            sb.AppendLine($"coverage {info?.planetCoverage:P0}   rainfall {info?.overallRainfall}   temperature {info?.overallTemperature}   pollution {info?.pollution:P0}");
+            sb.AppendLine("REPRO: regenerate with this seed + these settings + this modlist to get the identical regions.");
+
+            var mgr = world.GetComponent<SynapseRegionManager>();
+            var provinces = mgr?.Provinces;
+            if (provinces == null) { sb.Append("no provinces generated."); return sb.ToString(); }
+
+            var scored = new List<(int id, int tiles, int perim, float ratio)>();
+            int tiny = 0;
+            foreach (GeographicProvince p in provinces)
+            {
+                if (p == null || p.provinceType != ProvinceType.Land || p.tiles == null || p.tiles.Count == 0) continue;
+                int tiles = p.tiles.Count;
+                int perim = p.perimeterEdgeCount > 0 ? p.perimeterEdgeCount : (p.perimeterTiles?.Count ?? 0);
+                if (tiles < 4) tiny++;
+                // Scale-invariant spideriness: perimeter / sqrt(area). A compact hex blob is ~6 at any
+                // size; a long thin ribbon grows without bound. So this flags genuinely bad SHAPES, not
+                // merely small provinces.
+                float ratio = (float)(perim / System.Math.Sqrt(tiles));
+                scored.Add((p.id, tiles, perim, ratio));
+            }
+            sb.AppendLine($"land provinces: {scored.Count}   tiny (<4 tiles): {tiny}");
+            scored.Sort((a, b) => b.ratio.CompareTo(a.ratio));
+            sb.AppendLine("worst-shaped (perimeter/√tiles — ~6 is a compact blob, higher = spidery/ribbon):");
+            for (int i = 0; i < scored.Count && i < 12; i++)
+                sb.AppendLine($"  region {scored[i].id}: {scored[i].tiles} tiles, perimeter {scored[i].perim}, spideriness {scored[i].ratio:0.0}");
+            return sb.ToString().TrimEnd();
+        }
+
         public static string PartitionAuditReport()
         {
             if (!UnityData.IsInMainThread) return "must run on the main thread";

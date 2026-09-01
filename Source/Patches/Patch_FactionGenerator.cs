@@ -617,6 +617,11 @@ namespace RegionsAndSocieties.Patches
             OutpostSeedingResult seeding = OutpostSeedingUtility.SeedOutposts();
             Log.Message("[RegionsAndSocieties] " + seeding.ToReport().TrimEnd());
 
+            // Log the world's reproduction key + region-shape audit at generation, so any "region N is a
+            // horrid shape" report can be reproduced exactly (the partition is deterministic from the
+            // seed + settings) and the worst-shaped regions are already flagged for #20 tuning.
+            Log.Message("[RegionsAndSocieties] " + Integration.RegionDebugReports.WorldShapeReport());
+
             Log.Message("[RegionsAndSocieties] Custom Faction Generation and Placement completed successfully.");
             return false;
         }
