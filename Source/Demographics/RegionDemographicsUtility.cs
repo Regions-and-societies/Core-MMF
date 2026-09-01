@@ -256,7 +256,7 @@ namespace RegionsAndSocieties.Demographics
             float[] eduDist = EducationRules.Pyramid(ageProf.techLevel, ageProf.researchSkew, AptitudeOf(chosen));
             uint eduState = DemographicsRules.TileSeed(WorldSeed, tileId, EduSalt);
             int eduPick = DemographicsRules.WeightedPick(ref eduState, eduDist);
-            sample.educationTier = eduPick >= 0 ? (EducationTier)eduPick : EducationTier.Basic;
+            sample.educationTier = eduPick >= 0 ? (EducationTier)eduPick : EducationTier.Primary;
             return sample;
         }
 
@@ -607,9 +607,10 @@ namespace RegionsAndSocieties.Demographics
             if (demo.settledTiles <= 0) return null;
             return $"Education (index {demo.educationIndex}/100):\n"
                 + $"  Illiterate {demo.educationShares[(int)EducationTier.Illiterate]:P0}"
-                + $"   Basic {demo.educationShares[(int)EducationTier.Basic]:P0}"
-                + $"   Skilled {demo.educationShares[(int)EducationTier.Skilled]:P0}"
-                + $"   Advanced {demo.educationShares[(int)EducationTier.Advanced]:P0}";
+                + $"   Primary {demo.educationShares[(int)EducationTier.Primary]:P0}"
+                + $"   Secondary {demo.educationShares[(int)EducationTier.Secondary]:P0}"
+                + $"   Undergrad {demo.educationShares[(int)EducationTier.Undergrad]:P0}"
+                + $"   Postgrad {demo.educationShares[(int)EducationTier.Postgrad]:P0}";
         }
 
         /// <summary>
@@ -1113,7 +1114,16 @@ namespace RegionsAndSocieties.Demographics
         {
             var p = new FactionDemographicProfile();
             TechLevel tech = faction.def?.techLevel ?? TechLevel.Industrial;
-            int baseWealth = BaseWealth(tech);
+
+            // Faction character (#27): a pirate band runs on looted tech — its people are not schooled or
+            // prosperous the way its tech level alone implies. Skew knowledge and wealth by archetype, so
+            // raiders read down and traders/empires read up. Unknown (modded/VFE) factions fall back to a
+            // trait guess a compatibility patch can override.
+            FactionArchetype archetype = FactionCharacterRules.Classify(
+                faction.def?.defName, (int)tech, faction.def?.permanentEnemy ?? false);
+            FactionCharacterRules.Character character = FactionCharacterRules.CharacterOf(archetype);
+
+            int baseWealth = (int)System.Math.Round(BaseWealth(tech) * character.wealthMultiplier);
             p.fallbackWealth = baseWealth;
             p.techLevel = (int)tech;   // seeds the age pyramid (#10): tribal birth-heavy vs spacer flat
 
@@ -1154,7 +1164,8 @@ namespace RegionsAndSocieties.Demographics
                 catch { p.primaryIdeo = null; }
             }
             p.natalistSkew = NatalistSkew(p.primaryIdeo);
-            p.researchSkew = ResearchSkew(p.primaryIdeo);
+            // Fold the faction-character knowledge skew (#27) into the education research skew, clamped.
+            p.researchSkew = Mathf.Clamp(ResearchSkew(p.primaryIdeo) + character.knowledgeSkew, -1f, 1f);
 
             return p;
         }

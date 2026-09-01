@@ -116,6 +116,71 @@ namespace RegionsAndSocieties.UI
             Log.Message(RegionDebugReports.RegenerateAndAudit());
         }
 
+        [DebugAction("Regions and Societies", "R&S: open region demographics panel (#26)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        private static void OpenRegionDemographicsPanel()
+        {
+            // Opens the visual demographic panel (#26) for the selected land province, or the first one
+            // found when nothing is selected — so the panel's render path is exercised headlessly (any
+            // draw-time exception surfaces in the log) and a human can eyeball it from the debug menu.
+            var mgr = Find.World?.GetComponent<SynapseRegionManager>();
+            if (mgr == null) { Log.Warning("[R&S] open region panel: no region manager"); return; }
+
+            int tile = SelectedWorldTile();
+            GeographicProvince province = tile >= 0 ? mgr.GetProvinceForTile(tile) : null;
+            if (province == null || province.provinceType != ProvinceType.Land)
+            {
+                province = null;
+                var all = mgr.Provinces;
+                if (all != null)
+                    for (int i = 0; i < all.Count; i++)
+                        if (all[i] != null && all[i].provinceType == ProvinceType.Land) { province = all[i]; break; }
+                tile = province != null && province.tiles != null && province.tiles.Count > 0 ? province.tiles[0] : -1;
+            }
+            if (province == null) { Log.Warning("[R&S] open region panel: no land province found"); return; }
+
+            RegionInfoWindow.OpenFor(province, tile);
+            Log.Message($"[R&S] opened region demographics panel for region {province.id} ({province.name}).");
+        }
+
+        [DebugAction("Regions and Societies", "R&S: faction character matrix (#27)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        private static void FactionCharacterReport()
+        {
+            // #27: the canonical modifier matrix, one row per humanlike faction DEF across the base game
+            // and every active DLC — its module, tech level, archetype, and the knowledge/wealth skews it
+            // carries, plus the resulting education index and characteristic wealth. This is the data
+            // behind the faction-character infographic; deterministic, no live world needed.
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("=== R&S faction character matrix (#27) ===");
+            sb.AppendLine("defName | module | tech | archetype | knowSkew | wealthMult | eduIdx | wealth");
+            foreach (var def in DefDatabase<FactionDef>.AllDefs)
+            {
+                if (def == null || !def.humanlikeFaction || def.isPlayer) continue;
+                int tech = (int)def.techLevel;
+                var arch = Demographics.FactionCharacterRules.Classify(def.defName, tech, def.permanentEnemy);
+                var ch = Demographics.FactionCharacterRules.CharacterOf(arch);
+                int eduIdx = Demographics.EducationRules.Index(Demographics.EducationRules.Pyramid(tech, ch.knowledgeSkew, 0f));
+                int wealth = (int)System.Math.Round(BaseWealthFor(tech) * ch.wealthMultiplier);
+                string module = def.modContentPack?.Name ?? "?";
+                sb.AppendLine($"{def.defName} | {module} | {def.techLevel} | {arch} | {ch.knowledgeSkew:+0.00;-0.00} | {ch.wealthMultiplier:0.00} | {eduIdx} | {wealth}");
+            }
+            Log.Message(sb.ToString());
+        }
+
+        // Mirror of FactionDemographicProfile.BaseWealth for the matrix report (kept local so the report
+        // has no reason to widen that private table's visibility).
+        private static int BaseWealthFor(int tech)
+        {
+            switch (tech)
+            {
+                case 1: case 2: return 120;   // Animal / Neolithic
+                case 3: return 250;           // Medieval
+                case 4: return 500;           // Industrial
+                case 5: return 1000;          // Spacer
+                case 6: case 7: return 2000;  // Ultra / Archotech
+                default: return 400;
+            }
+        }
+
         // #72 border-overlay test tooling. Each reads the selected world tile (select a province on the
         // planet, then run) and falls back to the first land province when nothing is selected, so the
         // menu path and the headless run_debug_action path both work. Forced styles survive the repaint
