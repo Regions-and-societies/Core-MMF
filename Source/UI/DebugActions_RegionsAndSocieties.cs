@@ -116,6 +116,32 @@ namespace RegionsAndSocieties.UI
             Log.Message(RegionDebugReports.RegenerateAndAudit());
         }
 
+        [DebugAction("Regions and Societies", "R&S: open region demographics panel (#26)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        private static void OpenRegionDemographicsPanel()
+        {
+            // Opens the visual demographic panel (#26) for the selected land province, or the first one
+            // found when nothing is selected — so the panel's render path is exercised headlessly (any
+            // draw-time exception surfaces in the log) and a human can eyeball it from the debug menu.
+            var mgr = Find.World?.GetComponent<SynapseRegionManager>();
+            if (mgr == null) { Log.Warning("[R&S] open region panel: no region manager"); return; }
+
+            int tile = SelectedWorldTile();
+            GeographicProvince province = tile >= 0 ? mgr.GetProvinceForTile(tile) : null;
+            if (province == null || province.provinceType != ProvinceType.Land)
+            {
+                province = null;
+                var all = mgr.Provinces;
+                if (all != null)
+                    for (int i = 0; i < all.Count; i++)
+                        if (all[i] != null && all[i].provinceType == ProvinceType.Land) { province = all[i]; break; }
+                tile = province != null && province.tiles != null && province.tiles.Count > 0 ? province.tiles[0] : -1;
+            }
+            if (province == null) { Log.Warning("[R&S] open region panel: no land province found"); return; }
+
+            RegionInfoWindow.OpenFor(province, tile);
+            Log.Message($"[R&S] opened region demographics panel for region {province.id} ({province.name}).");
+        }
+
         // #72 border-overlay test tooling. Each reads the selected world tile (select a province on the
         // planet, then run) and falls back to the first land province when nothing is selected, so the
         // menu path and the headless run_debug_action path both work. Forced styles survive the repaint
