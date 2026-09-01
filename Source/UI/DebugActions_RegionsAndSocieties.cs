@@ -181,6 +181,12 @@ namespace RegionsAndSocieties.UI
             }
         }
 
+        [DebugAction("Regions and Societies", "R&S: settlement growth curve (#6)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        private static void SettlementGrowth()
+        {
+            Log.Message(RegionDebugReports.SettlementGrowthReport(SelectedWorldTile()));
+        }
+
         // #72 border-overlay test tooling. Each reads the selected world tile (select a province on the
         // planet, then run) and falls back to the first land province when nothing is selected, so the
         // menu path and the headless run_debug_action path both work. Forced styles survive the repaint

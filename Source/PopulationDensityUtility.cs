@@ -396,6 +396,12 @@ namespace RegionsAndSocieties
                 return 0;
             }
 
+            // NPC settlement: the modeled population grown over time by the birthrate model (#6),
+            // seeded and clamped to the settlement's cap by the region manager. Falls back to a static
+            // tech-based estimate only when there is no world/manager (e.g. very early load).
+            var mgr = Find.World?.GetComponent<SynapseRegionManager>();
+            if (mgr != null) return mgr.GetModeledSettlementPopulation(settlement);
+
             int basePop = 50;
             if (settlement.Faction != null)
             {

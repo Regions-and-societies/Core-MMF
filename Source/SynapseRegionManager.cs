@@ -14,6 +14,15 @@ namespace RegionsAndSocieties
         private int[] tileToProvinceId;
         private Dictionary<int, int> settlementPlacementOrder = new Dictionary<int, int>();
 
+        // Modeled population per NPC settlement (keyed by tile id), grown over time by the birthrate
+        // model (#6). Scribed so a settlement's size persists across saves. The player colony is never
+        // in here — its size is the real free-colonist count.
+        private Dictionary<int, float> settlementModeledPop = new Dictionary<int, float>();
+
+        // One in-game day between growth ticks — growth is measured in years, so a daily step is smooth
+        // and keeps the per-settlement sweep off the hot path.
+        private const int GrowthTickInterval = 60000;
+
         public int GetSettlementPlacementOrder(int tileId)
         {
             if (settlementPlacementOrder != null && settlementPlacementOrder.TryGetValue(tileId, out int order))
@@ -252,6 +261,11 @@ namespace RegionsAndSocieties
                 Demographics.RegionDemographicsStress.Tick(DemographicDecayInterval);
             }
 
+            if (Find.TickManager != null && Find.TickManager.TicksGame % GrowthTickInterval == 0)
+            {
+                AdvanceSettlementGrowth(GrowthTickInterval);
+            }
+
             if (!pendingCompatibilityNotice) return;
             pendingCompatibilityNotice = false;
 
@@ -269,6 +283,93 @@ namespace RegionsAndSocieties
                 "is designed around; compatibility mode exists so an existing save is usable, not equivalent.\n\n" +
                 "You can review this under 'Strict territorial ownership' in the mod settings.",
                 LetterDefOf.NeutralEvent);
+        }
+
+        /// <summary>
+        /// The modeled population of an NPC settlement (#6), seeding a fresh one at a third of its
+        /// target on first read and clamping to its current cap. The player colony is never modeled —
+        /// callers read its real free-colonist count instead.
+        /// </summary>
+        public int GetModeledSettlementPopulation(WorldObject settlement)
+        {
+            if (settlement == null) return 0;
+            if (settlementModeledPop == null) settlementModeledPop = new Dictionary<int, float>();
+
+            int tile = settlement.Tile;
+            if (!settlementModeledPop.TryGetValue(tile, out float pop))
+            {
+                pop = Sizing.SettlementGrowthUtility.SeedPopulation(settlement);
+                settlementModeledPop[tile] = pop;
+            }
+
+            // Growth capacity is the ⅔-max TARGET, not the tier max. Full births run up to the target;
+            // above it births taper, stagnating at 150% of the target — which, since target = ⅔ max, is
+            // exactly the tier max. So a healthy settlement crowds toward but never past its tier max.
+            int capacity = Sizing.SettlementSizeUtility.TargetPopulationOf(settlement);
+            return ClampToCeiling((int)Math.Round(pop, MidpointRounding.AwayFromZero), capacity);
+        }
+
+        /// <summary>
+        /// Advance every NPC settlement's modeled population one growth step (#6): net rate from the
+        /// birthrate factor model, applied as a logistic drift toward the settlement's ⅔-max target over
+        /// the elapsed years. Prunes settlements that no longer exist and marks the population cache
+        /// dirty so overlays reflect the new sizes. The player colony is skipped — real pawns only.
+        /// </summary>
+        // Population may crowd above the ⅔-max target up to the birth-stagnation ceiling (150% of the
+        // target = the tier max); clamp at the ceiling, so a well-fed settlement can grow past its
+        // comfortable size but never past its tier max (#6).
+        private static int ClampToCeiling(int v, int capacity)
+        {
+            if (v < 0) v = 0;
+            int ceil = (int)Math.Round(capacity * Sizing.BirthrateRules.BirthStagnationRatio, MidpointRounding.AwayFromZero);
+            if (capacity > 0 && v > ceil) v = ceil;
+            return v;
+        }
+
+        private void AdvanceSettlementGrowth(int intervalTicks)
+        {
+            if (Find.WorldObjects == null) return;
+            if (settlementModeledPop == null) settlementModeledPop = new Dictionary<int, float>();
+
+            float years = intervalTicks / (float)GenDate.TicksPerYear;
+            var live = new HashSet<int>();
+
+            foreach (var obj in Find.WorldObjects.AllWorldObjects)
+            {
+                if (obj == null || !Integration.WorldObjectClassifier.IsSettlement(obj)) continue;
+                if (obj.Faction != null && obj.Faction.IsPlayer) continue;   // player = real pawns
+
+                int tile = obj.Tile;
+                live.Add(tile);
+
+                if (!settlementModeledPop.TryGetValue(tile, out float pop))
+                    pop = Sizing.SettlementGrowthUtility.SeedPopulation(obj);
+
+                // Capacity is the ⅔-max target; births taper above it and stagnate at 150% of it (= tier max).
+                int capacity = Sizing.SettlementSizeUtility.TargetPopulationOf(obj);
+                var inputs = Sizing.SettlementGrowthUtility.BuildInputs(obj);
+                // Scale births and deaths together by the pacing multiplier — the balance point is
+                // unchanged, only the speed. Growth runs toward the target and stagnates at the tier max.
+                float mult = Integration.WorldObjectIntegrationSettings.growthRateMultiplier;
+                float fertility = Sizing.BirthrateRules.Fertility(inputs) * mult;
+                float mortality = Sizing.BirthrateRules.Mortality(inputs) * mult;
+                float next = Sizing.BirthrateRules.GrowStep(pop, capacity, fertility, mortality, years);
+                settlementModeledPop[tile] = next;
+
+                // Publish the change at the integer level so a consumer sees growth events (no-op with
+                // no consumer). Rounded+clamped the same way GetModeledSettlementPopulation reports it.
+                int before = ClampToCeiling((int)Math.Round(pop, MidpointRounding.AwayFromZero), capacity);
+                int after = ClampToCeiling((int)Math.Round(next, MidpointRounding.AwayFromZero), capacity);
+                Sizing.SettlementGrowthHooks.Report(obj, before, after);
+            }
+
+            if (settlementModeledPop.Count > live.Count)
+            {
+                var stale = settlementModeledPop.Keys.Where(k => !live.Contains(k)).ToList();
+                foreach (int k in stale) settlementModeledPop.Remove(k);
+            }
+
+            PopulationDensityUtility.MarkCacheDirty();
         }
 
         public override void ExposeData()
@@ -310,6 +411,14 @@ namespace RegionsAndSocieties
             if (settlementPlacementOrder == null)
             {
                 settlementPlacementOrder = new Dictionary<int, int>();
+            }
+
+            // Modeled NPC settlement populations (#6): the size a settlement has grown to, persisted so
+            // growth continues across saves rather than reseeding.
+            Scribe_Collections.Look(ref settlementModeledPop, "settlementModeledPop", LookMode.Value, LookMode.Value);
+            if (settlementModeledPop == null)
+            {
+                settlementModeledPop = new Dictionary<int, float>();
             }
 
             List<int> tempList = null;

@@ -1040,6 +1040,60 @@ namespace RegionsAndSocieties.Integration
         /// #56: per settlement, its size tier, the outpost allowance that tier grants its territory,
         /// and how many outposts the territory already holds. The tuning surface for the seeding pass.
         /// </summary>
+        /// <summary>
+        /// #6 growth validation: for the selected NPC settlement (or the first one found), report its
+        /// growth factors and simulate the population curve forward, so the approach to target is
+        /// verifiable via <c>run_debug_action</c> without waiting in-game. The simulation is a preview
+        /// under today's factors — it does not change the settlement's real modeled population.
+        /// </summary>
+        public static string SettlementGrowthReport(int tileId)
+        {
+            if (!UnityData.IsInMainThread) return "must run on the main thread";
+            if (Find.World == null || Find.WorldObjects == null) return "no world loaded";
+            var mgr = Find.World.GetComponent<SynapseRegionManager>();
+            if (mgr == null) return "no region manager";
+
+            WorldObject target = null;
+            foreach (var o in Find.WorldObjects.AllWorldObjects)
+            {
+                if (!WorldObjectClassifier.IsSettlement(o)) continue;
+                if (o.Faction != null && o.Faction.IsPlayer) continue;
+                if (tileId >= 0) { if (o.Tile == tileId) { target = o; break; } }
+                else { target = o; break; }
+            }
+            if (target == null) return tileId >= 0 ? "no NPC settlement on the selected tile" : "no NPC settlement found";
+
+            var inputs = SettlementGrowthUtility.BuildInputs(target);
+            // Growth capacity is the ⅔-max target; the tier max is the hard ceiling (150% of target).
+            int capacity = SettlementSizeUtility.TargetPopulationOf(target);
+            int tierMax = SettlementSizeUtility.MaxPopulationOf(target);
+            int now = mgr.GetModeledSettlementPopulation(target);
+
+            float mult = WorldObjectIntegrationSettings.growthRateMultiplier;
+            float fertility = BirthrateRules.Fertility(inputs) * mult;
+            float mortality = BirthrateRules.Mortality(inputs) * mult;
+            float netBelowTarget = fertility - mortality;   // headline rate below the target (crowding 1)
+
+            var sb = new StringBuilder();
+            sb.AppendLine("=== R&T settlement growth (#6) ===");
+            sb.AppendLine($"{target.LabelCap}  faction={Name(target.Faction)}  tech={target.Faction?.def?.techLevel}  tier={SettlementSizeUtility.TierOf(target)}");
+            sb.AppendLine($"target(⅔max)={capacity}  tierMax(ceiling)={tierMax}  current modeled pop={now}");
+            sb.AppendLine($"factors: fertileFraction={inputs.FertileFraction:0.000}  wealthLevel={inputs.WealthLevel:0.00}  food={inputs.FoodBalance:0.00}  ideoBias={inputs.IdeologyBias:0.000}  xenoBias={inputs.XenotypeBias:0.000}");
+            sb.AppendLine($"growth mult={mult:0.0}×  births={fertility * 100f:0.0}%/yr  deaths={mortality * 100f:0.0}%/yr  net(below target)={netBelowTarget * 100f:0.0}%/yr");
+
+            // Preview the curve forward, one year per step, under today's constant factors — it should
+            // climb toward the target, crowd above it, and settle just below the tier max as births taper
+            // to the death rate.
+            sb.AppendLine("year : modeled pop  (preview, constant factors)");
+            float sim = now;
+            for (int year = 0; year <= 40; year++)
+            {
+                if (year % 5 == 0) sb.AppendLine($"  {year,3} : {sim:0.0}  ({(tierMax > 0 ? sim / tierMax * 100f : 0f):0}% of tier max)");
+                sim = BirthrateRules.GrowStep(sim, capacity, fertility, mortality, 1f);
+            }
+            return sb.ToString().TrimEnd();
+        }
+
         public static string SettlementTierAllowanceReport()
         {
             if (!UnityData.IsInMainThread) return "must run on the main thread";
