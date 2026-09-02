@@ -89,6 +89,13 @@ namespace RegionsAndSocieties
                 options.Add(new FloatMenuOption(employMode.def.LabelCap, () => MapModeComponent.Instance.RequestMapModeSwitch(employMode)));
             }
 
+            // Biomes & walls: the terrain/partition debug overlay (#20).
+            var barriersMode = MapModeComponent.Instance.mapModes.FirstOrDefault(m => m.def.defName == "SynapseNaturalBarriers");
+            if (barriersMode != null)
+            {
+                options.Add(new FloatMenuOption(barriersMode.def.LabelCap, () => MapModeComponent.Instance.RequestMapModeSwitch(barriersMode)));
+            }
+
             if (options.Any())
             {
                 Find.WindowStack.Add(new FloatMenu(options));
