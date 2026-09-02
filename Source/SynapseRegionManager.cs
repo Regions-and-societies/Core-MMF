@@ -115,6 +115,19 @@ namespace RegionsAndSocieties
             return GetProvince(pid);
         }
 
+        // The per-region dynamic population offset the #5/#8 passes accumulate on top of the derived base.
+        // Scribed, so a save keeps how its map has drifted. Effective population = base + this.
+        private Dictionary<int, float> regionPopulationDelta = new Dictionary<int, float>();
+
+        /// <summary>The dynamic population offset a region has accumulated from migration/accretion (#5/#8),
+        /// on top of its derived base. Zero for a region that has never moved.</summary>
+        public float PopulationDeltaOf(int regionId)
+            => regionPopulationDelta != null && regionPopulationDelta.TryGetValue(regionId, out float v) ? v : 0f;
+
+        /// <summary>Run a population-dynamics pass right now (the on-request path for the #5 endpoint and the
+        /// debug action), so a consumer never reads a stale number after an event. Returns people migrated.</summary>
+        public float RunPopulationDynamicsNow() => Integration.PopulationDynamics.RunPasses(this, regionPopulationDelta);
+
         // -1 unresolved, 0 compatibility (non-strict), 1 strict. An int rather than a bool because
         // "absent from this save" has to be distinguishable from "saved as false" — that
         // distinction is the whole mechanism for adopting a save R&T was not present for.
@@ -337,6 +350,13 @@ namespace RegionsAndSocieties
                 AdvanceSettlementGrowth(GrowthTickInterval);
             }
 
+            // Population dynamics (#5/#8): every 10 days, AFTER growth, so the write order is grow → accrete
+            // → migrate on the shared delta. Governance-off is handled inside RunPasses.
+            if (Find.TickManager != null && Find.TickManager.TicksGame % Integration.PopulationDynamics.CadenceTicks == 0)
+            {
+                Integration.PopulationDynamics.RunPasses(this, regionPopulationDelta);
+            }
+
             if (!pendingCompatibilityNotice) return;
             pendingCompatibilityNotice = false;
 
@@ -471,6 +491,14 @@ namespace RegionsAndSocieties
             if (provinces == null)
             {
                 provinces = new List<GeographicProvince>();
+            }
+
+            // Dynamic population offsets accumulated by the #5/#8 passes — scribed so a save keeps how its
+            // map has drifted from the derived baseline.
+            Scribe_Collections.Look(ref regionPopulationDelta, "regionPopulationDelta", LookMode.Value, LookMode.Value);
+            if (regionPopulationDelta == null)
+            {
+                regionPopulationDelta = new Dictionary<int, float>();
             }
 
             // 0.8: sparse demographic stress overrides. The demographic baseline is deterministic
@@ -843,7 +871,39 @@ namespace RegionsAndSocieties
             DiagnoseTinyRegions(5);
             DiagnoseBigRegions(150);
             DiagnoseUnmergedSlivers();
-            DiagnoseRegion(282);
+            ExportWorldMapCsv(@"C:\RimWorldDevData\partition_export.csv");
+        }
+
+        /// <summary>
+        /// Dump every tile's biome, region and lon/lat position (plus neighbour ids) to a CSV, so the world
+        /// map can be rendered offline when the in-game screen capture is unavailable — a biome+region map
+        /// that shows exactly where region borders sit relative to biome edges.
+        /// </summary>
+        private void ExportWorldMapCsv(string path)
+        {
+            var grid = Find.WorldGrid;
+            if (grid == null) return;
+            var byId = provinces.ToDictionary(p => p.id, p => p);
+            var neighbors = new List<RimWorld.Planet.PlanetTile>();
+            var sb = new System.Text.StringBuilder();
+            sb.Append("tileId,lon,lat,biome,provinceId,provinceType,neighbors\n");
+            int n = grid.TilesCount;
+            for (int t = 0; t < n; t++)
+            {
+                UnityEngine.Vector2 ll = grid.LongLatOf(t);
+                Tile tile = grid[t];
+                string biome = tile?.PrimaryBiome?.defName ?? "";
+                int pid = (tileToProvinceId != null && t < tileToProvinceId.Length) ? tileToProvinceId[t] : -1;
+                string ptype = (pid >= 0 && byId.TryGetValue(pid, out var p)) ? p.provinceType.ToString() : "";
+                neighbors.Clear();
+                grid.GetTileNeighbors(t, neighbors);
+                var nb = new System.Text.StringBuilder();
+                for (int i = 0; i < neighbors.Count; i++) { if (i > 0) nb.Append('|'); nb.Append(neighbors[i].tileId); }
+                sb.Append(t).Append(',').Append(ll.x.ToString("F3")).Append(',').Append(ll.y.ToString("F3"))
+                  .Append(',').Append(biome).Append(',').Append(pid).Append(',').Append(ptype).Append(',').Append(nb).Append('\n');
+            }
+            try { System.IO.File.WriteAllText(path, sb.ToString()); Log.Message($"[RegionsAndSocieties] Exported world map CSV: {path} ({n} tiles)"); }
+            catch (System.Exception e) { Log.Warning($"[RegionsAndSocieties] ExportWorldMapCsv failed: {e.Message}"); }
         }
 
         /// <summary>
