@@ -35,6 +35,14 @@ namespace RegionsAndSocieties
                 options.Add(new FloatMenuOption(popMode.def.LabelCap, () => MapModeComponent.Instance.RequestMapModeSwitch(popMode)));
             }
 
+            // Residences: population resolved into homes by urbanization (0.3.0). Population is people;
+            // residences are where they live — rural extended-family homesteads to dense urban households.
+            var residenceMode = MapModeComponent.Instance.mapModes.FirstOrDefault(m => m.def.defName == "SynapseResidence");
+            if (residenceMode != null)
+            {
+                options.Add(new FloatMenuOption(residenceMode.def.LabelCap, () => MapModeComponent.Instance.RequestMapModeSwitch(residenceMode)));
+            }
+
             // Age structure: regions shaded by median age (#10). Sits alongside dwellings as another
             // read of the same deterministic demographic model.
             var ageMode = MapModeComponent.Instance.mapModes.FirstOrDefault(m => m.def.defName == "SynapseAgeStructure");

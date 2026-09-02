@@ -178,7 +178,7 @@ namespace RegionsAndSocieties.UI
             Widgets.BeginScrollView(content, ref scrolls[idx], view);
 
             RegionDemographics demo = RegionDemographicsUtility.ForRegion(province);
-            float y = DemographicsPanel.Draw(new Rect(0f, 0f, viewW, 0f), demo, $"RegionInfo_{province.id}");
+            float y = DemographicsPanel.Draw(new Rect(0f, 0f, viewW, 0f), demo, province.currentPopulation, $"RegionInfo_{province.id}");
 
             Widgets.EndScrollView();
             contentHeights[idx] = y;

@@ -2,9 +2,20 @@
 <Defs>
   <MapModeFramework.MapModeDef MayRequireAnyOf="NozoMe.MapModeFramework,koth.RealisticPlanets2">
     <defName>SynapsePopulationDensity</defName>
-    <label>dwellings</label>
-    <description>Visualizes the density of pawn dwellings across the planet.</description>
+    <label>population</label>
+    <description>Shades each tile by how many people live there — a heatmap that fades outward from the busiest settlements.</description>
     <mapModeClass>RegionsAndSocieties.MapMode_PopulationDensity</mapModeClass>
+    <worldLayerClass>MapModeFramework.WorldLayer_MapMode_Terrain</worldLayerClass>
+    <iconPath>UI/MapModes/Default</iconPath>
+    <canCache>true</canCache>
+    <includeWater>false</includeWater>
+  </MapModeFramework.MapModeDef>
+
+  <MapModeFramework.MapModeDef MayRequireAnyOf="NozoMe.MapModeFramework,koth.RealisticPlanets2">
+    <defName>SynapseResidence</defName>
+    <label>residences</label>
+    <description>Shades each tile by how its people are housed — rural homesteads (extended families on wide land) in green, cities (nuclear households on small lots) in red. The label counts residences, so population reads as homes, not head count.</description>
+    <mapModeClass>RegionsAndSocieties.MapMode_Residence</mapModeClass>
     <worldLayerClass>MapModeFramework.WorldLayer_MapMode_Terrain</worldLayerClass>
     <iconPath>UI/MapModes/Default</iconPath>
     <canCache>true</canCache>
