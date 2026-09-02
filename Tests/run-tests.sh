@@ -124,6 +124,12 @@ run_suite education Exe \
     Tests/EducationRulesTests.cs \
     $SRC/Demographics/EducationRules.cs
 
+# 0.3.0 residence core: population -> homes, occupancy (extended->nuclear), and land, driven by how
+# urban a place is. Pure, no game.
+run_suite residence Exe \
+    Tests/ResidenceRulesTests.cs \
+    $SRC/Demographics/ResidenceRules.cs
+
 # 0.3.0 faction-character core (#27): base/DLC archetype classification + knowledge/wealth skews, and the
 # end-to-end effect on education. Pure, no game — needs the character rules and the education core.
 run_suite factioncharacter Exe \
