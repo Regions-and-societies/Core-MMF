@@ -178,40 +178,59 @@ namespace RegionsAndSocieties.Partition
             int total = grid.TilesCount;
             int baseMax = maxRegionTiles > 0 ? maxRegionTiles : 150;
 
-            // Phase 1: classify. interior = unclaimed low land; wall = unclaimed high/impassable land. A
-            // tile with no biome is treated as wall (never a grid seed) so it only ever drapes.
+            // Phase 1: classify the remaining unclaimed land as claimable interior. Water AND impassable
+            // mountains are already claimed (Ocean / MountainRange provinces) before this runs, so their
+            // tiles are hard walls here — a container can neither include them nor cross them. EVERY other
+            // passable tile is interior: flat, small hills, large hills and passable mountains all count, so
+            // only impassable terrain, water and biome edges bound a container. Hills therefore no longer
+            // shatter the land into slivers, and impassable rock is never drawn into a territory.
             var interior = new bool[total];
-            var wall = new bool[total];
             var biomeOf = new BiomeDef[total];
             for (int t = 0; t < total; t++)
             {
-                if (tileToProvinceId[t] >= 0) continue;         // water/ocean already claimed = hard wall
+                if (tileToProvinceId[t] >= 0) continue;         // water / impassable already claimed = hard wall
                 Tile tile = grid[t];
                 if (tile == null || tile.WaterCovered) continue;
+                if (tile.hilliness == Hilliness.Impassable) continue;   // safety: any unclaimed impassable stays a wall
                 BiomeDef biome = tile.PrimaryBiome;
+                if (biome == null || biome.impassable || biome.defName == "SeaIce") continue;
                 biomeOf[t] = biome;
-                bool impassable = tile.hilliness == Hilliness.Impassable
-                    || (biome != null && (biome.impassable || biome.defName == "SeaIce"));
-                bool highGround = tile.hilliness == Hilliness.Mountainous || tile.hilliness == Hilliness.LargeHills;
-                if (biome == null || impassable || highGround) wall[t] = true;
-                else interior[t] = true;
+                interior[t] = true;
             }
 
             // Phase 2 (CONTAIN): flood the interior into containers bounded by biome edges AND natural
-            // barriers. Two adjacent interior tiles join only within one biome; walls (ridges, coast,
-            // impassable) are not interior, so they never bridge two sides. Each container is therefore one
-            // biome-coherent patch on ONE side of the barriers around it — the thin edge pieces a global
-            // grid would strand all fall into the same container as the body they belong to (this is the
-            // "1522 absorbs 942/2276/2051/2441" the design calls for).
+            // barriers, with mountain passes treated as boundaries. Done in three morphological steps:
             float tileSpacing = TileSpacing(grid);
             var neigh = new List<PlanetTile>();
-            var stack = new Stack<int>();
+
+            // 2a: a CORE tile is an interior tile with NO claimed (water / impassable) neighbour. A narrow
+            // passable neck between hard walls — a mountain pass, or an isthmus between seas — is all rim
+            // and has no core, so the core flood in 2b cannot bridge the two sides through it. The pass
+            // therefore acts as a boundary; its corridor is handed to the nearer side in 2c.
+            var core = new bool[total];
+            for (int t = 0; t < total; t++)
+            {
+                if (!interior[t]) continue;
+                bool isCore = true;
+                grid.GetTileNeighbors(t, neigh);
+                for (int i = 0; i < neigh.Count; i++)
+                {
+                    int n = neigh[i].tileId;
+                    if (n < 0 || n >= total || tileToProvinceId[n] >= 0) { isCore = false; break; }  // touches a wall
+                }
+                core[t] = isCore;
+            }
+
+            // 2b: flood the CORE into biome-coherent containers (same biome, core-to-core links only). Two
+            // sides of a range that meet only through a narrow pass stay separate, because the pass has no
+            // core to link them.
             var containerOf = new int[total];
             for (int i = 0; i < total; i++) containerOf[i] = -1;
             var containers = new List<List<int>>();
+            var stack = new Stack<int>();
             for (int s = 0; s < total; s++)
             {
-                if (!interior[s] || containerOf[s] != -1) continue;
+                if (!core[s] || containerOf[s] != -1) continue;
                 int id = containers.Count;
                 BiomeDef biome = biomeOf[s];
                 var container = new List<int>();
@@ -224,12 +243,32 @@ namespace RegionsAndSocieties.Partition
                     for (int i = 0; i < neigh.Count; i++)
                     {
                         int n = neigh[i].tileId;
-                        if (n < 0 || n >= total || !interior[n] || containerOf[n] != -1) continue;
+                        if (n < 0 || n >= total || !core[n] || containerOf[n] != -1) continue;
                         if (biomeOf[n] != biome) continue;   // biome edge = container wall
                         containerOf[n] = id; stack.Push(n);
                     }
                 }
                 containers.Add(container);
+            }
+
+            // 2c: hand each RIM interior tile to the nearest core container of its own biome (multi-source
+            // BFS from the core). A pass corridor, being all rim, is reached from the cores on BOTH sides
+            // and splits between them at the midpoint — so the range reads as one continuous border.
+            var rq = new Queue<int>();
+            for (int t = 0; t < total; t++) if (containerOf[t] != -1) rq.Enqueue(t);
+            while (rq.Count > 0)
+            {
+                int cur = rq.Dequeue();
+                int cid = containerOf[cur];
+                BiomeDef cb = biomeOf[cur];
+                grid.GetTileNeighbors(cur, neigh);
+                for (int i = 0; i < neigh.Count; i++)
+                {
+                    int n = neigh[i].tileId;
+                    if (n < 0 || n >= total || !interior[n] || containerOf[n] != -1) continue;
+                    if (biomeOf[n] != cb) continue;       // stay within one biome
+                    containerOf[n] = cid; containers[cid].Add(n); rq.Enqueue(n);
+                }
             }
 
             // Phase 3 (SUBDIVIDE): cut each container into appropriately sized squares. Target size is
@@ -253,28 +292,12 @@ namespace RegionsAndSocieties.Partition
                 foreach (var g in cells) AddRegion(result, regionOf, g);
             }
 
-            // Phase 4: drape wall land onto the nearest region (multi-source BFS from region tiles).
-            var q = new Queue<int>();
-            for (int t = 0; t < total; t++) if (regionOf[t] != -1) q.Enqueue(t);
-            while (q.Count > 0)
-            {
-                int cur = q.Dequeue();
-                int rid = regionOf[cur];
-                grid.GetTileNeighbors(cur, neigh);
-                for (int i = 0; i < neigh.Count; i++)
-                {
-                    int n = neigh[i].tileId;
-                    if (n < 0 || n >= total || !wall[n] || regionOf[n] != -1) continue;
-                    regionOf[n] = rid; result[rid].Add(n); q.Enqueue(n);
-                }
-            }
-
-            // Phase 5: any land still unclaimed (isolated wall massif, or a basin with no interior at
-            // all) becomes its own region, so every land tile lands in exactly one region.
+            // Phase 4: any interior tile the subdivision somehow left unclaimed becomes its own region, so
+            // every claimable land tile lands in exactly one region. (Impassable rock and water are not
+            // interior; they stay with their own MountainRange / Ocean provinces and are never draped in.)
             for (int s = 0; s < total; s++)
             {
-                bool land = tileToProvinceId[s] < 0 && (interior[s] || wall[s]);
-                if (!land || regionOf[s] != -1) continue;
+                if (!interior[s] || regionOf[s] != -1) continue;
                 int id = result.Count;
                 var group = new List<int>();
                 stack.Clear(); stack.Push(s); regionOf[s] = id;
@@ -286,8 +309,7 @@ namespace RegionsAndSocieties.Partition
                     for (int i = 0; i < neigh.Count; i++)
                     {
                         int n = neigh[i].tileId;
-                        if (n < 0 || n >= total || tileToProvinceId[n] >= 0 || regionOf[n] != -1) continue;
-                        if (!interior[n] && !wall[n]) continue;
+                        if (n < 0 || n >= total || !interior[n] || regionOf[n] != -1) continue;
                         regionOf[n] = id; stack.Push(n);
                     }
                 }

@@ -306,6 +306,15 @@ namespace RegionsAndSocieties
         {
             base.WorldComponentTick();
 
+            // Self-heal: a world whose provinces are empty regenerates here on a tick, so the partition is
+            // always present without waiting for an overlay to ask for it. Normal worlds build their
+            // provinces at worldgen, so this only fires for a save deliberately blanked to re-test the
+            // partition on frozen terrain (the reproducible-test fixture).
+            if ((provinces == null || provinces.Count == 0) && Find.WorldGrid != null)
+            {
+                var _ = Provinces;
+            }
+
             if (Find.TickManager != null && Find.TickManager.TicksGame % DemographicDecayInterval == 0)
             {
                 Demographics.RegionDemographicsStress.Tick(DemographicDecayInterval);
@@ -548,6 +557,17 @@ namespace RegionsAndSocieties
             Log.Message($"[RegionsAndSocieties] Rebuilt tile->province index from {provinces.Count} provinces ({mapped} tiles mapped).");
         }
 
+        /// <summary>True for a tile that is impassable rock (never traversable on the world map): the
+        /// Impassable hilliness, or an impassable / sea-ice biome. These become non-owned MountainRange
+        /// provinces, not territory. Passable Mountainous/LargeHills are NOT impassable and stay claimable.</summary>
+        private static bool IsImpassableTile(Tile td)
+        {
+            if (td == null) return false;
+            if (td.hilliness == Hilliness.Impassable) return true;
+            BiomeDef b = td.PrimaryBiome;
+            return b != null && (b.impassable || b.defName == "SeaIce");
+        }
+
         private BiomeDef GetPrimaryBiome(List<int> chunk)
         {
             if (chunk == null || chunk.Count == 0) return null;
@@ -650,6 +670,53 @@ namespace RegionsAndSocieties
                 }
             }
 
+            // Phase 2.6: Impassable mountains. Flood every contiguous body of unclaimed IMPASSABLE land
+            // (Hilliness.Impassable, or an impassable / sea-ice biome that is not water) into its own
+            // MountainRange province and claim the tiles. Like the ocean pass, this makes the land
+            // partition treat impassable rock as a hard wall AND keeps it out of any faction's territory —
+            // impassable peaks are terrain, not land anyone holds, and are excluded from ownership, the
+            // territory overlay, population and economy alongside Ocean. Passable mountains and hills are
+            // NOT claimed here; they stay claimable interior for the partition, so hills no longer fragment
+            // the land into slivers.
+            {
+                var impNbrs = new List<RimWorld.Planet.PlanetTile>();
+                for (int i = 0; i < totalTiles; i++)
+                {
+                    if (tileToProvinceId[i] != -1) continue;
+                    Tile td = Find.WorldGrid[i];
+                    if (td.WaterCovered || !IsImpassableTile(td)) continue;
+
+                    var body = new List<int>();
+                    var bq = new Queue<int>();
+                    bq.Enqueue(i);
+                    tileToProvinceId[i] = provinceIdCounter;
+                    while (bq.Count > 0)
+                    {
+                        int cur = bq.Dequeue();
+                        body.Add(cur);
+                        impNbrs.Clear();
+                        Find.WorldGrid.GetTileNeighbors(cur, impNbrs);
+                        foreach (var n in impNbrs)
+                        {
+                            int nid = n.tileId;
+                            if (tileToProvinceId[nid] != -1) continue;
+                            Tile nt = Find.WorldGrid[nid];
+                            if (nt.WaterCovered || !IsImpassableTile(nt)) continue;
+                            tileToProvinceId[nid] = provinceIdCounter;
+                            bq.Enqueue(nid);
+                        }
+                    }
+
+                    var mtn = new GeographicProvince(provinceIdCounter);
+                    mtn.tiles = body;
+                    mtn.provinceType = ProvinceType.MountainRange;
+                    mtn.primaryBiome = GetPrimaryBiome(body);
+                    mtn.name = GenerateProvinceName(provinceIdCounter, mtn.primaryBiome, mtn.provinceType);
+                    provinces.Add(mtn);
+                    provinceIdCounter++;
+                }
+            }
+
             // Phase 4: border-first land partition (#20). The water/ocean provinces claimed above are
             // the hard walls; BorderPartitioner floods the remaining land into cells bounded by
             // natural feature transitions (ridges, biome edges, forest bands, coasts) and splits any
@@ -707,6 +774,12 @@ namespace RegionsAndSocieties
             Log.Message("[RegionsAndSocieties] Starting MergeTinyDomains...");
             MergeTinyDomains(minWithFeatures, minNoFeatures);
             Log.Message("[RegionsAndSocieties] Finished MergeTinyDomains.");
+
+            // Phase 5a: fold a land region ENTIRELY enclosed by one other land region into that region —
+            // an enclave/inclusion (e.g. a small biome patch inside a big region) reads as part of its
+            // encloser, never its own territory. Judged over land-region neighbours only, so it runs
+            // regardless of biome and after the biome-aware merge leaves such slivers behind.
+            AbsorbEnclosedRegions();
 
             // Phase 5b1: dissolve small inland lakes into the surrounding land (#20). Phase 2.5 floods
             // every barren water body — including a small inland lake — into its own water province; a
@@ -1026,9 +1099,10 @@ namespace RegionsAndSocieties
             provinces.RemoveAll(p => landIds.Contains(p.id) && p.tiles.Count == 0);
         }
 
-        /// <summary>True when a tile is a natural barrier the region passes must not merge or smooth
-        /// across: water, impassable rock/sea-ice, or high ground (Mountainous / LargeHills). Matches the
-        /// wall set the grid partition uses, so the recombine honours the same seams the fill did. An
+        /// <summary>True when a tile is a hard natural barrier the region passes must not merge or smooth
+        /// across: water, or impassable rock / sea-ice. This matches the partition's wall set exactly —
+        /// passable Mountainous / LargeHills are NOT barriers, they are claimable interior — so a region of
+        /// passable mountain can still merge, and the recombine honours the same seams the fill did. An
         /// out-of-range or null tile reads as a barrier (safe default: never a merge seam).</summary>
         private static bool IsBarrierTile(int tile)
         {
@@ -1036,8 +1110,7 @@ namespace RegionsAndSocieties
             if (grid == null || tile < 0 || tile >= grid.TilesCount) return true;
             Tile t = grid[tile];
             if (t == null || t.WaterCovered) return true;
-            if (t.hilliness == Hilliness.Impassable || t.hilliness == Hilliness.Mountainous || t.hilliness == Hilliness.LargeHills)
-                return true;
+            if (t.hilliness == Hilliness.Impassable) return true;
             BiomeDef b = t.PrimaryBiome;
             return b != null && (b.impassable || b.defName == "SeaIce");
         }
@@ -1115,7 +1188,7 @@ namespace RegionsAndSocieties
 
                 foreach (var p in provinces)
                 {
-                    if (p.provinceType == ProvinceType.Ocean) continue;
+                    if (p.provinceType == ProvinceType.Ocean || p.provinceType == ProvinceType.MountainRange) continue;
                     if (toRemove.Contains(p)) continue;
 
                     int pSize = p.tiles.Count;
@@ -1224,6 +1297,36 @@ namespace RegionsAndSocieties
                             totalMerged++;
                         }
                     }
+
+                    // Cross-biome fallback for a genuinely tiny sliver that found no same-biome, barrier-
+                    // free neighbour (a pass fragment or a tiny inclusion touching several regions): fold it
+                    // into its largest passable land neighbour of ANY biome. A few mixed tiles at the margin
+                    // read far better than a 1-3 tile region of its own; bounded to very small p so normal
+                    // regions stay biome-pure.
+                    if (!toRemove.Contains(p) && p.tiles.Count < FactionPlacementSettings.minRegionSize / 3)
+                    {
+                        GeographicProvince bestAny = null; int bestAnySize = -1;
+                        var seenN = new HashSet<int>();
+                        foreach (int tile in p.tiles)
+                        {
+                            if (IsBarrierTile(tile)) continue;
+                            neighbors.Clear(); Find.WorldGrid.GetTileNeighbors(tile, neighbors);
+                            foreach (var n in neighbors)
+                            {
+                                if (IsBarrierTile(n.tileId)) continue;
+                                int npid = GetProvinceId(n.tileId);
+                                if (npid == -1 || npid == p.id || !seenN.Add(npid)) continue;
+                                if (!provinceMap.TryGetValue(npid, out var nprov)) continue;
+                                if (nprov.provinceType != ProvinceType.Land || toRemove.Contains(nprov)) continue;
+                                if (nprov.tiles.Count > bestAnySize) { bestAnySize = nprov.tiles.Count; bestAny = nprov; }
+                            }
+                        }
+                        if (bestAny != null)
+                        {
+                            foreach (int tileId in p.tiles) { bestAny.tiles.Add(tileId); tileToProvinceId[tileId] = bestAny.id; }
+                            toRemove.Add(p); mergedAnyInThisPass = true; totalMerged++;
+                        }
+                    }
                 }
 
                 if (!mergedAnyInThisPass)
@@ -1239,6 +1342,59 @@ namespace RegionsAndSocieties
             }
 
             Log.Message($"[RegionsAndSocieties] MergeTinyDomains finished. Merged {totalMerged} regions in {pass} passes. Final region count: {provinces.Count}");
+        }
+
+        /// <summary>
+        /// Fold every land region ENTIRELY enclosed by a single other land region into that region. A
+        /// region's enclosure is judged over its LAND-region neighbours only — water, impassable-mountain
+        /// (MountainRange) and off-map borders don't count against it — so a coastal or range-flanked
+        /// sliver whose every land neighbour is one province q is an enclave of q and merges into it,
+        /// regardless of biome. Iterated, because absorbing one enclave can enclose the next. Bounded to
+        /// regions below the max size so a genuine large region is never swallowed.
+        /// </summary>
+        private void AbsorbEnclosedRegions()
+        {
+            if (provinces == null || tileToProvinceId == null || Find.WorldGrid == null) return;
+            var neighbors = new List<RimWorld.Planet.PlanetTile>();
+            int guard = 0, absorbed = 0;
+            bool changed = true;
+            while (changed && guard++ < 12)
+            {
+                changed = false;
+                var byId = provinces.ToDictionary(p => p.id, p => p);
+                var toRemove = new HashSet<GeographicProvince>();
+                foreach (var p in provinces)
+                {
+                    if (p.provinceType != ProvinceType.Land || toRemove.Contains(p)) continue;
+                    if (p.tiles == null || p.tiles.Count == 0) continue;
+                    if (p.tiles.Count >= FactionPlacementSettings.maxRegionSize) continue;   // never swallow a big region
+
+                    int encloser = -2;   // -2 = none seen yet; -1 = more than one distinct land neighbour
+                    foreach (int tile in p.tiles)
+                    {
+                        neighbors.Clear();
+                        Find.WorldGrid.GetTileNeighbors(tile, neighbors);
+                        foreach (var n in neighbors)
+                        {
+                            int npid = GetProvinceId(n.tileId);
+                            if (npid == -1 || npid == p.id) continue;
+                            if (!byId.TryGetValue(npid, out var nprov) || nprov.provinceType != ProvinceType.Land) continue;  // water / mountain don't break enclosure
+                            if (toRemove.Contains(nprov)) continue;
+                            if (encloser == -2) encloser = npid;
+                            else if (encloser != npid) { encloser = -1; break; }
+                        }
+                        if (encloser == -1) break;
+                    }
+
+                    if (encloser >= 0 && byId.TryGetValue(encloser, out var q) && !toRemove.Contains(q))
+                    {
+                        foreach (int tileId in p.tiles) { q.tiles.Add(tileId); tileToProvinceId[tileId] = q.id; }
+                        toRemove.Add(p); changed = true; absorbed++;
+                    }
+                }
+                if (toRemove.Count > 0) provinces.RemoveAll(p => toRemove.Contains(p));
+            }
+            Log.Message($"[RegionsAndSocieties] AbsorbEnclosedRegions: folded {absorbed} enclave region(s).");
         }
 
         private float GetResourceWeight(GeographicProvince p)
@@ -1500,7 +1656,7 @@ namespace RegionsAndSocieties
                 // topology. Skipping them also stops the (huge, claimed) ocean from accumulating a
                 // border-share to every coastal land province — the source of the "coastal faction
                 // holds the sea" ownership bleed once the ocean became a real province (#20).
-                if (prov.provinceType == ProvinceType.Ocean) continue;
+                if (prov.provinceType == ProvinceType.Ocean || prov.provinceType == ProvinceType.MountainRange) continue;
 
                 neighbors.Clear();
                 Find.WorldGrid.GetTileNeighbors(t, neighbors);
@@ -1610,7 +1766,7 @@ namespace RegionsAndSocieties
                 // Open water is never owned — skip it so a coastal faction is not written in as
                 // "holding" the sea (which would leak supply anchors and foothold adjacency along the
                 // whole coastline now that the ocean is a real province, #20).
-                if (province.provinceType == ProvinceType.Ocean) { province.owningFactionIds.Clear(); continue; }
+                if (province.provinceType == ProvinceType.Ocean || province.provinceType == ProvinceType.MountainRange) { province.owningFactionIds.Clear(); continue; }
 
                 List<RimWorld.Planet.WorldObject> regionObjects;
                 if (!objectsByProvince.TryGetValue(province.id, out regionObjects)) regionObjects = EmptyWorldObjects;
@@ -1624,7 +1780,7 @@ namespace RegionsAndSocieties
             // where "region 487 changed owner -> recompute 326's borders" stays cheap (#44).
             foreach (var province in provinces)
             {
-                if (province.provinceType == ProvinceType.Ocean) continue;
+                if (province.provinceType == ProvinceType.Ocean || province.provinceType == ProvinceType.MountainRange) continue;
                 RegionalOwnershipUtility.ApplyBordersAndNormalize(province.ownershipData, province, ownerByProvince);
 
                 province.owningFactionIds.Clear();
