@@ -77,8 +77,13 @@ namespace RegionsAndSocieties
             return b == Barrier.None ? "Open land (no natural barrier)" : "Natural barrier: " + b;
         }
 
-        /// <summary>The strongest natural barrier a tile represents, hard walls first. Reads tile terrain
-        /// only — no material creation — so it is safe from the worker thread.</summary>
+        /// <summary>The barrier a tile represents — but ONLY the walls the current partition actually uses,
+        /// so this overlay matches the region algorithm exactly. The contain-then-subdivide partition walls
+        /// on three things and nothing else: impassable rock (incl. impassable/sea-ice biomes), open water,
+        /// and biome edges. Mountainous / LargeHills / SmallHills and swampiness are NOT walls — they are
+        /// claimable interior — so they are deliberately unshaded here; painting them (as this overlay used
+        /// to) made it look like the partition split on terrain it does not. Reads tile terrain only, so it
+        /// is safe from the worker thread.</summary>
         private static Barrier BarrierOf(int tile)
         {
             WorldGrid grid = Find.WorldGrid;
@@ -90,16 +95,8 @@ namespace RegionsAndSocieties
             if (t.hilliness == Hilliness.Impassable || (biome != null && (biome.impassable || biome.defName == "SeaIce")))
                 return Barrier.Impassable;
             if (t.WaterCovered) return Barrier.Water;
-            if (t.hilliness == Hilliness.Mountainous) return Barrier.Mountain;
-            if (t.hilliness == Hilliness.LargeHills) return Barrier.LargeHill;
-
-            bool swamp = t.swampiness > 0.1f
-                || (biome != null && (biome.defName.Contains("Swamp") || biome.defName.Contains("Marsh")));
-            if (swamp) return Barrier.Swamp;
-
             if (IsBiomeEdge(grid, tile, biome)) return Barrier.BiomeEdge;
-            if (t.hilliness == Hilliness.SmallHills) return Barrier.SmallHill;
-            return Barrier.None;
+            return Barrier.None;   // hills, mountains, swamp = interior; the partition never walls on them
         }
 
         /// <summary>True when a land neighbour sits in a different biome — a soft, walkable border the
