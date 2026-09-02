@@ -200,7 +200,6 @@ namespace RegionsAndSocieties.Partition
 
             // Phase 2 (CONTAIN): flood the interior into containers bounded by biome edges AND natural
             // barriers, with mountain passes treated as boundaries. Done in three morphological steps:
-            float tileSpacing = TileSpacing(grid);
             var neigh = new List<PlanetTile>();
 
             // 2a: a CORE tile is an interior tile with NO wall (claimed water / impassable) neighbour AND no
@@ -291,7 +290,7 @@ namespace RegionsAndSocieties.Partition
                 float w = BiomeRegionWeights.Weight(biome);
                 int target = System.Math.Max(1, (int)System.Math.Round(baseMax * w));
                 if (container.Count <= target) { AddRegion(result, regionOf, container); continue; }
-                var cells = ChebyshevCellsScoped(grid, container, target, tileSpacing, owner, cost, set, neigh);
+                var cells = BalancedCellsScoped(grid, container, target, owner, cost, set, neigh);
                 if (cells.Count == 0) { AddRegion(result, regionOf, container); continue; }
                 foreach (var g in cells) AddRegion(result, regionOf, g);
             }
@@ -333,33 +332,36 @@ namespace RegionsAndSocieties.Partition
         }
 
         /// <summary>
-        /// Split one connected container into ~<paramref name="target"/>-tile SQUARE cells: farthest-point
-        /// anchors (one per ~target tiles, running-min spacing) then a Chebyshev (L∞ box) fill — each tile
-        /// joins the anchor with the smallest max(|Δeast|,|Δnorth|), which grows a cell as a square rather
-        /// than a hex blob. The fill is confined to the container (<paramref name="set"/>), so a square
-        /// never leaks past the barrier around it.
+        /// Split one connected container into k = round(count/target) cells of roughly EQUAL size. Anchors
+        /// are farthest-point-spaced (running-min, O(count·k)); the fill is a capacity-constrained
+        /// multi-source BFS — all anchors grow in lockstep (FIFO level order) and an anchor stops claiming
+        /// once it reaches the per-cell capacity ceil(count/k). This is what keeps a 665-tile area splitting
+        /// ~333/332 instead of the Voronoi fill's 503/162: no cell can balloon while another starves. Cells
+        /// stay contiguous (each grown from its anchor) and confined to the container (<paramref name="set"/>).
         ///
-        /// <para>Scratch is scoped to the container: the shared <paramref name="owner"/>/<paramref
-        /// name="cost"/> arrays (grid-sized, allocated once by the caller) are read and reset only over the
-        /// container's tiles — O(container·k) for anchors, O(container log) for the fill, no whole-grid
-        /// pass per container. Deterministic (tiles sorted; ties to the smaller anchor id).</para>
+        /// <para>Scratch is scoped to the container: <paramref name="owner"/> holds the anchor index and
+        /// <paramref name="cost"/> the anchor-selection running distance; both grid-sized and reset only over
+        /// the container's tiles. Deterministic (tiles sorted; anchors id-ordered; FIFO is order-stable).</para>
         /// </summary>
-        private static List<List<int>> ChebyshevCellsScoped(WorldGrid grid, List<int> tiles, int target,
-            float tileSpacing, int[] owner, float[] cost, HashSet<int> set, List<PlanetTile> nb)
+        private static List<List<int>> BalancedCellsScoped(WorldGrid grid, List<int> tiles, int target,
+            int[] owner, float[] cost, HashSet<int> set, List<PlanetTile> nb)
         {
             var result = new List<List<int>>();
             int count = tiles.Count;
             if (count == 0) return result;
-            int k = System.Math.Max(1, (int)System.Math.Round(count / (double)target));
+            // ceil, not round: a container OVER the target must split, so a 448-tile area at target 300
+            // becomes 2×224 rather than rounding to 1 and staying a lone 448. Each cell then lands at or
+            // just under the target.
+            int k = System.Math.Max(1, (int)System.Math.Ceiling(count / (double)target));
 
             var sorted = new List<int>(tiles);
             sorted.Sort();
             if (k <= 1) { result.Add(sorted); return result; }
 
             set.Clear();
-            foreach (int t in sorted) { set.Add(t); cost[t] = float.PositiveInfinity; }  // cost doubles as running min-dist here
+            foreach (int t in sorted) { set.Add(t); cost[t] = float.PositiveInfinity; owner[t] = -1; }
 
-            // Farthest-point anchors, running min-distance (O(count·k)).
+            // Farthest-point anchors, running min-distance (O(count·k)) — spreads the k cell centres out.
             var anchors = new List<int>(k) { sorted[0] };
             int newest = sorted[0];
             while (anchors.Count < k)
@@ -378,56 +380,58 @@ namespace RegionsAndSocieties.Partition
             }
             anchors.Sort();
 
-            // Per-anchor local east/north box frame.
-            var frameC = new Dictionary<int, UnityEngine.Vector3>(anchors.Count);
-            var frameE = new Dictionary<int, UnityEngine.Vector3>(anchors.Count);
-            var frameN = new Dictionary<int, UnityEngine.Vector3>(anchors.Count);
-            foreach (int a in anchors)
+            // Capacity-constrained multi-source BFS. Encode (anchorIndex, tile) as one long in the FIFO so a
+            // tile carries which anchor's frontier reached it; the first non-full anchor to reach a tile
+            // claims it. Level-order growth keeps the cells balanced; the cap stops any one ballooning.
+            int capacity = (count + k - 1) / k;
+            var counts = new int[anchors.Count];
+            var q = new Queue<long>();
+            for (int a = 0; a < anchors.Count; a++) q.Enqueue(((long)a << 32) | (uint)anchors[a]);
+            while (q.Count > 0)
             {
-                UnityEngine.Vector3 c = grid.GetTileCenter(a);
-                UnityEngine.Vector3 up = c.normalized;
-                UnityEngine.Vector3 refA = UnityEngine.Mathf.Abs(UnityEngine.Vector3.Dot(up, UnityEngine.Vector3.up)) > 0.99f
-                    ? UnityEngine.Vector3.right : UnityEngine.Vector3.up;
-                UnityEngine.Vector3 east = UnityEngine.Vector3.Cross(up, refA).normalized;
-                frameC[a] = c; frameE[a] = east; frameN[a] = UnityEngine.Vector3.Cross(east, up).normalized;
-            }
-
-            // Chebyshev box fill from the anchors, confined to the container.
-            foreach (int t in sorted) { owner[t] = -1; cost[t] = float.PositiveInfinity; }
-            var heap = new MinHeap(anchors.Count + 16);
-            foreach (int a in anchors) { owner[a] = a; cost[a] = 0f; heap.Push(a, 0f); }
-            while (heap.Count > 0)
-            {
-                heap.Pop(out int cur, out float cc);
-                if (cc > cost[cur]) continue;
-                int a2 = owner[cur];
-                UnityEngine.Vector3 ac = frameC[a2], ae = frameE[a2], an = frameN[a2];
+                long e = q.Dequeue();
+                int ai = (int)(e >> 32);
+                int t = (int)(e & 0xFFFFFFFF);
+                if (owner[t] != -1 || counts[ai] >= capacity) continue;
+                owner[t] = ai; counts[ai]++;
                 nb.Clear();
-                grid.GetTileNeighbors(cur, nb);
+                grid.GetTileNeighbors(t, nb);
                 for (int i = 0; i < nb.Count; i++)
                 {
                     int nid = nb[i].tileId;
-                    if (!set.Contains(nid)) continue;
-                    UnityEngine.Vector3 d = grid.GetTileCenter(nid) - ac;
-                    float x = UnityEngine.Vector3.Dot(d, ae) / tileSpacing;
-                    float y = UnityEngine.Vector3.Dot(d, an) / tileSpacing;
-                    float nc = System.Math.Max(System.Math.Abs(x), System.Math.Abs(y));
-                    if (nc < cost[nid] || (nc == cost[nid] && a2 < owner[nid]))
+                    if (set.Contains(nid) && owner[nid] == -1) q.Enqueue(((long)ai << 32) | (uint)nid);
+                }
+            }
+
+            // Any tile only ever reached by full anchors is still unclaimed — hand it to an adjacent claimed
+            // cell (slight overflow past capacity, but every tile ends in exactly one contiguous cell).
+            bool progress = true;
+            while (progress)
+            {
+                progress = false;
+                for (int i = 0; i < count; i++)
+                {
+                    int t = sorted[i];
+                    if (owner[t] != -1) continue;
+                    nb.Clear();
+                    grid.GetTileNeighbors(t, nb);
+                    for (int j = 0; j < nb.Count; j++)
                     {
-                        cost[nid] = nc; owner[nid] = a2; heap.Push(nid, nc);
+                        int nid = nb[j].tileId;
+                        if (set.Contains(nid) && owner[nid] != -1) { owner[t] = owner[nid]; progress = true; break; }
                     }
                 }
             }
 
-            var groupByAnchor = new Dictionary<int, List<int>>(anchors.Count);
+            var groups = new List<List<int>>(anchors.Count);
+            for (int a = 0; a < anchors.Count; a++) groups.Add(new List<int>());
             for (int i = 0; i < count; i++)
             {
                 int t = sorted[i];
-                int o = owner[t] >= 0 ? owner[t] : anchors[0];
-                if (!groupByAnchor.TryGetValue(o, out var g)) { g = new List<int>(); groupByAnchor[o] = g; }
-                g.Add(t);
+                int o = owner[t] >= 0 ? owner[t] : 0;
+                groups[o].Add(t);
             }
-            foreach (var kv in groupByAnchor) result.Add(kv.Value);
+            foreach (var g in groups) if (g.Count > 0) result.Add(g);
             return result;
         }
 

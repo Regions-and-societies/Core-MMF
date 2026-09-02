@@ -843,6 +843,48 @@ namespace RegionsAndSocieties
             DiagnoseTinyRegions(5);
             DiagnoseBigRegions(150);
             DiagnoseUnmergedSlivers();
+            DiagnoseRegion(282);
+        }
+
+        /// <summary>
+        /// Full boundary dump of one region: every neighbouring land region with its biome and the number
+        /// of shared edges, plus how many of the region's own tiles are "neck" tiles (2 or fewer same-region
+        /// neighbours — a 1-2 wide waist that should have pinched). Shows exactly what a border is doing and
+        /// whether it fails to close.
+        /// </summary>
+        private void DiagnoseRegion(int id)
+        {
+            if (provinces == null || Find.WorldGrid == null) return;
+            var p = provinces.FirstOrDefault(q => q.id == id);
+            if (p == null || p.tiles == null) { Log.Message($"[RegionsAndSocieties] DiagnoseRegion {id}: not found"); return; }
+            var byId = provinces.ToDictionary(q => q.id, q => q);
+            var neighbors = new List<RimWorld.Planet.PlanetTile>();
+            var edgesByRegion = new Dictionary<int, int>();
+            int neckTiles = 0, offBiome = 0;
+            foreach (int t in p.tiles)
+            {
+                if (BiomeOfTile(t) != p.primaryBiome) offBiome++;
+                int sameRegion = 0;
+                neighbors.Clear();
+                Find.WorldGrid.GetTileNeighbors(t, neighbors);
+                foreach (var n in neighbors)
+                {
+                    int np = GetProvinceId(n.tileId);
+                    if (np == p.id) { sameRegion++; continue; }
+                    if (np == -1) continue;
+                    if (!byId.TryGetValue(np, out var nprov) || nprov.provinceType != ProvinceType.Land) continue;
+                    int c; edgesByRegion.TryGetValue(np, out c); edgesByRegion[np] = c + 1;
+                }
+                if (sameRegion <= 2) neckTiles++;
+            }
+            var sb = new System.Text.StringBuilder();
+            sb.Append($"DiagnoseRegion {id}: {p.tiles.Count}t {p.primaryBiome?.defName}, offBiomeTiles={offBiome}, neckTiles(<=2 same)={neckTiles}, neighbours:");
+            foreach (var kv in edgesByRegion.OrderByDescending(x => x.Value))
+            {
+                var nprov = byId[kv.Key];
+                sb.Append($" | {kv.Key}({nprov.tiles.Count}t {nprov.primaryBiome?.defName} edges={kv.Value})");
+            }
+            Log.Message("[RegionsAndSocieties] " + sb.ToString());
         }
 
         /// <summary>
