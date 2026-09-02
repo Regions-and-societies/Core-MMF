@@ -91,9 +91,21 @@ namespace RegionsAndSocieties
             return tileToProvinceId[tileId];
         }
 
+        // O(1) id -> province index, rebuilt lazily whenever the province count changes (worldgen, merges).
+        // After generation the list is stable, so this stays valid; the count check catches any change
+        // without a manual invalidation call. GetProvince was an O(provinces) LINQ scan called per tile in
+        // the placement rules — an O(tiles × provinces) storm on the settle screen of a large world.
+        private Dictionary<int, GeographicProvince> _provinceById;
+
         public GeographicProvince GetProvince(int provinceId)
         {
-            return provinces.FirstOrDefault(p => p.id == provinceId);
+            if (provinces == null) return null;
+            if (_provinceById == null || _provinceById.Count != provinces.Count)
+            {
+                _provinceById = new Dictionary<int, GeographicProvince>(provinces.Count);
+                for (int i = 0; i < provinces.Count; i++) _provinceById[provinces[i].id] = provinces[i];
+            }
+            return _provinceById.TryGetValue(provinceId, out var prov) ? prov : null;
         }
 
         public GeographicProvince GetProvinceForTile(int tileId)
