@@ -105,6 +105,17 @@
   </MapModeFramework.MapModeDef>
 
   <MapModeFramework.MapModeDef MayRequireAnyOf="NozoMe.MapModeFramework,koth.RealisticPlanets2">
+    <defName>SynapseNaturalBarriers</defName>
+    <label>natural barriers</label>
+    <description>Debug (#20): paints only the terrain's natural barriers — impassable rock, open water, high-ground ridges, swamp, and biome edges — each its own colour, leaving open land unshaded. Shows where the land wants borders, for tuning a barrier-following region partition.</description>
+    <mapModeClass>RegionsAndSocieties.MapMode_NaturalBarriers</mapModeClass>
+    <worldLayerClass>MapModeFramework.WorldLayer_MapMode_Terrain</worldLayerClass>
+    <iconPath>UI/MapModes/Default</iconPath>
+    <canCache>true</canCache>
+    <includeWater>true</includeWater>
+  </MapModeFramework.MapModeDef>
+
+  <MapModeFramework.MapModeDef MayRequireAnyOf="NozoMe.MapModeFramework,koth.RealisticPlanets2">
     <defName>SynapseMapModeGroup</defName>
     <label>Regions and Societies</label>
     <description>Visualizes world analytics from Regions and Societies (dropdown list).</description>
