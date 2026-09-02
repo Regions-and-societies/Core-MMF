@@ -50,9 +50,11 @@ namespace RegionsAndSocieties
                 options.Add(new FloatMenuOption(sexMode.def.LabelCap, () => MapModeComponent.Instance.RequestMapModeSwitch(sexMode)));
             }
 
-            // Xenotypes: regions tinted by dominant caste (#12). Only meaningful with Biotech.
+            // Xenotypes: regions tinted by dominant caste (#12). Offered only with Biotech — without the
+            // DLC every pawn is Baseliner, so the overlay would be a flat, meaningless wash. The def stays
+            // loaded (so a save that had it selected still resolves); it is simply not listed here.
             var xenoMode = MapModeComponent.Instance.mapModes.FirstOrDefault(m => m.def.defName == "SynapseXenotype");
-            if (xenoMode != null)
+            if (xenoMode != null && ModsConfig.BiotechActive)
             {
                 options.Add(new FloatMenuOption(xenoMode.def.LabelCap, () => MapModeComponent.Instance.RequestMapModeSwitch(xenoMode)));
             }
@@ -71,9 +73,11 @@ namespace RegionsAndSocieties
                 options.Add(new FloatMenuOption(wealthMode.def.LabelCap, () => MapModeComponent.Instance.RequestMapModeSwitch(wealthMode)));
             }
 
-            // Ideology: regions tinted by dominant ideo (#13). Only meaningful with the Ideology DLC.
+            // Ideology: regions tinted by dominant ideo (#13). Offered only with the Ideology DLC — without
+            // it every region is secular, so the overlay is a flat wash. The def stays loaded (save-safe);
+            // it is simply not listed here.
             var ideoMode = MapModeComponent.Instance.mapModes.FirstOrDefault(m => m.def.defName == "SynapseIdeology");
-            if (ideoMode != null)
+            if (ideoMode != null && ModsConfig.IdeologyActive)
             {
                 options.Add(new FloatMenuOption(ideoMode.def.LabelCap, () => MapModeComponent.Instance.RequestMapModeSwitch(ideoMode)));
             }

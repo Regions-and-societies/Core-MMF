@@ -77,27 +77,32 @@ namespace RegionsAndSocieties.UI
                 new BarSegment("Trade", demo.occupationShares[(int)OccupationSector.Trade], DemographicColors.Employment[3], "merchants, hauling, services"),
             });
 
-            y += SectionGap;
-            if (!demo.biotechActive)
-                y = NoteSection(rect, y, "Xenotypes", "All Baseliner (Biotech not active).");
-            else if (demo.raceShares.Count == 0)
-                y = NoteSection(rect, y, "Xenotypes", "No data.");
-            else
-                y = PieSection(rect, y, "Xenotypes", demo.raceShares
-                    .OrderByDescending(k => k.Value)
-                    .Select(k => new PieSlice { label = k.Key.LabelCap, fraction = k.Value, color = DemographicColors.Xenotype(k.Key) })
-                    .ToList(), cacheKeyBase + "_xeno");
+            // Xenotype and ideology are DLC features: with Biotech / Ideology absent the whole section is
+            // omitted (not shown as a "not active" note), so the panel degrades to exactly what this game
+            // can express.
+            if (demo.biotechActive)
+            {
+                y += SectionGap;
+                if (demo.raceShares.Count == 0)
+                    y = NoteSection(rect, y, "Xenotypes", "No data.");
+                else
+                    y = PieSection(rect, y, "Xenotypes", demo.raceShares
+                        .OrderByDescending(k => k.Value)
+                        .Select(k => new PieSlice { label = k.Key.LabelCap, fraction = k.Value, color = DemographicColors.Xenotype(k.Key) })
+                        .ToList(), cacheKeyBase + "_xeno");
+            }
 
-            y += SectionGap;
-            if (!demo.ideologyActive)
-                y = NoteSection(rect, y, "Ideology", "Secular (Ideology not active).");
-            else if (demo.ideoShares.Count == 0)
-                y = NoteSection(rect, y, "Ideology", "No data.");
-            else
-                y = PieSection(rect, y, "Ideology", demo.ideoShares
-                    .OrderByDescending(k => k.Value)
-                    .Select(k => new PieSlice { label = k.Key.name, fraction = k.Value, color = DemographicColors.Ideology(k.Key) })
-                    .ToList(), cacheKeyBase + "_ideo");
+            if (demo.ideologyActive)
+            {
+                y += SectionGap;
+                if (demo.ideoShares.Count == 0)
+                    y = NoteSection(rect, y, "Ideology", "No data.");
+                else
+                    y = PieSection(rect, y, "Ideology", demo.ideoShares
+                        .OrderByDescending(k => k.Value)
+                        .Select(k => new PieSlice { label = k.Key.name, fraction = k.Value, color = DemographicColors.Ideology(k.Key) })
+                        .ToList(), cacheKeyBase + "_ideo");
+            }
 
             return y - rect.y;
         }
