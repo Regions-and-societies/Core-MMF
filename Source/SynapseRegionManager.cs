@@ -656,17 +656,17 @@ namespace RegionsAndSocieties
             // oversized cell into river basins by a marker-controlled watershed — so borders sit on
             // features, basins centre on rivers, and region size varies with the terrain. This
             // replaces the grow-first frontier and its Phase 4.5 river absorption in one pass.
-            // New worlds (and regens of new-partition worlds) use the grid-and-recombine partition: lay a
-            // biome-weighted grid over the land, clip each box to one biome and a barrier-free patch, and
-            // let ridges/coasts be the seams. A legacy world keeps the anchor-Voronoi PartitionLand so a
-            // regenerate never reshapes an existing save.
+            // New worlds (and regens of new-partition worlds) use the contain-then-subdivide partition:
+            // flood each biome/barrier-bounded section into one container, then cut it into biome-weighted
+            // squares. A legacy world keeps the anchor-Voronoi PartitionLand so a regenerate never reshapes
+            // an existing save.
             bool legacyPartition = PartitionAlgorithmVersion == PartitionAlgorithmLegacy;
             var swPartition = System.Diagnostics.Stopwatch.StartNew();
             var landGroups = legacyPartition
                 ? Partition.BorderPartitioner.PartitionLand(tileToProvinceId, baseMin, baseMax)
-                : Partition.BorderPartitioner.PartitionByGrid(tileToProvinceId, baseMin, baseMax);
+                : Partition.BorderPartitioner.PartitionContainSubdivide(tileToProvinceId, baseMin, baseMax);
             swPartition.Stop();
-            Log.Message($"[RegionsAndSocieties] Land partition: {(legacyPartition ? "legacy anchor-Voronoi" : "grid-and-recombine")} produced {landGroups.Count} land groups in {swPartition.ElapsedMilliseconds} ms.");
+            Log.Message($"[RegionsAndSocieties] Land partition: {(legacyPartition ? "legacy anchor-Voronoi" : "contain-then-subdivide")} produced {landGroups.Count} land groups in {swPartition.ElapsedMilliseconds} ms.");
             foreach (var group in landGroups)
             {
                 if (group.Count == 0) continue;
@@ -972,6 +972,8 @@ namespace RegionsAndSocieties
                 {
                     int pid = tileToProvinceId[t];
                     if (pid < 0 || !landIds.Contains(pid)) continue;
+                    if (IsBarrierTile(t)) continue;                      // don't shuffle draped crest/coast tiles between regions
+                    BiomeDef tb = BiomeOfTile(t);
 
                     neighbors.Clear();
                     Find.WorldGrid.GetTileNeighbors(t, neighbors);
@@ -981,6 +983,7 @@ namespace RegionsAndSocieties
                     {
                         int np = tileToProvinceId[n.tileId];
                         if (np < 0 || !landIds.Contains(np)) continue;   // coast/river/impassable edge: keep it
+                        if (IsBarrierTile(n.tileId) || BiomeOfTile(n.tileId) != tb) continue;  // never erode across a wall or biome edge
                         landNeighbours++;
                         if (np == pid) { same++; continue; }
                         int c; counts.TryGetValue(np, out c); c++; counts[np] = c;
@@ -1021,6 +1024,31 @@ namespace RegionsAndSocieties
                     prov.tiles.Add(t);
             }
             provinces.RemoveAll(p => landIds.Contains(p.id) && p.tiles.Count == 0);
+        }
+
+        /// <summary>True when a tile is a natural barrier the region passes must not merge or smooth
+        /// across: water, impassable rock/sea-ice, or high ground (Mountainous / LargeHills). Matches the
+        /// wall set the grid partition uses, so the recombine honours the same seams the fill did. An
+        /// out-of-range or null tile reads as a barrier (safe default: never a merge seam).</summary>
+        private static bool IsBarrierTile(int tile)
+        {
+            WorldGrid grid = Find.WorldGrid;
+            if (grid == null || tile < 0 || tile >= grid.TilesCount) return true;
+            Tile t = grid[tile];
+            if (t == null || t.WaterCovered) return true;
+            if (t.hilliness == Hilliness.Impassable || t.hilliness == Hilliness.Mountainous || t.hilliness == Hilliness.LargeHills)
+                return true;
+            BiomeDef b = t.PrimaryBiome;
+            return b != null && (b.impassable || b.defName == "SeaIce");
+        }
+
+        /// <summary>The biome of a tile, or null. Used to keep merges and smoothing within one biome.</summary>
+        private static BiomeDef BiomeOfTile(int tile)
+        {
+            WorldGrid grid = Find.WorldGrid;
+            if (grid == null || tile < 0 || tile >= grid.TilesCount) return null;
+            Tile t = grid[tile];
+            return t?.PrimaryBiome;
         }
 
         /// <summary>Usable-tile count for a province, as an allocation-free loop (no LINQ closure).
@@ -1101,16 +1129,26 @@ namespace RegionsAndSocieties
 
                     if (pSize >= threshold) continue;
 
-                    // Find adjacent neighbors
+                    // Find adjacent neighbors — but only across a shared edge that is genuinely mergeable:
+                    // both tiles passable (not a range/coast/impassable) AND the same biome as this region.
+                    // This is what stops the recombine from folding a shard across a barrier or into a
+                    // different biome — the two things the grid partition was careful to separate. A shard
+                    // with no same-biome passable neighbour simply survives (a small correct region beats a
+                    // barrier-crossing merge).
+                    BiomeDef pBiome = p.primaryBiome;
                     Dictionary<int, int> neighborWeights = new Dictionary<int, int>();
 
                     foreach (int tile in p.tiles)
                     {
+                        if (IsBarrierTile(tile)) continue;                      // draped crest/coast tiles don't seek merges
+                        if (BiomeOfTile(tile) != pBiome) continue;             // only merge from the region's own-biome body
                         neighbors.Clear();
                         Find.WorldGrid.GetTileNeighbors(tile, neighbors);
                         foreach (var n in neighbors)
                         {
                             int neighborId = n.tileId;
+                            if (IsBarrierTile(neighborId)) continue;           // a wall between us = not a merge seam
+                            if (BiomeOfTile(neighborId) != pBiome) continue;   // biome edge = seam, never merge across
                             int neighborProvinceId = GetProvinceId(neighborId);
                             if (neighborProvinceId != -1 && neighborProvinceId != p.id)
                             {
@@ -1119,17 +1157,11 @@ namespace RegionsAndSocieties
                                 {
                                     if (neighborProv.provinceType == ProvinceType.Ocean || toRemove.Contains(neighborProv)) continue;
 
-                                    int weight = 1;
-                                    if (neighborProv.provinceType == ProvinceType.Land)
-                                    {
-                                        weight = 100;
-                                    }
-
                                     if (!neighborWeights.ContainsKey(neighborProvinceId))
                                     {
                                         neighborWeights[neighborProvinceId] = 0;
                                     }
-                                    neighborWeights[neighborProvinceId] += weight;
+                                    neighborWeights[neighborProvinceId] += 1;
                                 }
                             }
                         }
@@ -1150,6 +1182,10 @@ namespace RegionsAndSocieties
                         {
                             if (provinceMap.TryGetValue(kvp.Key, out var neighborProv))
                             {
+                                // Never adopt a target in a different biome — even the orphan rescue below
+                                // stays in-biome, because its candidates come only from this same list.
+                                if (neighborProv.primaryBiome != pBiome) continue;
+
                                 // Remember the highest-weight (most shared edges) land neighbour as a
                                 // rescue target, regardless of the size cap.
                                 if (dominantLand == null && neighborProv.provinceType == ProvinceType.Land)

@@ -148,29 +148,28 @@ namespace RegionsAndSocieties.Partition
         }
 
         /// <summary>
-        /// The grid-and-recombine partition (new for 0.3.0). Lay a regular grid over the world, clip each
-        /// grid box to one biome and to the passable land inside it, and let the terrain's barriers be the
-        /// seams — no anchors, no watershed, essentially one O(tiles) flood-fill:
+        /// The contain-then-subdivide partition (new for 0.3.0). Draw regions INSIDE the terrain's natural
+        /// sections, then cut each into evenly sized squares:
         ///
         /// <list type="number">
         /// <item>Classify each unclaimed land tile as <b>interior</b> (flat / small hills) or <b>wall</b>
         /// (Mountainous / LargeHills / impassable). Water is already claimed and is a hard wall.</item>
-        /// <item>Stamp each interior tile with a <b>grid-cell key</b>: its 3D position quantised to a box of
-        /// side L(biome) — L grows with the biome's size weight, so sparse ice/desert gets larger boxes —
-        /// combined with its biome id.</item>
-        /// <item><b>Flood-fill once</b>, joining two adjacent interior tiles only when they share that key.
-        /// Same key = same grid box AND same biome; interior-only adjacency means a range, coast or biome
-        /// edge breaks the fill. So every region is a grid box, clipped to one biome and to a barrier-free
-        /// patch — it cannot cross a barrier the box merely spans.</item>
+        /// <item><b>Contain:</b> flood the interior into containers bounded by biome edges AND natural
+        /// barriers — adjacent interior tiles join only within one biome, and walls never bridge two sides,
+        /// so a container is one biome-coherent patch on one side of the barriers around it. The thin edge
+        /// pieces a global grid would strand are simply part of the container's body.</item>
+        /// <item><b>Subdivide:</b> cut each container into ~<c>baseMax × biomeWeight</c>-tile SQUARE cells
+        /// (temperate ~1×, tundra ~2×, desert ~3×, ice ~10×), the Chebyshev fill confined to the container
+        /// so no square leaks past a barrier. A container within its target stays one region.</item>
         /// <item><b>Drape the walls</b> onto the nearest region (multi-source BFS), so a range's crest is
         /// the seam; any isolated massif becomes its own region.</item>
         /// </list>
         ///
-        /// <para>The downstream MergeTinyDomains is the "recombine" — a box shard below its biome-weighted
-        /// minimum folds into a neighbour. Deterministic (id-ordered seeds, ties to smaller id); O(tiles),
-        /// no per-region distance work.</para>
+        /// <para>Deterministic (id-ordered seeds, ties to smaller id). The container flood is O(tiles); the
+        /// subdivision is scoped per container (no whole-grid pass each). Downstream MergeTinyDomains still
+        /// cleans up sub-minimum shards, biome- and barrier-aware.</para>
         /// </summary>
-        public static List<List<int>> PartitionByGrid(int[] tileToProvinceId, int minRegionTiles, int maxRegionTiles)
+        public static List<List<int>> PartitionContainSubdivide(int[] tileToProvinceId, int minRegionTiles, int maxRegionTiles)
         {
             var result = new List<List<int>>();
             WorldGrid grid = Find.WorldGrid;
@@ -198,55 +197,60 @@ namespace RegionsAndSocieties.Partition
                 else interior[t] = true;
             }
 
-            // Phase 2: grid-cell key per interior tile. A box of side L holds ~baseMax tiles; the biome
-            // weight enlarges L (area ∝ L²) so a biome at weight w targets ~baseMax·w tiles per region.
-            // The biome id in the key keeps every box biome-coherent; ids are first-seen in tile-id order.
+            // Phase 2 (CONTAIN): flood the interior into containers bounded by biome edges AND natural
+            // barriers. Two adjacent interior tiles join only within one biome; walls (ridges, coast,
+            // impassable) are not interior, so they never bridge two sides. Each container is therefore one
+            // biome-coherent patch on ONE side of the barriers around it — the thin edge pieces a global
+            // grid would strand all fall into the same container as the body they belong to (this is the
+            // "1522 absorbs 942/2276/2051/2441" the design calls for).
             float tileSpacing = TileSpacing(grid);
-            float baseL = tileSpacing * (float)System.Math.Sqrt(System.Math.Max(1, baseMax));
-            var biomeIds = new Dictionary<BiomeDef, int>();
-            var cellKey = new long[total];
-            for (int t = 0; t < total; t++)
-            {
-                if (!interior[t]) { cellKey[t] = long.MinValue; continue; }
-                BiomeDef biome = biomeOf[t];
-                if (!biomeIds.TryGetValue(biome, out int bid)) { bid = biomeIds.Count; biomeIds[biome] = bid; }
-                float L = baseL * (float)System.Math.Sqrt(BiomeRegionWeights.Weight(biome));
-                if (L < 0.0001f) L = 0.0001f;
-                UnityEngine.Vector3 p = grid.GetTileCenter(t);
-                long bx = (long)System.Math.Floor(p.x / L) + 2048;
-                long by = (long)System.Math.Floor(p.y / L) + 2048;
-                long bz = (long)System.Math.Floor(p.z / L) + 2048;
-                // Pack (bid, bx, by, bz): 12 bits per box coord (0..4095), biome id above.
-                cellKey[t] = ((long)bid << 36) | ((bx & 0xFFF) << 24) | ((by & 0xFFF) << 12) | (bz & 0xFFF);
-            }
-
-            // Phase 3: one flood-fill. Adjacent interior tiles join only when their cell keys match — same
-            // grid box and biome — so each region is a grid box clipped to a barrier-free, one-biome patch.
-            var regionOf = new int[total];
-            for (int i = 0; i < total; i++) regionOf[i] = -1;
             var neigh = new List<PlanetTile>();
             var stack = new Stack<int>();
+            var containerOf = new int[total];
+            for (int i = 0; i < total; i++) containerOf[i] = -1;
+            var containers = new List<List<int>>();
             for (int s = 0; s < total; s++)
             {
-                if (!interior[s] || regionOf[s] != -1) continue;
-                int id = result.Count;
-                long key = cellKey[s];
-                var group = new List<int>();
-                stack.Clear(); stack.Push(s); regionOf[s] = id;
+                if (!interior[s] || containerOf[s] != -1) continue;
+                int id = containers.Count;
+                BiomeDef biome = biomeOf[s];
+                var container = new List<int>();
+                stack.Clear(); stack.Push(s); containerOf[s] = id;
                 while (stack.Count > 0)
                 {
                     int cur = stack.Pop();
-                    group.Add(cur);
+                    container.Add(cur);
                     grid.GetTileNeighbors(cur, neigh);
                     for (int i = 0; i < neigh.Count; i++)
                     {
                         int n = neigh[i].tileId;
-                        if (n < 0 || n >= total || !interior[n] || regionOf[n] != -1) continue;
-                        if (cellKey[n] != key) continue;    // different grid box or biome = seam
-                        regionOf[n] = id; stack.Push(n);
+                        if (n < 0 || n >= total || !interior[n] || containerOf[n] != -1) continue;
+                        if (biomeOf[n] != biome) continue;   // biome edge = container wall
+                        containerOf[n] = id; stack.Push(n);
                     }
                 }
-                result.Add(group);
+                containers.Add(container);
+            }
+
+            // Phase 3 (SUBDIVIDE): cut each container into appropriately sized squares. Target size is
+            // baseMax × the biome's size weight (temperate ~1×, tundra ~2×, desert ~3×, ice ~10×), so a
+            // sparse biome makes fewer, larger squares. A container at or under its target stays one region
+            // (a small biome patch is kept whole); a larger one splits into ~ceil(size/target) square
+            // Chebyshev cells, the fill confined to the container so no square leaks past a barrier.
+            var regionOf = new int[total];
+            for (int i = 0; i < total; i++) regionOf[i] = -1;
+            var owner = new int[total];
+            var cost = new float[total];
+            var set = new HashSet<int>();
+            foreach (var container in containers)
+            {
+                BiomeDef biome = biomeOf[container[0]];
+                float w = BiomeRegionWeights.Weight(biome);
+                int target = System.Math.Max(1, (int)System.Math.Round(baseMax * w));
+                if (container.Count <= target) { AddRegion(result, regionOf, container); continue; }
+                var cells = ChebyshevCellsScoped(grid, container, target, tileSpacing, owner, cost, set, neigh);
+                if (cells.Count == 0) { AddRegion(result, regionOf, container); continue; }
+                foreach (var g in cells) AddRegion(result, regionOf, g);
             }
 
             // Phase 4: drape wall land onto the nearest region (multi-source BFS from region tiles).
@@ -290,6 +294,114 @@ namespace RegionsAndSocieties.Partition
                 result.Add(group);
             }
 
+            return result;
+        }
+
+        /// <summary>Register a tile group as the next region and stamp each tile's <paramref name="regionOf"/>.</summary>
+        private static void AddRegion(List<List<int>> result, int[] regionOf, List<int> tiles)
+        {
+            if (tiles == null || tiles.Count == 0) return;
+            int rid = result.Count;
+            result.Add(tiles);
+            for (int i = 0; i < tiles.Count; i++) regionOf[tiles[i]] = rid;
+        }
+
+        /// <summary>
+        /// Split one connected container into ~<paramref name="target"/>-tile SQUARE cells: farthest-point
+        /// anchors (one per ~target tiles, running-min spacing) then a Chebyshev (L∞ box) fill — each tile
+        /// joins the anchor with the smallest max(|Δeast|,|Δnorth|), which grows a cell as a square rather
+        /// than a hex blob. The fill is confined to the container (<paramref name="set"/>), so a square
+        /// never leaks past the barrier around it.
+        ///
+        /// <para>Scratch is scoped to the container: the shared <paramref name="owner"/>/<paramref
+        /// name="cost"/> arrays (grid-sized, allocated once by the caller) are read and reset only over the
+        /// container's tiles — O(container·k) for anchors, O(container log) for the fill, no whole-grid
+        /// pass per container. Deterministic (tiles sorted; ties to the smaller anchor id).</para>
+        /// </summary>
+        private static List<List<int>> ChebyshevCellsScoped(WorldGrid grid, List<int> tiles, int target,
+            float tileSpacing, int[] owner, float[] cost, HashSet<int> set, List<PlanetTile> nb)
+        {
+            var result = new List<List<int>>();
+            int count = tiles.Count;
+            if (count == 0) return result;
+            int k = System.Math.Max(1, (int)System.Math.Round(count / (double)target));
+
+            var sorted = new List<int>(tiles);
+            sorted.Sort();
+            if (k <= 1) { result.Add(sorted); return result; }
+
+            set.Clear();
+            foreach (int t in sorted) { set.Add(t); cost[t] = float.PositiveInfinity; }  // cost doubles as running min-dist here
+
+            // Farthest-point anchors, running min-distance (O(count·k)).
+            var anchors = new List<int>(k) { sorted[0] };
+            int newest = sorted[0];
+            while (anchors.Count < k)
+            {
+                int best = -1; float bestD = -1f;
+                for (int i = 0; i < count; i++)
+                {
+                    int t = sorted[i];
+                    float d = cost[t];
+                    float dd = grid.ApproxDistanceInTiles(t, newest);
+                    if (dd < d) { d = dd; cost[t] = d; }
+                    if (d > bestD) { bestD = d; best = t; }
+                }
+                if (best < 0 || cost[best] <= 0f) break;
+                anchors.Add(best); newest = best;
+            }
+            anchors.Sort();
+
+            // Per-anchor local east/north box frame.
+            var frameC = new Dictionary<int, UnityEngine.Vector3>(anchors.Count);
+            var frameE = new Dictionary<int, UnityEngine.Vector3>(anchors.Count);
+            var frameN = new Dictionary<int, UnityEngine.Vector3>(anchors.Count);
+            foreach (int a in anchors)
+            {
+                UnityEngine.Vector3 c = grid.GetTileCenter(a);
+                UnityEngine.Vector3 up = c.normalized;
+                UnityEngine.Vector3 refA = UnityEngine.Mathf.Abs(UnityEngine.Vector3.Dot(up, UnityEngine.Vector3.up)) > 0.99f
+                    ? UnityEngine.Vector3.right : UnityEngine.Vector3.up;
+                UnityEngine.Vector3 east = UnityEngine.Vector3.Cross(up, refA).normalized;
+                frameC[a] = c; frameE[a] = east; frameN[a] = UnityEngine.Vector3.Cross(east, up).normalized;
+            }
+
+            // Chebyshev box fill from the anchors, confined to the container.
+            foreach (int t in sorted) { owner[t] = -1; cost[t] = float.PositiveInfinity; }
+            var heap = new MinHeap(anchors.Count + 16);
+            foreach (int a in anchors) { owner[a] = a; cost[a] = 0f; heap.Push(a, 0f); }
+            while (heap.Count > 0)
+            {
+                heap.Pop(out int cur, out float cc);
+                if (cc > cost[cur]) continue;
+                int a2 = owner[cur];
+                UnityEngine.Vector3 ac = frameC[a2], ae = frameE[a2], an = frameN[a2];
+                nb.Clear();
+                grid.GetTileNeighbors(cur, nb);
+                for (int i = 0; i < nb.Count; i++)
+                {
+                    int nid = nb[i].tileId;
+                    if (!set.Contains(nid)) continue;
+                    UnityEngine.Vector3 d = grid.GetTileCenter(nid) - ac;
+                    float x = UnityEngine.Vector3.Dot(d, ae) / tileSpacing;
+                    float y = UnityEngine.Vector3.Dot(d, an) / tileSpacing;
+                    float nc = System.Math.Max(System.Math.Abs(x), System.Math.Abs(y));
+                    if (nc < cost[nid] || (nc == cost[nid] && a2 < owner[nid]))
+                    {
+                        cost[nid] = nc; owner[nid] = a2; heap.Push(nid, nc);
+                    }
+                }
+            }
+
+            var groupByAnchor = new Dictionary<int, List<int>>(anchors.Count);
+            for (int i = 0; i < count; i++)
+            {
+                int t = sorted[i];
+                int o = owner[t] >= 0 ? owner[t] : anchors[0];
+                if (!groupByAnchor.TryGetValue(o, out var g)) { g = new List<int>(); groupByAnchor[o] = g; }
+                g.Add(t);
+            }
+            foreach (var kv in groupByAnchor) result.Add(kv.Value);
             return result;
         }
 
