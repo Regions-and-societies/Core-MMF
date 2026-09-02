@@ -781,6 +781,11 @@ namespace RegionsAndSocieties
             // regardless of biome and after the biome-aware merge leaves such slivers behind.
             AbsorbEnclosedRegions();
 
+            // Phase 5a2: a small passable speck sealed entirely by impassable rock (no land, no water)
+            // reads as part of the massif, not a 1-tile territory — fold it into the surrounding
+            // MountainRange. Islands (water neighbours) and genuine enclosed valleys (larger) are left.
+            AbsorbMountainSealedSpecks(MountainSpeckMaxTiles);
+
             // Phase 5b1: dissolve small inland lakes into the surrounding land (#20). Phase 2.5 floods
             // every barren water body — including a small inland lake — into its own water province; a
             // lake ringed entirely by land reads better as part of that land region than as a stranded
@@ -816,6 +821,104 @@ namespace RegionsAndSocieties
             BuildProvinceTopology();
 
             Log.Message($"[RegionsAndSocieties] Generated {provinces.Count} Geographic Domains.");
+
+            DiagnoseTinyRegions(5);
+        }
+
+        /// <summary>
+        /// Log the neighbour composition of every very small land region, so a tiny region can be judged
+        /// individually: a real island (all water / map edge), a mountain-locked pocket (all MountainRange),
+        /// or an artifact that still borders other land regions and therefore should have merged. Genuine
+        /// per-region analysis for tuning — no guessing.
+        /// </summary>
+        /// <summary>Largest passable speck (in tiles) folded into a surrounding impassable massif. Above
+        /// this a fully mountain-sealed pocket is treated as a genuine enclosed valley and kept.</summary>
+        private const int MountainSpeckMaxTiles = 15;
+
+        /// <summary>
+        /// Fold every small passable land region whose neighbours are ENTIRELY impassable MountainRange
+        /// (no other land, no water, no unclaimed tile) into the surrounding mountain province. Such a
+        /// speck is a habitable dot sealed inside a massif; it reads as terrain, not a territory. Islands
+        /// (water neighbours) and larger enclosed valleys are untouched.
+        /// </summary>
+        private void AbsorbMountainSealedSpecks(int maxTiles)
+        {
+            if (provinces == null || tileToProvinceId == null || Find.WorldGrid == null) return;
+            var byId = provinces.ToDictionary(p => p.id, p => p);
+            var neighbors = new List<RimWorld.Planet.PlanetTile>();
+            var toRemove = new HashSet<GeographicProvince>();
+            foreach (var p in provinces)
+            {
+                if (p.provinceType != ProvinceType.Land || p.tiles == null || p.tiles.Count == 0) continue;
+                if (p.tiles.Count > maxTiles) continue;
+
+                bool sealedByMtn = true; int mtnProv = -1;
+                foreach (int tile in p.tiles)
+                {
+                    neighbors.Clear();
+                    Find.WorldGrid.GetTileNeighbors(tile, neighbors);
+                    foreach (var n in neighbors)
+                    {
+                        int pid = GetProvinceId(n.tileId);
+                        if (pid == p.id) continue;
+                        if (pid == -1) { sealedByMtn = false; break; }
+                        if (!byId.TryGetValue(pid, out var np) || np.provinceType != ProvinceType.MountainRange
+                            || toRemove.Contains(np)) { sealedByMtn = false; break; }
+                        if (mtnProv == -1) mtnProv = pid;   // fold into the first surrounding massif
+                    }
+                    if (!sealedByMtn) break;
+                }
+
+                if (sealedByMtn && mtnProv >= 0 && byId.TryGetValue(mtnProv, out var mprov))
+                {
+                    foreach (int tileId in p.tiles) { mprov.tiles.Add(tileId); tileToProvinceId[tileId] = mprov.id; }
+                    toRemove.Add(p);
+                }
+            }
+            if (toRemove.Count > 0) provinces.RemoveAll(p => toRemove.Contains(p));
+            Log.Message($"[RegionsAndSocieties] AbsorbMountainSealedSpecks: folded {toRemove.Count} speck(s) into surrounding mountains.");
+        }
+
+        private void DiagnoseTinyRegions(int maxTiles)
+        {
+            if (provinces == null || Find.WorldGrid == null) return;
+            var byId = provinces.ToDictionary(p => p.id, p => p);
+            var neighbors = new List<RimWorld.Planet.PlanetTile>();
+            int count = Find.WorldGrid.TilesCount;
+            int reported = 0;
+            foreach (var p in provinces)
+            {
+                if (p.provinceType != ProvinceType.Land || p.tiles == null || p.tiles.Count == 0) continue;
+                if (p.tiles.Count > maxTiles) continue;
+                int water = 0, mountain = 0, landOther = 0, unclaimed = 0, edge = 0;
+                var landNbrs = new HashSet<int>();
+                foreach (int tile in p.tiles)
+                {
+                    neighbors.Clear();
+                    Find.WorldGrid.GetTileNeighbors(tile, neighbors);
+                    foreach (var n in neighbors)
+                    {
+                        int nid = n.tileId;
+                        if (nid < 0 || nid >= count) { edge++; continue; }
+                        int pid = GetProvinceId(nid);
+                        if (pid == p.id) continue;
+                        if (pid == -1) { unclaimed++; continue; }
+                        if (!byId.TryGetValue(pid, out var np)) { unclaimed++; continue; }
+                        if (np.provinceType == ProvinceType.Ocean) water++;
+                        else if (np.provinceType == ProvinceType.MountainRange) mountain++;
+                        else if (np.provinceType == ProvinceType.Land) { landOther++; landNbrs.Add(pid); }
+                    }
+                }
+                string verdict = landNbrs.Count > 0
+                    ? $"ARTIFACT: borders {landNbrs.Count} land region(s) [{string.Join(",", landNbrs)}] -> should have merged"
+                    : (water > 0 && mountain == 0 ? "island (water-locked)"
+                       : mountain > 0 && water == 0 ? "mountain-locked pocket"
+                       : water > 0 && mountain > 0 ? "water+mountain locked"
+                       : "fully isolated");
+                Log.Message($"[RegionsAndSocieties] tiny region {p.id}: {p.tiles.Count} tiles, biome={p.primaryBiome?.defName}, edges[water={water} mtn={mountain} land={landOther} unclaimed={unclaimed} mapedge={edge}] :: {verdict}");
+                reported++;
+            }
+            Log.Message($"[RegionsAndSocieties] DiagnoseTinyRegions: {reported} land region(s) <= {maxTiles} tiles.");
         }
 
         /// <summary>Largest inland lake (in tiles) still folded into its surrounding land (#20). Bigger
