@@ -203,20 +203,24 @@ namespace RegionsAndSocieties.Partition
             float tileSpacing = TileSpacing(grid);
             var neigh = new List<PlanetTile>();
 
-            // 2a: a CORE tile is an interior tile with NO claimed (water / impassable) neighbour. A narrow
-            // passable neck between hard walls — a mountain pass, or an isthmus between seas — is all rim
-            // and has no core, so the core flood in 2b cannot bridge the two sides through it. The pass
-            // therefore acts as a boundary; its corridor is handed to the nearer side in 2c.
+            // 2a: a CORE tile is an interior tile with NO wall (claimed water / impassable) neighbour AND no
+            // different-biome neighbour. Any narrow neck — a mountain pass, an isthmus between seas, OR a
+            // one-to-two-tile waist where another biome pinches in from both sides — is all rim and has no
+            // core, so the core flood in 2b cannot bridge the two lobes through it. The neck therefore acts
+            // as a boundary and the rim splits at the pinch (2c), which closes 1-tile "tumor" necks and lays
+            // a straight cut across the narrowest part of a biome pass instead of tracing every tooth of it.
             var core = new bool[total];
             for (int t = 0; t < total; t++)
             {
                 if (!interior[t]) continue;
                 bool isCore = true;
+                BiomeDef tb = biomeOf[t];
                 grid.GetTileNeighbors(t, neigh);
                 for (int i = 0; i < neigh.Count; i++)
                 {
                     int n = neigh[i].tileId;
-                    if (n < 0 || n >= total || tileToProvinceId[n] >= 0) { isCore = false; break; }  // touches a wall
+                    if (n < 0 || n >= total || tileToProvinceId[n] >= 0) { isCore = false; break; }   // touches a wall
+                    if (interior[n] && biomeOf[n] != tb) { isCore = false; break; }                    // touches a biome edge
                 }
                 core[t] = isCore;
             }

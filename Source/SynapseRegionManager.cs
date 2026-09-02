@@ -822,7 +822,13 @@ namespace RegionsAndSocieties
             // 1-tile-wide appendages; a light majority-vote relaxation folds a tile wrapped more by a
             // neighbour than by its own province back into that neighbour, straightening the ragged
             // edges without touching feature borders (water/impassable neighbours never vote).
-            SmoothRegionBoundaries(5);
+            SmoothRegionBoundaries(8);
+
+            // Phase 5d: final consolidation. Splitting and straightening run after the merge, so they can
+            // leave a small same-biome fragment newly adjacent to the big region it belongs to (e.g. a
+            // desert sliver against the main desert) that the earlier merge never got to see. Fold any
+            // sub-minimum land region into its dominant same-biome passable neighbour.
+            AbsorbStrayFragments();
 
             // Naming Phase: Contextual Name Resolution
             Log.Message("[RegionsAndSocieties] Running contextual province naming...");
@@ -835,6 +841,159 @@ namespace RegionsAndSocieties
             Log.Message($"[RegionsAndSocieties] Generated {provinces.Count} Geographic Domains.");
 
             DiagnoseTinyRegions(5);
+            DiagnoseBigRegions(150);
+            DiagnoseUnmergedSlivers();
+        }
+
+        /// <summary>
+        /// For every sub-minimum land region, log which land regions it borders, with the same-biome
+        /// passable edge count to each — the exact thing the merge needs. If a sliver borders a same-biome
+        /// region with same-biome-passable edges yet survives, the merge blocked it (size cap); if it has
+        /// none, the division is a real barrier/biome separation. Answers "why isn't this sliver combined"
+        /// from data.
+        /// </summary>
+        /// <summary>
+        /// Fold every sub-minimum land region into its dominant same-biome, passable neighbour. Runs LAST,
+        /// after split + straighten, to catch a fragment whose same-biome connection to the region it
+        /// belongs to only formed once those passes moved tiles — the ordering gap that left a stray sliver
+        /// (601) next to the desert it is part of (235). Same-biome only, so it never mixes biomes; iterated
+        /// because folding one fragment can bring another below the threshold's dominant share.
+        /// </summary>
+        private void AbsorbStrayFragments()
+        {
+            if (provinces == null || tileToProvinceId == null || Find.WorldGrid == null) return;
+            int minR = FactionPlacementSettings.minRegionSize;
+            var neighbors = new List<RimWorld.Planet.PlanetTile>();
+            int folded = 0;
+            bool changed = true; int guard = 0;
+            while (changed && guard++ < 8)
+            {
+                changed = false;
+                var byId = provinces.ToDictionary(p => p.id, p => p);
+                var toRemove = new HashSet<GeographicProvince>();
+                foreach (var p in provinces)
+                {
+                    if (p.provinceType != ProvinceType.Land || p.tiles == null || p.tiles.Count == 0 || toRemove.Contains(p)) continue;
+                    if (p.tiles.Count >= minR) continue;
+                    BiomeDef pb = p.primaryBiome;
+
+                    var sameBiomeEdges = new Dictionary<int, int>();
+                    foreach (int t in p.tiles)
+                    {
+                        if (IsBarrierTile(t) || BiomeOfTile(t) != pb) continue;
+                        neighbors.Clear();
+                        Find.WorldGrid.GetTileNeighbors(t, neighbors);
+                        foreach (var n in neighbors)
+                        {
+                            if (IsBarrierTile(n.tileId) || BiomeOfTile(n.tileId) != pb) continue;
+                            int np = GetProvinceId(n.tileId);
+                            if (np == p.id || np == -1) continue;
+                            if (!byId.TryGetValue(np, out var nprov) || nprov.provinceType != ProvinceType.Land
+                                || nprov.primaryBiome != pb || toRemove.Contains(nprov)) continue;
+                            int c; sameBiomeEdges.TryGetValue(np, out c); sameBiomeEdges[np] = c + 1;
+                        }
+                    }
+                    if (sameBiomeEdges.Count == 0) continue;
+
+                    int bestId = -1, bestC = 0;
+                    foreach (var kv in sameBiomeEdges) if (kv.Value > bestC || (kv.Value == bestC && kv.Key < bestId)) { bestC = kv.Value; bestId = kv.Key; }
+                    if (bestId >= 0 && byId.TryGetValue(bestId, out var host))
+                    {
+                        foreach (int tileId in p.tiles) { host.tiles.Add(tileId); tileToProvinceId[tileId] = host.id; }
+                        toRemove.Add(p); changed = true; folded++;
+                    }
+                }
+                if (toRemove.Count > 0) provinces.RemoveAll(p => toRemove.Contains(p));
+            }
+            Log.Message($"[RegionsAndSocieties] AbsorbStrayFragments: folded {folded} stray same-biome fragment(s).");
+        }
+
+        private void DiagnoseUnmergedSlivers()
+        {
+            if (provinces == null || Find.WorldGrid == null) return;
+            int minR = FactionPlacementSettings.minRegionSize;
+            var byId = provinces.ToDictionary(p => p.id, p => p);
+            var neighbors = new List<RimWorld.Planet.PlanetTile>();
+            foreach (var p in provinces)
+            {
+                if (p.provinceType != ProvinceType.Land || p.tiles == null || p.tiles.Count == 0) continue;
+                if (p.tiles.Count >= minR) continue;
+                var anyEdges = new Dictionary<int, int>();
+                var sameBiomePassable = new Dictionary<int, int>();
+                foreach (int t in p.tiles)
+                {
+                    bool tBarrier = IsBarrierTile(t);
+                    BiomeDef tb = BiomeOfTile(t);
+                    neighbors.Clear();
+                    Find.WorldGrid.GetTileNeighbors(t, neighbors);
+                    foreach (var n in neighbors)
+                    {
+                        int np = GetProvinceId(n.tileId);
+                        if (np == p.id || np == -1) continue;
+                        if (!byId.TryGetValue(np, out var nprov) || nprov.provinceType != ProvinceType.Land) continue;
+                        int c; anyEdges.TryGetValue(np, out c); anyEdges[np] = c + 1;
+                        if (!tBarrier && !IsBarrierTile(n.tileId) && BiomeOfTile(n.tileId) == tb)
+                        { int d; sameBiomePassable.TryGetValue(np, out d); sameBiomePassable[np] = d + 1; }
+                    }
+                }
+                var sb = new System.Text.StringBuilder();
+                sb.Append($"sliver {p.id}: {p.tiles.Count}t {p.primaryBiome?.defName} borders");
+                foreach (var kv in anyEdges.OrderByDescending(x => x.Value))
+                {
+                    var nprov = byId[kv.Key];
+                    int sbp = sameBiomePassable.TryGetValue(kv.Key, out var d) ? d : 0;
+                    sb.Append($" | {kv.Key}({nprov.tiles.Count}t {nprov.primaryBiome?.defName} edges={kv.Value} sameBiomePass={sbp})");
+                }
+                Log.Message("[RegionsAndSocieties] " + sb.ToString());
+            }
+        }
+
+        /// <summary>
+        /// Log the shape quality of every large land region: connected-component count (is it one blob or
+        /// several joined by the merge?), biome purity, and spideriness = perimeter / sqrt(tiles) (~4-5 is
+        /// a compact blob, higher is a ribbon / a shape wrapping barriers). Genuine data for judging whether
+        /// the contain-then-subdivide output is actually good, region by region.
+        /// </summary>
+        private void DiagnoseBigRegions(int minTiles)
+        {
+            if (provinces == null || Find.WorldGrid == null) return;
+            var neighbors = new List<RimWorld.Planet.PlanetTile>();
+            foreach (var p in provinces)
+            {
+                if (p.provinceType != ProvinceType.Land || p.tiles == null || p.tiles.Count < minTiles) continue;
+                var set = new HashSet<int>(p.tiles);
+
+                // Connected components within the region (contiguity).
+                int components = 0;
+                var seen = new HashSet<int>();
+                var stack = new Stack<int>();
+                foreach (int t in p.tiles)
+                {
+                    if (!seen.Add(t)) continue;
+                    components++;
+                    stack.Clear(); stack.Push(t);
+                    while (stack.Count > 0)
+                    {
+                        int cur = stack.Pop();
+                        neighbors.Clear(); Find.WorldGrid.GetTileNeighbors(cur, neighbors);
+                        foreach (var n in neighbors)
+                            if (set.Contains(n.tileId) && seen.Add(n.tileId)) stack.Push(n.tileId);
+                    }
+                }
+
+                // Perimeter (edges to a different province / edge) and biome purity.
+                int perimeter = 0, offBiome = 0;
+                foreach (int t in p.tiles)
+                {
+                    if (BiomeOfTile(t) != p.primaryBiome) offBiome++;
+                    neighbors.Clear(); Find.WorldGrid.GetTileNeighbors(t, neighbors);
+                    foreach (var n in neighbors)
+                        if (!set.Contains(n.tileId)) perimeter++;
+                }
+                float spider = perimeter / (float)System.Math.Sqrt(System.Math.Max(1, p.tiles.Count));
+                float purity = 1f - (offBiome / (float)p.tiles.Count);
+                Log.Message($"[RegionsAndSocieties] big region {p.id}: {p.tiles.Count} tiles, biome={p.primaryBiome?.defName}, components={components}, spideriness={spider:F1}, biomePurity={purity:P0}");
+            }
         }
 
         /// <summary>
@@ -1161,7 +1320,6 @@ namespace RegionsAndSocieties
                     int pid = tileToProvinceId[t];
                     if (pid < 0 || !landIds.Contains(pid)) continue;
                     if (IsBarrierTile(t)) continue;                      // don't shuffle draped crest/coast tiles between regions
-                    BiomeDef tb = BiomeOfTile(t);
 
                     neighbors.Clear();
                     Find.WorldGrid.GetTileNeighbors(t, neighbors);
@@ -1171,7 +1329,12 @@ namespace RegionsAndSocieties
                     {
                         int np = tileToProvinceId[n.tileId];
                         if (np < 0 || !landIds.Contains(np)) continue;   // coast/river/impassable edge: keep it
-                        if (IsBarrierTile(n.tileId) || BiomeOfTile(n.tileId) != tb) continue;  // never erode across a wall or biome edge
+                        if (IsBarrierTile(n.tileId)) continue;           // never erode toward/across a hard wall (water/impassable)
+                        // NOTE: biome edges are deliberately NOT blocked here. Shearing is bounded to
+                        // protrusions (same<=2 + spike/tendril), so a straight biome border is never
+                        // touched, but a 1-tile spider or a border snaking through a THICK biome-transition
+                        // band gets shortened toward the straightest line through that band — the pure-biome
+                        // cores stay put because their tiles have same>2 and never qualify.
                         landNeighbours++;
                         if (np == pid) { same++; continue; }
                         int c; counts.TryGetValue(np, out c); c++; counts[np] = c;
