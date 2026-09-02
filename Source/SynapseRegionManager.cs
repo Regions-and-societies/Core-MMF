@@ -656,15 +656,17 @@ namespace RegionsAndSocieties
             // oversized cell into river basins by a marker-controlled watershed — so borders sit on
             // features, basins centre on rivers, and region size varies with the terrain. This
             // replaces the grow-first frontier and its Phase 4.5 river absorption in one pass.
-            // New worlds (and regens of new-partition worlds) use the contain-then-subdivide partition:
-            // draw regions inside the terrain's natural containers (biome-coherent basins bounded by
-            // water, ridges and biome edges) and subdivide each to a biome-weighted size. A legacy world
-            // keeps the anchor-Voronoi PartitionLand so a regenerate never reshapes an existing save.
+            // New worlds (and regens of new-partition worlds) use the grid-and-recombine partition: lay a
+            // biome-weighted grid over the land, clip each box to one biome and a barrier-free patch, and
+            // let ridges/coasts be the seams. A legacy world keeps the anchor-Voronoi PartitionLand so a
+            // regenerate never reshapes an existing save.
             bool legacyPartition = PartitionAlgorithmVersion == PartitionAlgorithmLegacy;
+            var swPartition = System.Diagnostics.Stopwatch.StartNew();
             var landGroups = legacyPartition
                 ? Partition.BorderPartitioner.PartitionLand(tileToProvinceId, baseMin, baseMax)
-                : Partition.BorderPartitioner.PartitionByBasins(tileToProvinceId, baseMin, baseMax);
-            Log.Message($"[RegionsAndSocieties] Land partition: {(legacyPartition ? "legacy anchor-Voronoi" : "contain-then-subdivide")} produced {landGroups.Count} land groups.");
+                : Partition.BorderPartitioner.PartitionByGrid(tileToProvinceId, baseMin, baseMax);
+            swPartition.Stop();
+            Log.Message($"[RegionsAndSocieties] Land partition: {(legacyPartition ? "legacy anchor-Voronoi" : "grid-and-recombine")} produced {landGroups.Count} land groups in {swPartition.ElapsedMilliseconds} ms.");
             foreach (var group in landGroups)
             {
                 if (group.Count == 0) continue;
