@@ -117,6 +117,25 @@ namespace RegionsAndSocieties
         public const int DensityAlgorithmCurrent = 2;
         private int densityAlgorithmVersionRaw = -1;
 
+        // Which region-partition algorithm built this world's provinces. Provinces ARE scribed, so an old
+        // save keeps its shapes on load without re-partitioning; this stamp exists so a REGEN (the debug
+        // action, or any future forced rebuild) reproduces the world with the algorithm it was born under,
+        // and so new worlds get the new method by default. -1 unresolved; 1 legacy (anchor-Voronoi
+        // PartitionLand, 0.2.x–early 0.3.0); 2 current (contain-then-subdivide PartitionByBasins).
+        public const int PartitionAlgorithmLegacy = 1;
+        public const int PartitionAlgorithmCurrent = 2;
+        private int partitionAlgorithmVersionRaw = -1;
+
+        /// <summary>
+        /// The partition algorithm in force for this world. Only a save explicitly resolved to legacy (a
+        /// world whose provinces predate the stamp) reports legacy; an unstamped live new world defaults
+        /// to current, so new games get the contain-then-subdivide partition.
+        /// </summary>
+        public int PartitionAlgorithmVersion
+        {
+            get { return partitionAlgorithmVersionRaw == PartitionAlgorithmLegacy ? PartitionAlgorithmLegacy : PartitionAlgorithmCurrent; }
+        }
+
         /// <summary>
         /// The density algorithm in force for this world. Only a save explicitly resolved to legacy
         /// (a pre-0.7.2 world) reports legacy; an unstamped live new world defaults to current.
@@ -241,6 +260,37 @@ namespace RegionsAndSocieties
         public void ResolveDensityAlgorithmForTesting()
         {
             ResolveDensityAlgorithmForLoadedSave();
+        }
+
+        /// <summary>
+        /// Decide the partition algorithm for a save that predates the stamp. Same discriminator as the
+        /// density stamp — <b>provinces, not the flag</b>: a world that already has generated provinces
+        /// was built by the legacy partition and keeps it (its shapes are scribed and must not shift if
+        /// regenerated), while a save with no provinces is one R&amp;T is partitioning now for the first
+        /// time and gets the current contain-then-subdivide algorithm.
+        /// </summary>
+        private void ResolvePartitionAlgorithmForLoadedSave()
+        {
+            if (partitionAlgorithmVersionRaw != -1) return;
+
+            bool hadProvinces = provinces != null && provinces.Count > 0;
+            partitionAlgorithmVersionRaw = hadProvinces ? PartitionAlgorithmLegacy : PartitionAlgorithmCurrent;
+
+            Log.Message(hadProvinces
+                ? "[RegionsAndSocieties] Save predates the partition-algorithm stamp but has provinces: keeping the legacy (anchor-Voronoi) region shapes so a regenerate would not repartition this world."
+                : "[RegionsAndSocieties] Save has no province data: regions will be built with the current contain-then-subdivide partition.");
+        }
+
+        /// <summary>Test seam: force the partition algorithm back to unresolved.</summary>
+        public void ResetPartitionAlgorithmForTesting()
+        {
+            partitionAlgorithmVersionRaw = -1;
+        }
+
+        /// <summary>Test seam: run the partition load-time decision directly, without a save round trip.</summary>
+        public void ResolvePartitionAlgorithmForTesting()
+        {
+            ResolvePartitionAlgorithmForLoadedSave();
         }
 
         /// <summary>Set when a save is adopted into compatibility mode; cleared once the player has been told.</summary>
@@ -387,6 +437,15 @@ namespace RegionsAndSocieties
             }
             Scribe_Values.Look(ref densityAlgorithmVersionRaw, "densityAlgorithmVersion", -1);
 
+            // Same stamp-on-first-save rule as the density version: an unresolved algorithm at save time
+            // is a live new world running current code (it never hit the load-time resolver), so it is
+            // current by construction; a loaded pre-stamp save was resolved to legacy before any save.
+            if (Scribe.mode == LoadSaveMode.Saving && partitionAlgorithmVersionRaw == -1)
+            {
+                partitionAlgorithmVersionRaw = PartitionAlgorithmCurrent;
+            }
+            Scribe_Values.Look(ref partitionAlgorithmVersionRaw, "partitionAlgorithmVersion", -1);
+
             Scribe_Collections.Look(ref provinces, "provinces", LookMode.Deep);
             if (provinces == null)
             {
@@ -401,6 +460,7 @@ namespace RegionsAndSocieties
             {
                 ResolveStrictOwnershipForLoadedSave();
                 ResolveDensityAlgorithmForLoadedSave();
+                ResolvePartitionAlgorithmForLoadedSave();
 
                 // Population is cached statically and survives across loads within one process; drop
                 // it so the next read rebuilds under the algorithm just resolved for this world.
@@ -596,7 +656,16 @@ namespace RegionsAndSocieties
             // oversized cell into river basins by a marker-controlled watershed — so borders sit on
             // features, basins centre on rivers, and region size varies with the terrain. This
             // replaces the grow-first frontier and its Phase 4.5 river absorption in one pass.
-            foreach (var group in Partition.BorderPartitioner.PartitionLand(tileToProvinceId, baseMin, baseMax))
+            // New worlds (and regens of new-partition worlds) use the contain-then-subdivide partition:
+            // draw regions inside the terrain's natural containers (biome-coherent basins bounded by
+            // water, ridges and biome edges) and subdivide each to a biome-weighted size. A legacy world
+            // keeps the anchor-Voronoi PartitionLand so a regenerate never reshapes an existing save.
+            bool legacyPartition = PartitionAlgorithmVersion == PartitionAlgorithmLegacy;
+            var landGroups = legacyPartition
+                ? Partition.BorderPartitioner.PartitionLand(tileToProvinceId, baseMin, baseMax)
+                : Partition.BorderPartitioner.PartitionByBasins(tileToProvinceId, baseMin, baseMax);
+            Log.Message($"[RegionsAndSocieties] Land partition: {(legacyPartition ? "legacy anchor-Voronoi" : "contain-then-subdivide")} produced {landGroups.Count} land groups.");
+            foreach (var group in landGroups)
             {
                 if (group.Count == 0) continue;
 

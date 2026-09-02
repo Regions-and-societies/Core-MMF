@@ -147,6 +147,233 @@ namespace RegionsAndSocieties.Partition
             return result;
         }
 
+        /// <summary>
+        /// The contain-then-subdivide partition (new for 0.3.0). Instead of scattering anchors across the
+        /// whole land and letting cells meet wherever, it works INSIDE the terrain's natural containers:
+        ///
+        /// <list type="number">
+        /// <item>Classify every unclaimed land tile as basin <b>interior</b> (flat / small hills) or a
+        /// <b>wall</b> (high ground — Mountainous/LargeHills — or impassable). Water is already claimed
+        /// and is a hard wall too.</item>
+        /// <item>Flood the interior into <b>biome-coherent basins</b>: two adjacent interior tiles join
+        /// only if they share a biome, so a basin never crosses a biome edge, a ridge, or water. Rivers
+        /// are NOT walls — they thread through a basin's middle.</item>
+        /// <item><b>Subdivide each basin to its weighted size.</b> A basin at or under its weighted target
+        /// (<c>max × <see cref="BiomeRegionWeights"/></c>) stays one region — small biome slivers and
+        /// sparse ice/desert basins are kept whole; a larger basin splits into
+        /// <c>ceil(size / weightedMax)</c> compact pieces via <see cref="SplitTiles"/>, confined to the
+        /// basin so a piece never leaks across a wall.</item>
+        /// <item><b>Drape the walls.</b> Mountain and impassable land is grown onto the nearest region by
+        /// a multi-source BFS, so a range's crest becomes the seam between the basins on either side.
+        /// Anything left unreachable (an isolated massif) becomes its own region.</item>
+        /// </list>
+        ///
+        /// <para>Deterministic (tiles visited in id order, ties to smaller id). Returns one tile list per
+        /// region for the caller to wrap; downstream MergeTinyDomains / smoothing still run.</para>
+        /// </summary>
+        public static List<List<int>> PartitionByBasins(int[] tileToProvinceId, int minRegionTiles, int maxRegionTiles)
+        {
+            var result = new List<List<int>>();
+            WorldGrid grid = Find.WorldGrid;
+            if (grid == null || tileToProvinceId == null) return result;
+
+            int total = grid.TilesCount;
+            int baseMax = maxRegionTiles > 0 ? maxRegionTiles : 150;
+
+            // Phase 1: classify. interior = unclaimed low land; wall = unclaimed high/impassable land.
+            var interior = new bool[total];
+            var wall = new bool[total];
+            var biomeOf = new BiomeDef[total];
+            for (int t = 0; t < total; t++)
+            {
+                if (tileToProvinceId[t] >= 0) continue;         // water/ocean already claimed = hard wall
+                Tile tile = grid[t];
+                if (tile == null || tile.WaterCovered) continue;
+                BiomeDef biome = tile.PrimaryBiome;
+                biomeOf[t] = biome;
+                bool impassable = tile.hilliness == Hilliness.Impassable
+                    || (biome != null && (biome.impassable || biome.defName == "SeaIce"));
+                bool highGround = tile.hilliness == Hilliness.Mountainous || tile.hilliness == Hilliness.LargeHills;
+                if (impassable || highGround) wall[t] = true;
+                else interior[t] = true;
+            }
+
+            // Phase 2: flood the interior into biome-coherent basins (stack DFS, id-ordered seeds).
+            var basinId = new int[total];
+            for (int i = 0; i < total; i++) basinId[i] = -1;
+            var basins = new List<List<int>>();
+            var neigh = new List<PlanetTile>();
+            var stack = new Stack<int>();
+            for (int s = 0; s < total; s++)
+            {
+                if (!interior[s] || basinId[s] != -1) continue;
+                int id = basins.Count;
+                BiomeDef biome = biomeOf[s];
+                var basin = new List<int>();
+                stack.Clear(); stack.Push(s); basinId[s] = id;
+                while (stack.Count > 0)
+                {
+                    int cur = stack.Pop();
+                    basin.Add(cur);
+                    grid.GetTileNeighbors(cur, neigh);
+                    for (int i = 0; i < neigh.Count; i++)
+                    {
+                        int n = neigh[i].tileId;
+                        if (n < 0 || n >= total || !interior[n] || basinId[n] != -1) continue;
+                        if (biomeOf[n] != biome) continue;      // biome edge = wall
+                        basinId[n] = id; stack.Push(n);
+                    }
+                }
+                basins.Add(basin);
+            }
+
+            // Phase 3: subdivide each basin to its biome-weighted size. A basin within its weighted band
+            // stays whole (small slivers, sparse ice/desert); a larger one splits into ~weightedMax
+            // square cells, the fill confined to the basin mask so no cell leaks past a wall.
+            var regionOf = new int[total];
+            for (int i = 0; i < total; i++) regionOf[i] = -1;
+            var fillMask = new bool[total];
+            foreach (var basin in basins)
+            {
+                BiomeDef biome = biomeOf[basin[0]];
+                float w = BiomeRegionWeights.Weight(biome);
+                int weightedMax = System.Math.Max(1, (int)System.Math.Round(baseMax * w));
+
+                if (basin.Count <= weightedMax)
+                {
+                    AddRegion(result, regionOf, basin);
+                    continue;
+                }
+
+                for (int i = 0; i < basin.Count; i++) fillMask[basin[i]] = true;
+                var cells = ChebyshevCells(grid, fillMask, total, weightedMax);
+                for (int i = 0; i < basin.Count; i++) fillMask[basin[i]] = false;
+
+                if (cells.Count == 0) { AddRegion(result, regionOf, basin); continue; }  // fill degenerate → keep whole
+                foreach (var g in cells) AddRegion(result, regionOf, g);
+            }
+
+            // Phase 4: drape wall land onto the nearest region (multi-source BFS from region tiles).
+            var q = new Queue<int>();
+            for (int t = 0; t < total; t++) if (regionOf[t] != -1) q.Enqueue(t);
+            while (q.Count > 0)
+            {
+                int cur = q.Dequeue();
+                int rid = regionOf[cur];
+                grid.GetTileNeighbors(cur, neigh);
+                for (int i = 0; i < neigh.Count; i++)
+                {
+                    int n = neigh[i].tileId;
+                    if (n < 0 || n >= total || !wall[n] || regionOf[n] != -1) continue;
+                    regionOf[n] = rid; result[rid].Add(n); q.Enqueue(n);
+                }
+            }
+
+            // Phase 5: any land still unclaimed (isolated wall massif, or a basin with no interior at
+            // all) becomes its own region, so every land tile lands in exactly one region.
+            for (int s = 0; s < total; s++)
+            {
+                bool land = tileToProvinceId[s] < 0 && (interior[s] || wall[s]);
+                if (!land || regionOf[s] != -1) continue;
+                int id = result.Count;
+                var group = new List<int>();
+                stack.Clear(); stack.Push(s); regionOf[s] = id;
+                while (stack.Count > 0)
+                {
+                    int cur = stack.Pop();
+                    group.Add(cur);
+                    grid.GetTileNeighbors(cur, neigh);
+                    for (int i = 0; i < neigh.Count; i++)
+                    {
+                        int n = neigh[i].tileId;
+                        if (n < 0 || n >= total || tileToProvinceId[n] >= 0 || regionOf[n] != -1) continue;
+                        if (!interior[n] && !wall[n]) continue;
+                        regionOf[n] = id; stack.Push(n);
+                    }
+                }
+                result.Add(group);
+            }
+
+            return result;
+        }
+
+        /// <summary>Register a tile group as the next region and stamp each tile's <paramref name="regionOf"/>.</summary>
+        private static void AddRegion(List<List<int>> result, int[] regionOf, List<int> tiles)
+        {
+            if (tiles == null || tiles.Count == 0) return;
+            int rid = result.Count;
+            result.Add(tiles);
+            for (int i = 0; i < tiles.Count; i++) regionOf[tiles[i]] = rid;
+        }
+
+        /// <summary>
+        /// Subdivide the tiles flagged in <paramref name="fillable"/> into ~<paramref name="target"/>-tile
+        /// square cells with the same anchor + Chebyshev box fill as <see cref="PartitionLand"/> — one
+        /// anchor per ~target tiles by farthest-point spacing (the O(area·k) running-min version, not the
+        /// naive one), then each tile joins its smallest-Chebyshev-distance anchor. Used to split an
+        /// oversized basin: the mask confines the fill to the basin, so cells never leak past its walls.
+        /// Deterministic; returns one tile list per cell.
+        /// </summary>
+        private static List<List<int>> ChebyshevCells(WorldGrid grid, bool[] fillable, int total, int target)
+        {
+            var result = new List<List<int>>();
+            var anchors = SelectAnchors(grid, fillable, total, target);
+            if (anchors.Count == 0) return result;
+
+            var frameC = new Dictionary<int, UnityEngine.Vector3>(anchors.Count);
+            var frameE = new Dictionary<int, UnityEngine.Vector3>(anchors.Count);
+            var frameN = new Dictionary<int, UnityEngine.Vector3>(anchors.Count);
+            foreach (int a in anchors)
+            {
+                UnityEngine.Vector3 c = grid.GetTileCenter(a);
+                UnityEngine.Vector3 up = c.normalized;
+                UnityEngine.Vector3 refA = UnityEngine.Mathf.Abs(UnityEngine.Vector3.Dot(up, UnityEngine.Vector3.up)) > 0.99f
+                    ? UnityEngine.Vector3.right : UnityEngine.Vector3.up;
+                UnityEngine.Vector3 east = UnityEngine.Vector3.Cross(up, refA).normalized;
+                frameC[a] = c; frameE[a] = east; frameN[a] = UnityEngine.Vector3.Cross(east, up).normalized;
+            }
+            float tileSpacing = TileSpacing(grid);
+
+            var owner = new int[total];
+            var cost = new float[total];
+            for (int i = 0; i < total; i++) { owner[i] = -1; cost[i] = float.PositiveInfinity; }
+            var heap = new MinHeap(anchors.Count + 16);
+            foreach (int a in anchors) { owner[a] = a; cost[a] = 0f; heap.Push(a, 0f); }
+            var nb = new List<PlanetTile>();
+            while (heap.Count > 0)
+            {
+                heap.Pop(out int cur, out float cc);
+                if (cc > cost[cur]) continue;
+                int a2 = owner[cur];
+                UnityEngine.Vector3 ac = frameC[a2], ae = frameE[a2], an = frameN[a2];
+                nb.Clear();
+                grid.GetTileNeighbors(cur, nb);
+                foreach (var n in nb)
+                {
+                    int nid = n.tileId;
+                    if (nid < 0 || nid >= total || !fillable[nid]) continue;
+                    UnityEngine.Vector3 d = grid.GetTileCenter(nid) - ac;
+                    float x = UnityEngine.Vector3.Dot(d, ae) / tileSpacing;
+                    float y = UnityEngine.Vector3.Dot(d, an) / tileSpacing;
+                    float nc = System.Math.Max(System.Math.Abs(x), System.Math.Abs(y));
+                    if (nc < cost[nid] || (nc == cost[nid] && a2 < owner[nid]))
+                    {
+                        cost[nid] = nc; owner[nid] = a2; heap.Push(nid, nc);
+                    }
+                }
+            }
+
+            var groupByAnchor = new Dictionary<int, List<int>>();
+            for (int t = 0; t < total; t++)
+            {
+                if (!fillable[t] || owner[t] < 0) continue;
+                if (!groupByAnchor.TryGetValue(owner[t], out var g)) { g = new List<int>(); groupByAnchor[owner[t]] = g; }
+                g.Add(t);
+            }
+            foreach (var kv in groupByAnchor) result.Add(kv.Value);
+            return result;
+        }
+
         // Small surcharges (distance-dominant) that let a border SNAP onto a nearby biome / forest edge
         // without chasing it — the hybrid of clean convex cells and terrain-faithful borders (#20).
         private const float BiomeSnapWeight = 0.35f;
