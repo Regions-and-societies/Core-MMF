@@ -36,13 +36,17 @@ namespace RegionsAndSocieties.Patches
 
             if (factions == null)
             {
+                // No selection was handed in (a non-standard world-gen entry). Rebuild the list the way
+                // vanilla world creation would — honoring each def's start counts — instead of dragging in
+                // EVERY non-hidden faction. A def the player would never receive at world creation
+                // (startingCountAtWorldCreation 0 and no required count) is left out; required factions get
+                // at least their mandated count. This keeps unselected/zero-count defs out of the world.
                 factions = new List<FactionDef>();
                 foreach (var def in DefDatabase<FactionDef>.AllDefsListForReading)
                 {
-                    if (!def.isPlayer && !def.hidden && def.defName != "PColony")
-                    {
-                        factions.Add(def);
-                    }
+                    if (def.isPlayer || def.hidden || def.defName == "PColony") continue;
+                    int count = Mathf.Max(def.startingCountAtWorldCreation, def.requiredCountAtGameStart);
+                    for (int i = 0; i < count; i++) factions.Add(def);
                 }
             }
 
@@ -83,17 +87,6 @@ namespace RegionsAndSocieties.Patches
 
             var canExistOnLayerMethod = typeof(FactionGenerator).GetMethod("CanExistOnLayer", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
 
-            List<FactionDef> poolToClone = DefDatabase<FactionDef>.AllDefs
-                .Where(f => !f.isPlayer && !f.hidden && f.defName != "PColony")
-                .Where(f => {
-                    if (canExistOnLayerMethod != null)
-                    {
-                        return (bool)canExistOnLayerMethod.Invoke(null, new object[] { layer, f });
-                    }
-                    return true;
-                })
-                .ToList();
-
             List<FactionDef> finalDefs = new List<FactionDef>();
             foreach (var def in factions)
             {
@@ -102,6 +95,16 @@ namespace RegionsAndSocieties.Patches
                     finalDefs.Add(def);
                 }
             }
+
+            // The top-up pool is the player's SELECTED faction types only (deduped) — never the global
+            // DefDatabase. The top-up clones extra settlements of factions the world already contains to
+            // reach the target count; it must not invent factions the player never picked. The old code
+            // cloned RandomElement() from every non-hidden def, spawning unselected/unfinished factions
+            // (e.g. an incomplete Maru Race faction) into worlds that never chose them.
+            List<FactionDef> poolToClone = finalDefs
+                .Where(f => !f.isPlayer && !f.hidden && f.defName != "PColony")
+                .Distinct()
+                .ToList();
 
             if (poolToClone.Any())
             {
@@ -667,7 +670,23 @@ namespace RegionsAndSocieties.Patches
                 //     were calling the layer-less NewGeneratedFaction(parms), which generates the faction
                 //     (and its ideo) without the world-layer context the layered 1.6 path sets up.
                 var ideoParms = new IdeoGenerationParms { forFaction = def };
-                return FactionGenerator.NewGeneratedFaction(layer, new FactionGeneratorParms(def, ideoParms, true));
+                // hidden: true is deliberate — the third FactionGeneratorParms arg is `bool? hidden`, and
+                // NewGeneratedFaction only spawns its OWN settlement (which R&S must place itself) when the
+                // faction is NOT hidden. We generate hidden so vanilla skips that spawn (the caller's
+                // settlementWorldObjectDef null-out is the same guard), THEN restore the def's real
+                // visibility below. Without the restore, every ordinary faction stayed hidden — off the
+                // Factions tab, no goodwill, no leader (Faction.Hidden => hidden ?? def.hidden).
+                var faction = FactionGenerator.NewGeneratedFaction(layer, new FactionGeneratorParms(def, ideoParms, true));
+                if (faction != null)
+                {
+                    faction.hidden = def.hidden;   // intentionally-hidden defs (Ancients, mechanoids) stay hidden
+                    if (!faction.Hidden && faction.leader == null)
+                    {
+                        // Leader generation was skipped while the faction was hidden; do it now.
+                        faction.TryGenerateNewLeader();
+                    }
+                }
+                return faction;
             }
             catch (Exception ex)
             {
