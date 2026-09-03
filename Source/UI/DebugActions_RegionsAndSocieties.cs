@@ -74,6 +74,12 @@ namespace RegionsAndSocieties.UI
             Log.Message(RegionDebugReports.ShadingReport());
         }
 
+        [DebugAction("Regions and Societies", "R&S: verify source-culling (#20 perf)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        private static void VerifySourceCulling()
+        {
+            Log.Message(Demographics.RegionDemographicsUtility.VerifyCulling());
+        }
+
         [DebugAction("Regions and Societies", "R&S: holdings report (#67)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void HoldingsReport()
         {

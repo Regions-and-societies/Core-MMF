@@ -124,6 +124,7 @@ namespace RegionsAndSocieties.Demographics
             public int tile;
             public Faction faction;
             public int population;
+            public float reach;   // population * demographicReach; Pressure() is exactly 0 beyond this distance
         }
 
         /// <summary>
@@ -147,7 +148,13 @@ namespace RegionsAndSocieties.Demographics
 
         /// <summary>The deterministic people of one tile: the pressure-weighted blend of the settlements
         /// reaching it, then a fixed draw from that blend by the tile seed.</summary>
-        public static TileDemographicSample SampleTile(int tileId)
+        public static TileDemographicSample SampleTile(int tileId) => SampleTile(tileId, Sources());
+
+        /// <summary>As <see cref="SampleTile(int)"/>, but over a caller-supplied source list — the region
+        /// aggregation passes the sources pre-culled to those that can actually reach the region, turning
+        /// the per-tile pressure loop from O(all settlements) into O(nearby settlements). Since Pressure is
+        /// exactly 0 beyond a source's reach, culling changes no result; it only skips zero-contribution work.</summary>
+        private static TileDemographicSample SampleTile(int tileId, List<PressureSource> srcs)
         {
             var sample = new TileDemographicSample();
 
@@ -155,8 +162,7 @@ namespace RegionsAndSocieties.Demographics
             sample.sex = DemographicsRules.NextFloat(ref sexState) < 0.5f ? Gender.Female : Gender.Male;
 
             WorldGrid grid = Find.WorldGrid;
-            List<PressureSource> srcs = Sources();
-            if (grid == null || srcs.Count == 0) return sample;   // wilderness: a sex, nothing else
+            if (grid == null || srcs == null || srcs.Count == 0) return sample;   // wilderness: a sex, nothing else
 
             // A demographic sample is a SURFACE phenomenon. An off-surface / out-of-range tileId — e.g. an
             // orbital or otherwise non-surface origin handed in by pawn generation on an Odyssey planet with
@@ -329,6 +335,11 @@ namespace RegionsAndSocieties.Demographics
         }
 
         private static RegionDemographics Aggregate(GeographicProvince province)
+            => AggregateWith(province, RelevantSources(province, Sources()));
+
+        /// <summary>Aggregate a region over an explicit pressure-source list — the region's culled subset in
+        /// normal use, or the full list for the culling self-check (<see cref="VerifyCulling"/>).</summary>
+        private static RegionDemographics AggregateWith(GeographicProvince province, List<PressureSource> srcs)
         {
             var demo = new RegionDemographics
             {
@@ -351,7 +362,7 @@ namespace RegionsAndSocieties.Demographics
             demo.tileCount = tiles.Count;
             for (int i = 0; i < tiles.Count; i++)
             {
-                TileDemographicSample s = SampleTile(tiles[i]);
+                TileDemographicSample s = SampleTile(tiles[i], srcs);
                 if (s.sex == Gender.Female) female++;
                 if (s.owner == null) continue;   // no pressure here — contributes only to the sex ratio
 
@@ -897,10 +908,119 @@ namespace RegionsAndSocieties.Demographics
                     PlanetTile pt = o.Tile;
                     if (!IsSurfaceSampleTile(pt)) continue;
                     int pop = DemographicPopulation(o);
-                    if (pop > 0) sources.Add(new PressureSource { tile = pt.tileId, faction = o.Faction, population = pop });
+                    if (pop > 0)
+                    {
+                        float reach = pop * Mathf.Max(0.01f, WorldObjectIntegrationSettings.demographicReach);
+                        sources.Add(new PressureSource { tile = pt.tileId, faction = o.Faction, population = pop, reach = reach });
+                    }
                 }
             }
             return sources;
+        }
+
+        /// <summary>
+        /// The subset of <paramref name="all"/> pressure sources that could reach <paramref name="province"/>
+        /// — every source within (its own reach + the province's bounding radius) of a representative
+        /// province tile. A superset of the sources that actually contribute (Pressure is exactly 0 beyond a
+        /// source's reach, so any extra costs only a skipped iteration), so the region's demographics are
+        /// identical — this only turns the per-tile pressure loop from O(all settlements) into O(nearby),
+        /// which is what keeps the aggregation linear on large worlds.
+        /// </summary>
+        private static List<PressureSource> RelevantSources(GeographicProvince province, List<PressureSource> all)
+        {
+            WorldGrid grid = Find.WorldGrid;
+            if (grid == null || all == null || all.Count == 0 || province?.tiles == null || province.tiles.Count == 0)
+                return all;
+
+            int rep = province.tiles[0];
+            float radius = 0f;
+            for (int i = 1; i < province.tiles.Count; i++)
+            {
+                float d = CrowTiles(grid, rep, province.tiles[i]);
+                if (d > radius) radius = d;
+            }
+
+            var rel = new List<PressureSource>();
+            for (int i = 0; i < all.Count; i++)
+            {
+                PressureSource s = all[i];
+                if (CrowTiles(grid, s.tile, rep) <= s.reach + radius) rel.Add(s);
+            }
+            return rel;
+        }
+
+        /// <summary>
+        /// Self-check that the pressure-source culling is result-identical: aggregate every land region BOTH
+        /// ways — full source list vs the reach-culled subset — and confirm every demographic field matches.
+        /// Culling only drops sources whose Pressure is 0 for the region and adding 0 is a float no-op, so
+        /// this must report zero mismatches; it exists to PROVE that empirically after any change to
+        /// RelevantSources. Dev-only (it runs the slow full aggregation), surfaced via a debug action.
+        /// </summary>
+        public static string VerifyCulling()
+        {
+            EnsureFresh();
+            var mgr = Find.World?.GetComponent<SynapseRegionManager>();
+            if (mgr?.Provinces == null) return "[RegionsAndSocieties] VerifyCulling: no region manager.";
+
+            List<PressureSource> full = Sources();
+            int checkedN = 0, mismatches = 0, maxCulled = 0, minCulled = int.MaxValue;
+            var sb = new System.Text.StringBuilder();
+            foreach (var p in mgr.Provinces)
+            {
+                if (p == null || p.provinceType != ProvinceType.Land || p.tiles == null || p.tiles.Count == 0) continue;
+                List<PressureSource> culled = RelevantSources(p, full);
+                maxCulled = Math.Max(maxCulled, culled.Count);
+                minCulled = Math.Min(minCulled, culled.Count);
+                RegionDemographics a = AggregateWith(p, full);
+                RegionDemographics b = AggregateWith(p, culled);
+                checkedN++;
+                if (!DemographicsEqual(a, b))
+                {
+                    mismatches++;
+                    if (mismatches <= 8) sb.AppendLine($"  MISMATCH region {p.id}: {p.tiles.Count}t, full={full.Count} culled={culled.Count}");
+                }
+            }
+            string head = $"[RegionsAndSocieties] VerifyCulling: {checkedN} land regions checked, {mismatches} mismatch(es). "
+                        + $"Sources per region: full={full.Count}, culled {(minCulled == int.MaxValue ? 0 : minCulled)}..{maxCulled}.";
+            return mismatches == 0 ? head + " CULLING IS RESULT-IDENTICAL." : head + "\n" + sb.ToString();
+        }
+
+        private static bool DemographicsEqual(RegionDemographics a, RegionDemographics b)
+        {
+            if (a.tileCount != b.tileCount || a.settledTiles != b.settledTiles) return false;
+            if (a.femaleFraction != b.femaleFraction || a.overallMedianWealth != b.overallMedianWealth) return false;
+            if (a.medianAge != b.medianAge || a.educationIndex != b.educationIndex) return false;
+            if (a.sesIndex != b.sesIndex || a.employmentRate != b.employmentRate) return false;
+            if (!ArrEq(a.ageShares, b.ageShares) || !ArrEq(a.educationShares, b.educationShares)) return false;
+            if (!ArrEq(a.sesShares, b.sesShares) || !ArrEq(a.occupationShares, b.occupationShares)) return false;
+            if (!DictEqF(a.factionShares, b.factionShares) || !DictEqF(a.raceShares, b.raceShares)) return false;
+            if (!DictEqF(a.ideoShares, b.ideoShares) || !DictEqF(a.memeShares, b.memeShares)) return false;
+            if (!DictEqI(a.medianWealthByRace, b.medianWealthByRace)) return false;
+            return true;
+        }
+
+        private static bool ArrEq(float[] a, float[] b)
+        {
+            if (a == null || b == null) return a == b;
+            if (a.Length != b.Length) return false;
+            for (int i = 0; i < a.Length; i++) if (a[i] != b[i]) return false;
+            return true;
+        }
+
+        private static bool DictEqF<T>(Dictionary<T, float> a, Dictionary<T, float> b)
+        {
+            if (a == null || b == null) return a == b;
+            if (a.Count != b.Count) return false;
+            foreach (var kv in a) { if (!b.TryGetValue(kv.Key, out float v) || v != kv.Value) return false; }
+            return true;
+        }
+
+        private static bool DictEqI<T>(Dictionary<T, int> a, Dictionary<T, int> b)
+        {
+            if (a == null || b == null) return a == b;
+            if (a.Count != b.Count) return false;
+            foreach (var kv in a) { if (!b.TryGetValue(kv.Key, out int v) || v != kv.Value) return false; }
+            return true;
         }
 
         /// <summary>A settlement's demographic reach = its current modelled population. Tier-driven for
