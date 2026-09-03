@@ -161,6 +161,33 @@ namespace RegionsAndSocieties
             get { return partitionAlgorithmVersionRaw == PartitionAlgorithmLegacy ? PartitionAlgorithmLegacy : PartitionAlgorithmCurrent; }
         }
 
+        // The mod's worldgen/rendering version, stamped onto a world when its provinces are generated, so a
+        // save records which build rendered it ("this is a 0.3.0 rendering"). Human-readable and finer than
+        // the binary partition selector above — bump it with each release that changes worldgen. Persisted;
+        // a save that predates the stamp resolves to a legacy label on load.
+        public const string WorldGenVersion = "0.3.0";
+        private string worldGenVersionRaw;
+
+        /// <summary>The worldgen version this world was rendered by: the stamped value, or a legacy label
+        /// for a save generated before the stamp existed.</summary>
+        public string WorldGenVersionLabel
+        {
+            get { return string.IsNullOrEmpty(worldGenVersionRaw) ? "0.2.x or earlier" : worldGenVersionRaw; }
+        }
+
+        // The partition algorithm this world was generated with (an IRegionPartitioner.AlgorithmId). This
+        // is the canonical, extensible successor to the binary PartitionAlgorithmVersion above: it is
+        // stamped at generation, scribed, and drives any regenerate — so a world always re-cuts with the
+        // algorithm it was born under, whichever mod supplied it. Empty until stamped / resolved on load.
+        private string regionAlgorithmId;
+
+        /// <summary>The id of the partition algorithm that generated this world (see
+        /// <see cref="Partition.IRegionPartitioner"/>). Falls back to the current default if unresolved.</summary>
+        public string RegionAlgorithmId
+        {
+            get { return string.IsNullOrEmpty(regionAlgorithmId) ? Partition.RegionPartitionerRegistry.DefaultAlgorithmId : regionAlgorithmId; }
+        }
+
         /// <summary>
         /// The density algorithm in force for this world. Only a save explicitly resolved to legacy
         /// (a pre-0.7.2 world) reports legacy; an unstamped live new world defaults to current.
@@ -304,6 +331,26 @@ namespace RegionsAndSocieties
             Log.Message(hadProvinces
                 ? "[RegionsAndSocieties] Save predates the partition-algorithm stamp but has provinces: keeping the legacy (anchor-Voronoi) region shapes so a regenerate would not repartition this world."
                 : "[RegionsAndSocieties] Save has no province data: regions will be built with the current contain-then-subdivide partition.");
+        }
+
+        /// <summary>Resolve the worldgen-version stamp for a save that predates it: a save that already has
+        /// provinces was rendered by an early build (label it), one with none is being rendered now.</summary>
+        private void ResolveWorldGenVersionForLoadedSave()
+        {
+            if (!string.IsNullOrEmpty(worldGenVersionRaw)) return;
+            bool hadProvinces = provinces != null && provinces.Count > 0;
+            worldGenVersionRaw = hadProvinces ? "0.2.x or earlier" : WorldGenVersion;
+        }
+
+        /// <summary>Resolve the partition-algorithm id for a save that predates it: derive it from the
+        /// (already-resolved) binary partition-version stamp — legacy worlds map to anchor-Voronoi, all
+        /// others to the contain-then-subdivide default — so a regenerate still reproduces the same map.</summary>
+        private void ResolveRegionAlgorithmForLoadedSave()
+        {
+            if (!string.IsNullOrEmpty(regionAlgorithmId)) return;
+            regionAlgorithmId = PartitionAlgorithmVersion == PartitionAlgorithmLegacy
+                ? Partition.RegionPartitionerRegistry.LegacyAlgorithmId
+                : Partition.RegionPartitionerRegistry.DefaultAlgorithmId;
         }
 
         /// <summary>Test seam: force the partition algorithm back to unresolved.</summary>
@@ -487,6 +534,12 @@ namespace RegionsAndSocieties
             }
             Scribe_Values.Look(ref partitionAlgorithmVersionRaw, "partitionAlgorithmVersion", -1);
 
+            // Worldgen/rendering version stamp — persisted; resolved for pre-stamp saves in PostLoadInit.
+            Scribe_Values.Look(ref worldGenVersionRaw, "worldGenVersion");
+            // The partition algorithm id this world was generated with — persisted; a save predating the
+            // id derives it from the binary partition-version stamp in PostLoadInit.
+            Scribe_Values.Look(ref regionAlgorithmId, "regionAlgorithmId");
+
             Scribe_Collections.Look(ref provinces, "provinces", LookMode.Deep);
             if (provinces == null)
             {
@@ -510,6 +563,8 @@ namespace RegionsAndSocieties
                 ResolveStrictOwnershipForLoadedSave();
                 ResolveDensityAlgorithmForLoadedSave();
                 ResolvePartitionAlgorithmForLoadedSave();
+                ResolveWorldGenVersionForLoadedSave();
+                ResolveRegionAlgorithmForLoadedSave();
 
                 // Population is cached statically and survives across loads within one process; drop
                 // it so the next read rebuilds under the algorithm just resolved for this world.
@@ -699,6 +754,10 @@ namespace RegionsAndSocieties
         {
             Log.Message("[RegionsAndSocieties] Generating Geographic Domains (Boundary-First Priority)...");
 
+            // Stamp the worldgen version the first time a world is rendered. Guarded so a legacy REGEN
+            // (which loaded an already-stamped save) never relabels an old world as a new-build rendering.
+            if (string.IsNullOrEmpty(worldGenVersionRaw)) worldGenVersionRaw = WorldGenVersion;
+
             // A world generating provinces with the flag still unresolved is a brand new world:
             // a loaded save resolves it in PostLoadInit, which runs before anything can reach the
             // lazy Provinces getter. New worlds take the configured default, which is strict.
@@ -842,13 +901,26 @@ namespace RegionsAndSocieties
             // flood each biome/barrier-bounded section into one container, then cut it into biome-weighted
             // squares. A legacy world keeps the anchor-Voronoi PartitionLand so a regenerate never reshapes
             // an existing save.
-            bool legacyPartition = PartitionAlgorithmVersion == PartitionAlgorithmLegacy;
+            // Resolve the partition algorithm from the registry (pluggable — a mod can add its own). A
+            // world already stamped with an algorithm (a regenerate of an existing world) reproduces with
+            // THAT algorithm; a brand-new world takes the one selected in mod settings. Either way the
+            // resolved id is stamped now, so a later regenerate is faithful and the save records it.
+            string requestedAlgo = !string.IsNullOrEmpty(regionAlgorithmId)
+                ? regionAlgorithmId
+                : FactionPlacementSettings.partitionAlgorithmId;
+            var partitioner = Partition.RegionPartitionerRegistry.Get(requestedAlgo)
+                ?? Partition.RegionPartitionerRegistry.Default;
+            regionAlgorithmId = partitioner != null ? partitioner.AlgorithmId : requestedAlgo;
+            // Keep the legacy binary stamp consistent with the chosen algorithm.
+            partitionAlgorithmVersionRaw = regionAlgorithmId == Partition.RegionPartitionerRegistry.LegacyAlgorithmId
+                ? PartitionAlgorithmLegacy : PartitionAlgorithmCurrent;
+
             var swPartition = System.Diagnostics.Stopwatch.StartNew();
-            var landGroups = legacyPartition
-                ? Partition.BorderPartitioner.PartitionLand(tileToProvinceId, baseMin, baseMax)
+            var landGroups = partitioner != null
+                ? partitioner.Partition(tileToProvinceId, baseMin, baseMax)
                 : Partition.BorderPartitioner.PartitionContainSubdivide(tileToProvinceId, baseMin, baseMax);
             swPartition.Stop();
-            Log.Message($"[RegionsAndSocieties] Land partition: {(legacyPartition ? "legacy anchor-Voronoi" : "contain-then-subdivide")} produced {landGroups.Count} land groups in {swPartition.ElapsedMilliseconds} ms.");
+            Log.Message($"[RegionsAndSocieties] Land partition: '{regionAlgorithmId}' produced {landGroups.Count} land groups in {swPartition.ElapsedMilliseconds} ms.");
             foreach (var group in landGroups)
             {
                 if (group.Count == 0) continue;

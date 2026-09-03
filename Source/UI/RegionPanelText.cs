@@ -25,6 +25,10 @@ namespace RegionsAndSocieties.UI
             sb.AppendLine($"Biome: {province.primaryBiome?.LabelCap ?? "Unknown"}");
             sb.AppendLine($"Tiles: {province.tiles.Count}");
 
+            var mgr = Find.World?.GetComponent<SynapseRegionManager>();
+            if (mgr != null)
+                sb.AppendLine($"Worldgen: v{mgr.WorldGenVersionLabel}");
+
             List<string> features = NamedFeatures(province);
             if (features.Count > 0)
                 sb.AppendLine("Named features: " + string.Join(", ", features));
