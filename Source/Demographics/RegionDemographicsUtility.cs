@@ -304,6 +304,30 @@ namespace RegionsAndSocieties.Demographics
             return demo;
         }
 
+        /// <summary>
+        /// Precompute and cache the aggregate for EVERY land region in one pass, so no demographic
+        /// overlay ever pays the cold O(tiles × sources) aggregation on the interactive frame it is
+        /// opened. Called once when a world is finalized (new game or load) — the cost then lands on the
+        /// loading screen instead of freezing the first overlay. Cheap to re-call (all cache hits until
+        /// the population cache version changes); a later settlement change re-warms only what it touched
+        /// on next read. Water/impassable provinces are skipped (they have no demographics).
+        /// </summary>
+        public static void WarmAllRegions(SynapseRegionManager manager)
+        {
+            if (manager == null) return;
+            var provinces = manager.Provinces;
+            if (provinces == null) return;
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            int warmed = 0;
+            for (int i = 0; i < provinces.Count; i++)
+            {
+                GeographicProvince p = provinces[i];
+                if (p != null && p.provinceType == ProvinceType.Land) { ForRegion(p); warmed++; }
+            }
+            sw.Stop();
+            Log.Message($"[RegionsAndSocieties] Warmed demographics for {warmed} land region(s) in {sw.ElapsedMilliseconds} ms.");
+        }
+
         private static RegionDemographics Aggregate(GeographicProvince province)
         {
             var demo = new RegionDemographics

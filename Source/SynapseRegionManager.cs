@@ -576,6 +576,11 @@ namespace RegionsAndSocieties
         {
             base.FinalizeInit(fromLoad);
             MigrateHiddenFactions();
+
+            // Precompute every land region's demographic aggregate now, on the loading screen, so opening
+            // any demographic overlay (age, sex, wealth, education, …) later is an instant cache hit rather
+            // than a cold O(tiles × sources) aggregation that freezes the frame it is opened on.
+            Demographics.RegionDemographicsUtility.WarmAllRegions(this);
         }
 
         /// <summary>
@@ -909,6 +914,15 @@ namespace RegionsAndSocieties
             // neighbour than by its own province back into that neighbour, straightening the ragged
             // edges without touching feature borders (water/impassable neighbours never vote).
             SmoothRegionBoundaries(8);
+
+            // Phase 5c.1: enforce contiguity. A merge/absorb pass can leave a region as two DETACHED land
+            // masses — a component sharing no hex edge with the rest of its region (separated by water or
+            // another region). A region is by definition one connected landmass, so split any region with
+            // more than one hex-connected component: the largest keeps the id, the rest become their own
+            // regions (an island is legitimately its own region). Runs before the final AbsorbStrayFragments
+            // so a sub-minimum spun-off piece that turns out to sit against a same-biome neighbour still
+            // gets folded in.
+            SplitDisconnectedRegions();
 
             // Phase 5d: final consolidation. Splitting and straightening run after the merge, so they can
             // leave a small same-biome fragment newly adjacent to the big region it belongs to (e.g. a
@@ -1443,6 +1457,76 @@ namespace RegionsAndSocieties
             provinces.AddRange(toAdd);
             if (split > 0)
                 Log.Message($"[RegionsAndSocieties] Split {split} elongated province(s) into {split + toAdd.Count} pieces.");
+        }
+
+        /// <summary>
+        /// Enforce region contiguity (region-106 bug). A merge or absorb pass can leave a land region as
+        /// two DETACHED masses — a component that shares no hex edge with the rest of its region (across
+        /// water or another region), which reads on the map as one province spanning two separate
+        /// landmasses. A region is by definition one connected landmass, so split any multi-component
+        /// region: the largest component keeps the region's id and name, each other component becomes its
+        /// own new region (an island is legitimately its own region). Uses TRUE hex adjacency
+        /// (GetTileNeighbors), so it is exact where a spatial heuristic is not.
+        /// </summary>
+        private void SplitDisconnectedRegions()
+        {
+            if (provinces == null || tileToProvinceId == null || Find.WorldGrid == null) return;
+            int nextId = provinces.Count > 0 ? provinces.Max(p => p.id) + 1 : 0;
+            var neighbors = new List<RimWorld.Planet.PlanetTile>();
+            var toAdd = new List<GeographicProvince>();
+            int splitRegions = 0, newPieces = 0;
+
+            foreach (var p in provinces)
+            {
+                if (p.provinceType != ProvinceType.Land || p.tiles == null || p.tiles.Count <= 1) continue;
+
+                var members = new HashSet<int>(p.tiles);
+                var seen = new HashSet<int>();
+                var components = new List<List<int>>();
+                var stack = new Stack<int>();
+                foreach (int start in p.tiles)
+                {
+                    if (seen.Contains(start)) continue;
+                    var comp = new List<int>();
+                    stack.Clear(); stack.Push(start); seen.Add(start);
+                    while (stack.Count > 0)
+                    {
+                        int cur = stack.Pop();
+                        comp.Add(cur);
+                        neighbors.Clear();
+                        Find.WorldGrid.GetTileNeighbors(cur, neighbors);
+                        for (int i = 0; i < neighbors.Count; i++)
+                        {
+                            int nid = neighbors[i].tileId;
+                            if (members.Contains(nid) && !seen.Contains(nid)) { seen.Add(nid); stack.Push(nid); }
+                        }
+                    }
+                    components.Add(comp);
+                }
+
+                if (components.Count <= 1) continue;
+
+                // Largest component keeps p's identity; the rest spin off into their own regions.
+                components.Sort((a, b) => b.Count.CompareTo(a.Count));
+                p.tiles = components[0];
+                p.primaryBiome = GetPrimaryBiome(p.tiles);
+                for (int c = 1; c < components.Count; c++)
+                {
+                    var np = new GeographicProvince(nextId++);
+                    np.tiles = components[c];
+                    np.provinceType = ProvinceType.Land;
+                    np.primaryBiome = GetPrimaryBiome(components[c]);
+                    np.name = GenerateProvinceName(np.id, np.primaryBiome, np.provinceType);
+                    foreach (int t in components[c]) tileToProvinceId[t] = np.id;
+                    toAdd.Add(np);
+                    newPieces++;
+                }
+                splitRegions++;
+            }
+
+            provinces.AddRange(toAdd);
+            if (splitRegions > 0)
+                Log.Message($"[RegionsAndSocieties] SplitDisconnectedRegions: split {splitRegions} region(s) into {newPieces} extra piece(s) to enforce contiguity.");
         }
 
         /// <summary>
