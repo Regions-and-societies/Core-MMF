@@ -125,6 +125,40 @@ namespace RegionsAndSocieties.UI
             Log.Message(RegionDebugReports.RegenerateAndAudit());
         }
 
+        [DebugAction("Regions and Societies", "R&S: run population dynamics pass (#5/#8)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        private static void RunPopulationDynamicsPass()
+        {
+            // Force one accrete->migrate pass now and dump the before/after per-region dynamic delta, so the
+            // conservation and drift-toward-the-colony properties are verifiable headlessly (required by #5/#8).
+            var mgr = Find.World?.GetComponent<SynapseRegionManager>();
+            if (mgr == null) { Log.Warning("[R&S] population dynamics: no region manager"); return; }
+
+            int colony = Integration.PopulationDynamics.ColonyRegion(mgr);
+            var land = mgr.Provinces.FindAll(p => p.provinceType == ProvinceType.Land);
+
+            float beforeSum = 0f;
+            var before = new System.Collections.Generic.Dictionary<int, float>();
+            foreach (var p in land) { float d = mgr.PopulationDeltaOf(p.id); before[p.id] = d; beforeSum += d; }
+
+            float moved = mgr.RunPopulationDynamicsNow();
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"[R&S] population dynamics pass (#5/#8): governance={mgr.StrictTerritorialOwnership}, colony region={colony}, moved={moved:0.0} people");
+            float afterSum = 0f;
+            var changed = new System.Collections.Generic.List<(int id, float before, float after)>();
+            foreach (var p in land)
+            {
+                float a = mgr.PopulationDeltaOf(p.id);
+                afterSum += a;
+                if (System.Math.Abs(a - before[p.id]) > 0.001f) changed.Add((p.id, before[p.id], a));
+            }
+            sb.AppendLine($"total delta before={beforeSum:0.0} after={afterSum:0.0} (conserved if equal), regions changed={changed.Count}");
+            changed.Sort((x, y) => System.Math.Abs(y.after - y.before).CompareTo(System.Math.Abs(x.after - x.before)));
+            for (int i = 0; i < changed.Count && i < 12; i++)
+                sb.AppendLine($"  region {changed[i].id}: delta {changed[i].before:0.0} -> {changed[i].after:0.0}");
+            Log.Message(sb.ToString());
+        }
+
         [DebugAction("Regions and Societies", "R&S: open region demographics panel (#26)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void OpenRegionDemographicsPanel()
         {

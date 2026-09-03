@@ -587,7 +587,7 @@ namespace RegionsAndSocieties.Demographics
             RegionDemographics demo = ForRegion(province);
             if (demo.settledTiles <= 0) return null;
 
-            if (!demo.biotechActive) return "Xenotypes: all Baseliner (Biotech not active)";
+            if (!demo.biotechActive) return null;   // Biotech absent: omit the line entirely (graceful degradation)
             if (demo.raceShares.Count == 0) return "Xenotypes: (no data)";
 
             var top = demo.raceShares.OrderByDescending(k => k.Value).Take(5)
@@ -642,7 +642,7 @@ namespace RegionsAndSocieties.Demographics
             RegionDemographics demo = ForRegion(province);
             if (demo.settledTiles <= 0) return null;
 
-            if (!demo.ideologyActive) return "Ideology: secular (Ideology not active)";
+            if (!demo.ideologyActive) return null;   // Ideology absent: omit the line entirely (graceful degradation)
             if (demo.ideoShares.Count == 0) return "Ideology: (no data)";
 
             var top = demo.ideoShares.OrderByDescending(k => k.Value).Take(4)

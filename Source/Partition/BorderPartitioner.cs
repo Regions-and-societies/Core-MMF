@@ -147,6 +147,294 @@ namespace RegionsAndSocieties.Partition
             return result;
         }
 
+        /// <summary>
+        /// The contain-then-subdivide partition (new for 0.3.0). Draw regions INSIDE the terrain's natural
+        /// sections, then cut each into evenly sized squares:
+        ///
+        /// <list type="number">
+        /// <item>Classify each unclaimed land tile as <b>interior</b> (flat / small hills) or <b>wall</b>
+        /// (Mountainous / LargeHills / impassable). Water is already claimed and is a hard wall.</item>
+        /// <item><b>Contain:</b> flood the interior into containers bounded by biome edges AND natural
+        /// barriers — adjacent interior tiles join only within one biome, and walls never bridge two sides,
+        /// so a container is one biome-coherent patch on one side of the barriers around it. The thin edge
+        /// pieces a global grid would strand are simply part of the container's body.</item>
+        /// <item><b>Subdivide:</b> cut each container into ~<c>baseMax × biomeWeight</c>-tile SQUARE cells
+        /// (temperate ~1×, tundra ~2×, desert ~3×, ice ~10×), the Chebyshev fill confined to the container
+        /// so no square leaks past a barrier. A container within its target stays one region.</item>
+        /// <item><b>Drape the walls</b> onto the nearest region (multi-source BFS), so a range's crest is
+        /// the seam; any isolated massif becomes its own region.</item>
+        /// </list>
+        ///
+        /// <para>Deterministic (id-ordered seeds, ties to smaller id). The container flood is O(tiles); the
+        /// subdivision is scoped per container (no whole-grid pass each). Downstream MergeTinyDomains still
+        /// cleans up sub-minimum shards, biome- and barrier-aware.</para>
+        /// </summary>
+        public static List<List<int>> PartitionContainSubdivide(int[] tileToProvinceId, int minRegionTiles, int maxRegionTiles)
+        {
+            var result = new List<List<int>>();
+            WorldGrid grid = Find.WorldGrid;
+            if (grid == null || tileToProvinceId == null) return result;
+
+            int total = grid.TilesCount;
+            int baseMax = maxRegionTiles > 0 ? maxRegionTiles : 150;
+
+            // Phase 1: classify the remaining unclaimed land as claimable interior. Water AND impassable
+            // mountains are already claimed (Ocean / MountainRange provinces) before this runs, so their
+            // tiles are hard walls here — a container can neither include them nor cross them. EVERY other
+            // passable tile is interior: flat, small hills, large hills and passable mountains all count, so
+            // only impassable terrain, water and biome edges bound a container. Hills therefore no longer
+            // shatter the land into slivers, and impassable rock is never drawn into a territory.
+            var interior = new bool[total];
+            var biomeOf = new BiomeDef[total];
+            for (int t = 0; t < total; t++)
+            {
+                if (tileToProvinceId[t] >= 0) continue;         // water / impassable already claimed = hard wall
+                Tile tile = grid[t];
+                if (tile == null || tile.WaterCovered) continue;
+                if (tile.hilliness == Hilliness.Impassable) continue;   // safety: any unclaimed impassable stays a wall
+                BiomeDef biome = tile.PrimaryBiome;
+                if (biome == null || biome.impassable || biome.defName == "SeaIce") continue;
+                biomeOf[t] = biome;
+                interior[t] = true;
+            }
+
+            // Phase 2 (CONTAIN): flood the interior into containers bounded by biome edges AND natural
+            // barriers, with mountain passes treated as boundaries. Done in three morphological steps:
+            var neigh = new List<PlanetTile>();
+
+            // 2a: a CORE tile is an interior tile with NO wall (claimed water / impassable) neighbour AND no
+            // different-biome neighbour. Any narrow neck — a mountain pass, an isthmus between seas, OR a
+            // one-to-two-tile waist where another biome pinches in from both sides — is all rim and has no
+            // core, so the core flood in 2b cannot bridge the two lobes through it. The neck therefore acts
+            // as a boundary and the rim splits at the pinch (2c), which closes 1-tile "tumor" necks and lays
+            // a straight cut across the narrowest part of a biome pass instead of tracing every tooth of it.
+            var core = new bool[total];
+            for (int t = 0; t < total; t++)
+            {
+                if (!interior[t]) continue;
+                bool isCore = true;
+                BiomeDef tb = biomeOf[t];
+                grid.GetTileNeighbors(t, neigh);
+                for (int i = 0; i < neigh.Count; i++)
+                {
+                    int n = neigh[i].tileId;
+                    if (n < 0 || n >= total || tileToProvinceId[n] >= 0) { isCore = false; break; }   // touches a wall
+                    if (interior[n] && biomeOf[n] != tb) { isCore = false; break; }                    // touches a biome edge
+                }
+                core[t] = isCore;
+            }
+
+            // 2b: flood the CORE into biome-coherent containers (same biome, core-to-core links only). Two
+            // sides of a range that meet only through a narrow pass stay separate, because the pass has no
+            // core to link them.
+            var containerOf = new int[total];
+            for (int i = 0; i < total; i++) containerOf[i] = -1;
+            var containers = new List<List<int>>();
+            var stack = new Stack<int>();
+            for (int s = 0; s < total; s++)
+            {
+                if (!core[s] || containerOf[s] != -1) continue;
+                int id = containers.Count;
+                BiomeDef biome = biomeOf[s];
+                var container = new List<int>();
+                stack.Clear(); stack.Push(s); containerOf[s] = id;
+                while (stack.Count > 0)
+                {
+                    int cur = stack.Pop();
+                    container.Add(cur);
+                    grid.GetTileNeighbors(cur, neigh);
+                    for (int i = 0; i < neigh.Count; i++)
+                    {
+                        int n = neigh[i].tileId;
+                        if (n < 0 || n >= total || !core[n] || containerOf[n] != -1) continue;
+                        if (biomeOf[n] != biome) continue;   // biome edge = container wall
+                        containerOf[n] = id; stack.Push(n);
+                    }
+                }
+                containers.Add(container);
+            }
+
+            // 2c: hand each RIM interior tile to the nearest core container of its own biome (multi-source
+            // BFS from the core). A pass corridor, being all rim, is reached from the cores on BOTH sides
+            // and splits between them at the midpoint — so the range reads as one continuous border.
+            var rq = new Queue<int>();
+            for (int t = 0; t < total; t++) if (containerOf[t] != -1) rq.Enqueue(t);
+            while (rq.Count > 0)
+            {
+                int cur = rq.Dequeue();
+                int cid = containerOf[cur];
+                BiomeDef cb = biomeOf[cur];
+                grid.GetTileNeighbors(cur, neigh);
+                for (int i = 0; i < neigh.Count; i++)
+                {
+                    int n = neigh[i].tileId;
+                    if (n < 0 || n >= total || !interior[n] || containerOf[n] != -1) continue;
+                    if (biomeOf[n] != cb) continue;       // stay within one biome
+                    containerOf[n] = cid; containers[cid].Add(n); rq.Enqueue(n);
+                }
+            }
+
+            // Phase 3 (SUBDIVIDE): cut each container into appropriately sized squares. Target size is
+            // baseMax × the biome's size weight (temperate ~1×, tundra ~2×, desert ~3×, ice ~10×), so a
+            // sparse biome makes fewer, larger squares. A container at or under its target stays one region
+            // (a small biome patch is kept whole); a larger one splits into ~ceil(size/target) square
+            // Chebyshev cells, the fill confined to the container so no square leaks past a barrier.
+            var regionOf = new int[total];
+            for (int i = 0; i < total; i++) regionOf[i] = -1;
+            var owner = new int[total];
+            var cost = new float[total];
+            var set = new HashSet<int>();
+            foreach (var container in containers)
+            {
+                BiomeDef biome = biomeOf[container[0]];
+                float w = BiomeRegionWeights.Weight(biome);
+                int target = System.Math.Max(1, (int)System.Math.Round(baseMax * w));
+                if (container.Count <= target) { AddRegion(result, regionOf, container); continue; }
+                var cells = BalancedCellsScoped(grid, container, target, owner, cost, set, neigh);
+                if (cells.Count == 0) { AddRegion(result, regionOf, container); continue; }
+                foreach (var g in cells) AddRegion(result, regionOf, g);
+            }
+
+            // Phase 4: any interior tile the subdivision somehow left unclaimed becomes its own region, so
+            // every claimable land tile lands in exactly one region. (Impassable rock and water are not
+            // interior; they stay with their own MountainRange / Ocean provinces and are never draped in.)
+            for (int s = 0; s < total; s++)
+            {
+                if (!interior[s] || regionOf[s] != -1) continue;
+                int id = result.Count;
+                var group = new List<int>();
+                stack.Clear(); stack.Push(s); regionOf[s] = id;
+                while (stack.Count > 0)
+                {
+                    int cur = stack.Pop();
+                    group.Add(cur);
+                    grid.GetTileNeighbors(cur, neigh);
+                    for (int i = 0; i < neigh.Count; i++)
+                    {
+                        int n = neigh[i].tileId;
+                        if (n < 0 || n >= total || !interior[n] || regionOf[n] != -1) continue;
+                        regionOf[n] = id; stack.Push(n);
+                    }
+                }
+                result.Add(group);
+            }
+
+            return result;
+        }
+
+        /// <summary>Register a tile group as the next region and stamp each tile's <paramref name="regionOf"/>.</summary>
+        private static void AddRegion(List<List<int>> result, int[] regionOf, List<int> tiles)
+        {
+            if (tiles == null || tiles.Count == 0) return;
+            int rid = result.Count;
+            result.Add(tiles);
+            for (int i = 0; i < tiles.Count; i++) regionOf[tiles[i]] = rid;
+        }
+
+        /// <summary>
+        /// Split one connected container into k = round(count/target) cells of roughly EQUAL size. Anchors
+        /// are farthest-point-spaced (running-min, O(count·k)); the fill is a capacity-constrained
+        /// multi-source BFS — all anchors grow in lockstep (FIFO level order) and an anchor stops claiming
+        /// once it reaches the per-cell capacity ceil(count/k). This is what keeps a 665-tile area splitting
+        /// ~333/332 instead of the Voronoi fill's 503/162: no cell can balloon while another starves. Cells
+        /// stay contiguous (each grown from its anchor) and confined to the container (<paramref name="set"/>).
+        ///
+        /// <para>Scratch is scoped to the container: <paramref name="owner"/> holds the anchor index and
+        /// <paramref name="cost"/> the anchor-selection running distance; both grid-sized and reset only over
+        /// the container's tiles. Deterministic (tiles sorted; anchors id-ordered; FIFO is order-stable).</para>
+        /// </summary>
+        private static List<List<int>> BalancedCellsScoped(WorldGrid grid, List<int> tiles, int target,
+            int[] owner, float[] cost, HashSet<int> set, List<PlanetTile> nb)
+        {
+            var result = new List<List<int>>();
+            int count = tiles.Count;
+            if (count == 0) return result;
+            // ceil, not round: a container OVER the target must split, so a 448-tile area at target 300
+            // becomes 2×224 rather than rounding to 1 and staying a lone 448. Each cell then lands at or
+            // just under the target.
+            int k = System.Math.Max(1, (int)System.Math.Ceiling(count / (double)target));
+
+            var sorted = new List<int>(tiles);
+            sorted.Sort();
+            if (k <= 1) { result.Add(sorted); return result; }
+
+            set.Clear();
+            foreach (int t in sorted) { set.Add(t); cost[t] = float.PositiveInfinity; owner[t] = -1; }
+
+            // Farthest-point anchors, running min-distance (O(count·k)) — spreads the k cell centres out.
+            var anchors = new List<int>(k) { sorted[0] };
+            int newest = sorted[0];
+            while (anchors.Count < k)
+            {
+                int best = -1; float bestD = -1f;
+                for (int i = 0; i < count; i++)
+                {
+                    int t = sorted[i];
+                    float d = cost[t];
+                    float dd = grid.ApproxDistanceInTiles(t, newest);
+                    if (dd < d) { d = dd; cost[t] = d; }
+                    if (d > bestD) { bestD = d; best = t; }
+                }
+                if (best < 0 || cost[best] <= 0f) break;
+                anchors.Add(best); newest = best;
+            }
+            anchors.Sort();
+
+            // Capacity-constrained multi-source BFS. Encode (anchorIndex, tile) as one long in the FIFO so a
+            // tile carries which anchor's frontier reached it; the first non-full anchor to reach a tile
+            // claims it. Level-order growth keeps the cells balanced; the cap stops any one ballooning.
+            int capacity = (count + k - 1) / k;
+            var counts = new int[anchors.Count];
+            var q = new Queue<long>();
+            for (int a = 0; a < anchors.Count; a++) q.Enqueue(((long)a << 32) | (uint)anchors[a]);
+            while (q.Count > 0)
+            {
+                long e = q.Dequeue();
+                int ai = (int)(e >> 32);
+                int t = (int)(e & 0xFFFFFFFF);
+                if (owner[t] != -1 || counts[ai] >= capacity) continue;
+                owner[t] = ai; counts[ai]++;
+                nb.Clear();
+                grid.GetTileNeighbors(t, nb);
+                for (int i = 0; i < nb.Count; i++)
+                {
+                    int nid = nb[i].tileId;
+                    if (set.Contains(nid) && owner[nid] == -1) q.Enqueue(((long)ai << 32) | (uint)nid);
+                }
+            }
+
+            // Any tile only ever reached by full anchors is still unclaimed — hand it to an adjacent claimed
+            // cell (slight overflow past capacity, but every tile ends in exactly one contiguous cell).
+            bool progress = true;
+            while (progress)
+            {
+                progress = false;
+                for (int i = 0; i < count; i++)
+                {
+                    int t = sorted[i];
+                    if (owner[t] != -1) continue;
+                    nb.Clear();
+                    grid.GetTileNeighbors(t, nb);
+                    for (int j = 0; j < nb.Count; j++)
+                    {
+                        int nid = nb[j].tileId;
+                        if (set.Contains(nid) && owner[nid] != -1) { owner[t] = owner[nid]; progress = true; break; }
+                    }
+                }
+            }
+
+            var groups = new List<List<int>>(anchors.Count);
+            for (int a = 0; a < anchors.Count; a++) groups.Add(new List<int>());
+            for (int i = 0; i < count; i++)
+            {
+                int t = sorted[i];
+                int o = owner[t] >= 0 ? owner[t] : 0;
+                groups[o].Add(t);
+            }
+            foreach (var g in groups) if (g.Count > 0) result.Add(g);
+            return result;
+        }
+
         // Small surcharges (distance-dominant) that let a border SNAP onto a nearby biome / forest edge
         // without chasing it — the hybrid of clean convex cells and terrain-faithful borders (#20).
         private const float BiomeSnapWeight = 0.35f;

@@ -26,13 +26,23 @@ namespace RegionsAndSocieties.UI
         /// scrolling host can size its view. <paramref name="cacheKeyBase"/> (e.g. the province id) keys
         /// the pie textures; include a mix signature so a changed make-up rebuilds them.
         /// </summary>
-        public static float Draw(Rect rect, RegionDemographics demo, string cacheKeyBase)
+        public static float Draw(Rect rect, RegionDemographics demo, int population, string cacheKeyBase)
         {
             float y = rect.y;
             if (demo == null || demo.settledTiles <= 0)
             {
                 Widgets.Label(new Rect(rect.x, y, rect.width, HeaderH), "No settled population in this region.");
                 return HeaderH;
+            }
+
+            // Residences: the region's people resolved into homes by how urban it is (population is a head
+            // count; residences are where they live). Rural extended families to dense urban households.
+            if (population > 0)
+            {
+                ResidenceProfile res = ResidenceRules.For(population);
+                y = NoteSection(rect, y, $"Residences  —  {res.tier}",
+                    $"{res.residences} homes · {res.occupancy:0.0} people per home · {population} residents\nland per person {res.landPerPawn:0.00} (relative)");
+                y += SectionGap;
             }
 
             y = BarSection(rect, y, $"Age  —  median {demo.medianAge}", new List<BarSegment>
@@ -77,27 +87,32 @@ namespace RegionsAndSocieties.UI
                 new BarSegment("Trade", demo.occupationShares[(int)OccupationSector.Trade], DemographicColors.Employment[3], "merchants, hauling, services"),
             });
 
-            y += SectionGap;
-            if (!demo.biotechActive)
-                y = NoteSection(rect, y, "Xenotypes", "All Baseliner (Biotech not active).");
-            else if (demo.raceShares.Count == 0)
-                y = NoteSection(rect, y, "Xenotypes", "No data.");
-            else
-                y = PieSection(rect, y, "Xenotypes", demo.raceShares
-                    .OrderByDescending(k => k.Value)
-                    .Select(k => new PieSlice { label = k.Key.LabelCap, fraction = k.Value, color = DemographicColors.Xenotype(k.Key) })
-                    .ToList(), cacheKeyBase + "_xeno");
+            // Xenotype and ideology are DLC features: with Biotech / Ideology absent the whole section is
+            // omitted (not shown as a "not active" note), so the panel degrades to exactly what this game
+            // can express.
+            if (demo.biotechActive)
+            {
+                y += SectionGap;
+                if (demo.raceShares.Count == 0)
+                    y = NoteSection(rect, y, "Xenotypes", "No data.");
+                else
+                    y = PieSection(rect, y, "Xenotypes", demo.raceShares
+                        .OrderByDescending(k => k.Value)
+                        .Select(k => new PieSlice { label = k.Key.LabelCap, fraction = k.Value, color = DemographicColors.Xenotype(k.Key) })
+                        .ToList(), cacheKeyBase + "_xeno");
+            }
 
-            y += SectionGap;
-            if (!demo.ideologyActive)
-                y = NoteSection(rect, y, "Ideology", "Secular (Ideology not active).");
-            else if (demo.ideoShares.Count == 0)
-                y = NoteSection(rect, y, "Ideology", "No data.");
-            else
-                y = PieSection(rect, y, "Ideology", demo.ideoShares
-                    .OrderByDescending(k => k.Value)
-                    .Select(k => new PieSlice { label = k.Key.name, fraction = k.Value, color = DemographicColors.Ideology(k.Key) })
-                    .ToList(), cacheKeyBase + "_ideo");
+            if (demo.ideologyActive)
+            {
+                y += SectionGap;
+                if (demo.ideoShares.Count == 0)
+                    y = NoteSection(rect, y, "Ideology", "No data.");
+                else
+                    y = PieSection(rect, y, "Ideology", demo.ideoShares
+                        .OrderByDescending(k => k.Value)
+                        .Select(k => new PieSlice { label = k.Key.name, fraction = k.Value, color = DemographicColors.Ideology(k.Key) })
+                        .ToList(), cacheKeyBase + "_ideo");
+            }
 
             return y - rect.y;
         }

@@ -8,34 +8,23 @@ using Verse;
 namespace RegionsAndSocieties
 {
     /// <summary>
-    /// A debug overlay (#20) that paints ONLY the world's natural barriers, each type its own colour —
-    /// impassable rock, open water, high-ground ridges, swamp, and biome edges — and leaves open,
-    /// same-biome land unshaded. It shows the terrain's own division of the map directly, so the barriers
-    /// a region partition should follow are visible. This is the tuning surface for combining the
-    /// square-cell fill with barrier-following into a better region algorithm.
+    /// A debug overlay (#20) that paints every land tile by its BIOME — each biome its own colour — with
+    /// the partition's two hard non-biome walls, impassable rock and open water, shown distinctly on top.
+    /// Because biomes are the thing the contain-then-subdivide partition actually walls on, this shows the
+    /// real division of the map: a region border that follows a biome colour change is a true biome edge;
+    /// one that runs through a single colour is a same-biome size cut. It also labels each tile with its
+    /// actual biome, so a tile can never be misread (e.g. an AridShrubland tile mislabelled "swamp").
     ///
-    /// <para>Materials are a FIXED small palette pre-built on the main thread in <see cref="DoPreRegenerate"/>,
-    /// so the worker-thread mesh build (<c>GetMaterial</c>) only ever reads them — Unity forbids creating a
-    /// material off the main thread.</para>
+    /// <para>Materials are pre-built on the main thread in <see cref="DoPreRegenerate"/> — one per biome
+    /// plus impassable/water — so the worker-thread mesh build (<c>GetMaterial</c>) only ever reads them;
+    /// Unity forbids creating a material off the main thread.</para>
     /// </summary>
     [StaticConstructorOnStartup]
     public class MapMode_NaturalBarriers : MapMode
     {
-        private enum Barrier { None = 0, Impassable, Water, Mountain, LargeHill, Swamp, BiomeEdge, SmallHill }
-
-        // One colour per barrier type; None is unshaded. Strong hard walls read dark/solid, soft edges faint.
-        private static readonly Color[] Colors =
-        {
-            Color.clear,                             // None
-            new Color(0.10f, 0.10f, 0.12f, 0.85f),   // Impassable — near-black rock / sea ice
-            new Color(0.20f, 0.42f, 0.75f, 0.75f),   // Water — blue
-            new Color(0.45f, 0.30f, 0.20f, 0.78f),   // Mountain — dark brown ridge
-            new Color(0.62f, 0.46f, 0.30f, 0.62f),   // Large hill — medium brown
-            new Color(0.28f, 0.42f, 0.28f, 0.70f),   // Swamp — murky green
-            new Color(0.90f, 0.58f, 0.18f, 0.58f),   // Biome edge — orange
-            new Color(0.72f, 0.64f, 0.50f, 0.42f),   // Small hill — faint tan (weak barrier)
-        };
-        private static Material[] mats;
+        private static Material impassableMat;
+        private static Material waterMat;
+        private static Dictionary<BiomeDef, Material> biomeMats;
 
         public MapMode_NaturalBarriers() { }
         public MapMode_NaturalBarriers(MapModeDef def) : base(def) { }
@@ -45,10 +34,18 @@ namespace RegionsAndSocieties
         public override void DoPreRegenerate()
         {
             base.DoPreRegenerate();
-            if (mats != null) return;
-            mats = new Material[Colors.Length];
-            for (int i = 0; i < Colors.Length; i++)
-                mats[i] = i == 0 ? BaseContent.ClearMat : MakeMat(Colors[i]);
+            if (biomeMats != null) return;
+
+            impassableMat = MakeMat(new Color(0.10f, 0.10f, 0.12f, 0.92f));   // near-black rock / sea ice
+            waterMat = MakeMat(new Color(0.20f, 0.42f, 0.75f, 0.85f));        // blue
+
+            biomeMats = new Dictionary<BiomeDef, Material>();
+            var biomes = DefDatabase<BiomeDef>.AllDefsListForReading;
+            for (int i = 0; i < biomes.Count; i++)
+            {
+                BiomeDef b = biomes[i];
+                biomeMats[b] = MakeMat(ColorForBiome(b, i));
+            }
         }
 
         private static Material MakeMat(Color c)
@@ -61,62 +58,68 @@ namespace RegionsAndSocieties
 
         public override Material GetMaterial(int tile)
         {
-            if (mats == null) return BaseContent.ClearMat;   // pre-build hasn't run; never create off-thread
-            return mats[(int)BarrierOf(tile)];
+            if (biomeMats == null) return BaseContent.ClearMat;   // pre-build hasn't run; never create off-thread
+            WorldGrid grid = Find.WorldGrid;
+            if (grid == null || tile < 0 || tile >= grid.TilesCount) return BaseContent.ClearMat;
+            Tile t = grid[tile];
+            if (t == null) return BaseContent.ClearMat;
+
+            BiomeDef biome = t.PrimaryBiome;
+            if (t.hilliness == Hilliness.Impassable || (biome != null && (biome.impassable || biome.defName == "SeaIce")))
+                return impassableMat;
+            if (t.WaterCovered) return waterMat;
+            if (biome != null && biomeMats.TryGetValue(biome, out var m)) return m;
+            return BaseContent.ClearMat;
         }
 
         public override string GetTileLabel(int tile)
         {
-            Barrier b = BarrierOf(tile);
-            return b == Barrier.None ? null : b.ToString();
+            WorldGrid grid = Find.WorldGrid;
+            if (grid == null || tile < 0 || tile >= grid.TilesCount) return null;
+            Tile t = grid[tile];
+            return t?.PrimaryBiome?.label;
         }
 
         public override string GetTooltip(int tile)
         {
-            Barrier b = BarrierOf(tile);
-            return b == Barrier.None ? "Open land (no natural barrier)" : "Natural barrier: " + b;
-        }
-
-        /// <summary>The strongest natural barrier a tile represents, hard walls first. Reads tile terrain
-        /// only — no material creation — so it is safe from the worker thread.</summary>
-        private static Barrier BarrierOf(int tile)
-        {
             WorldGrid grid = Find.WorldGrid;
-            if (grid == null || tile < 0 || tile >= grid.TilesCount) return Barrier.None;
+            if (grid == null || tile < 0 || tile >= grid.TilesCount) return null;
             Tile t = grid[tile];
-            if (t == null) return Barrier.None;
-
+            if (t == null) return null;
             BiomeDef biome = t.PrimaryBiome;
-            if (t.hilliness == Hilliness.Impassable || (biome != null && (biome.impassable || biome.defName == "SeaIce")))
-                return Barrier.Impassable;
-            if (t.WaterCovered) return Barrier.Water;
-            if (t.hilliness == Hilliness.Mountainous) return Barrier.Mountain;
-            if (t.hilliness == Hilliness.LargeHills) return Barrier.LargeHill;
-
-            bool swamp = t.swampiness > 0.1f
-                || (biome != null && (biome.defName.Contains("Swamp") || biome.defName.Contains("Marsh")));
-            if (swamp) return Barrier.Swamp;
-
-            if (IsBiomeEdge(grid, tile, biome)) return Barrier.BiomeEdge;
-            if (t.hilliness == Hilliness.SmallHills) return Barrier.SmallHill;
-            return Barrier.None;
+            string name = biome != null ? biome.label + " (" + biome.defName + ")" : "no biome";
+            bool impassable = t.hilliness == Hilliness.Impassable || (biome != null && (biome.impassable || biome.defName == "SeaIce"));
+            if (t.WaterCovered) return name + " — water (partition wall)";
+            if (impassable) return name + " — impassable (partition wall)";
+            return name + " — " + t.hilliness;
         }
 
-        /// <summary>True when a land neighbour sits in a different biome — a soft, walkable border the
-        /// partition may want to snap to.</summary>
-        private static bool IsBiomeEdge(WorldGrid grid, int tile, BiomeDef biome)
+        /// <summary>A stable, reasonably intuitive colour per biome: curated tones for the vanilla biomes
+        /// (deserts sandy, forests green, cold pale) so the map reads naturally, and an even golden-ratio hue
+        /// spread for anything else (modded biomes) so no two adjacent unknowns collide.</summary>
+        private static Color ColorForBiome(BiomeDef b, int index)
         {
-            if (biome == null) return false;
-            var neighbours = new List<PlanetTile>();
-            grid.GetTileNeighbors(tile, neighbours);
-            for (int i = 0; i < neighbours.Count; i++)
+            if (b != null)
             {
-                int n = neighbours[i].tileId;
-                if (n < 0 || n >= grid.TilesCount) continue;
-                Tile nt = grid[n];
-                if (nt != null && !nt.WaterCovered && nt.PrimaryBiome != null && nt.PrimaryBiome != biome) return true;
+                switch (b.defName)
+                {
+                    case "Desert":             return new Color(0.83f, 0.69f, 0.40f, 0.80f);
+                    case "ExtremeDesert":      return new Color(0.93f, 0.82f, 0.52f, 0.80f);
+                    case "AridShrubland":      return new Color(0.68f, 0.66f, 0.34f, 0.80f);
+                    case "TemperateForest":    return new Color(0.28f, 0.55f, 0.24f, 0.80f);
+                    case "TemperateSwamp":     return new Color(0.20f, 0.40f, 0.30f, 0.80f);
+                    case "TropicalRainforest": return new Color(0.12f, 0.45f, 0.18f, 0.80f);
+                    case "TropicalSwamp":      return new Color(0.16f, 0.42f, 0.36f, 0.80f);
+                    case "BorealForest":       return new Color(0.30f, 0.50f, 0.45f, 0.80f);
+                    case "ColdBog":            return new Color(0.34f, 0.46f, 0.48f, 0.80f);
+                    case "Tundra":             return new Color(0.55f, 0.58f, 0.55f, 0.80f);
+                    case "IceSheet":           return new Color(0.85f, 0.90f, 0.95f, 0.80f);
+                }
             }
-            return false;
+            float hue = (index * 0.61803398875f) % 1f;   // golden-ratio hue spread for modded biomes
+            Color c = Color.HSVToRGB(hue, 0.55f, 0.78f);
+            c.a = 0.80f;
+            return c;
         }
     }
 }

@@ -82,7 +82,7 @@ run_suite() {
 # the folder over 0.7.2-0.8 (debug reports, MCP tool registration, the claim hook, the holding
 # creators). Those files need a running game, are stubbed via RimWorldStubsExt, and are held to
 # their real shapes by the type-check below instead.
-INTEGRATION_PURE=$(ls $SRC/Integration/*.cs | grep -v -e RegionDebugReports -e RegionMcpTools -e TerritoryClaimHooks -e VoeOutpostCreator -e HoldingCreatorRegistry -e IHoldingCreator)
+INTEGRATION_PURE=$(ls $SRC/Integration/*.cs | grep -v -e RegionDebugReports -e RegionMcpTools -e TerritoryClaimHooks -e PopulationDynamics -e VoeOutpostCreator -e HoldingCreatorRegistry -e IHoldingCreator)
 
 # Sizing tables are pure EXCEPT the game-coupled glue (SettlementGrowthUtility reads Find / region
 # demographics), which cannot compile against the stubs — the real build covers it, like the other glue.
@@ -123,6 +123,12 @@ run_suite agestructure Exe \
 run_suite education Exe \
     Tests/EducationRulesTests.cs \
     $SRC/Demographics/EducationRules.cs
+
+# 0.3.0 residence core: population -> homes, occupancy (extended->nuclear), and land, driven by how
+# urban a place is. Pure, no game.
+run_suite residence Exe \
+    Tests/ResidenceRulesTests.cs \
+    $SRC/Demographics/ResidenceRules.cs
 
 # 0.3.0 faction-character core (#27): base/DLC archetype classification + knowledge/wealth skews, and the
 # end-to-end effect on education. Pure, no game — needs the character rules and the education core.
