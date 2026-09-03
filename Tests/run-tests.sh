@@ -82,7 +82,7 @@ run_suite() {
 # the folder over 0.7.2-0.8 (debug reports, MCP tool registration, the claim hook, the holding
 # creators). Those files need a running game, are stubbed via RimWorldStubsExt, and are held to
 # their real shapes by the type-check below instead.
-INTEGRATION_PURE=$(ls $SRC/Integration/*.cs | grep -v -e RegionDebugReports -e RegionMcpTools -e TerritoryClaimHooks -e VoeOutpostCreator -e HoldingCreatorRegistry -e IHoldingCreator)
+INTEGRATION_PURE=$(ls $SRC/Integration/*.cs | grep -v -e RegionDebugReports -e RegionMcpTools -e TerritoryClaimHooks -e PopulationDynamics -e VoeOutpostCreator -e HoldingCreatorRegistry -e IHoldingCreator)
 
 # Sizing tables are pure EXCEPT the game-coupled glue (SettlementGrowthUtility reads Find / region
 # demographics), which cannot compile against the stubs — the real build covers it, like the other glue.
