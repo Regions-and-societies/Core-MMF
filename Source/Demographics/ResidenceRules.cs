@@ -48,7 +48,7 @@ namespace RegionsAndSocieties.Demographics
         public static ResidenceProfile For(int population)
         {
             if (population <= 0)
-                return new ResidenceProfile { population = 0, urbanization = 0f, occupancy = RuralOccupancy, residences = 0, landPerResidence = RuralLandPerResidence, landPerPawn = RuralLandPerResidence / RuralOccupancy, tier = SettlementTier.Homestead };
+                return new ResidenceProfile { population = 0, urbanization = 0f, occupancy = RuralOccupancy, residences = 0, landPerResidence = RuralLandPerResidence, landPerPawn = RuralLandPerResidence / RuralOccupancy, tier = ResidenceTier.Homestead };
 
             float u = Urbanization(population);
             float occ = Occupancy(u);
@@ -67,12 +67,12 @@ namespace RegionsAndSocieties.Demographics
         }
 
         /// <summary>The named settlement tier for an urbanization level.</summary>
-        public static SettlementTier TierFor(float urbanization)
+        public static ResidenceTier TierFor(float urbanization)
         {
-            if (urbanization < 0.20f) return SettlementTier.Homestead;
-            if (urbanization < 0.45f) return SettlementTier.Village;
-            if (urbanization < 0.75f) return SettlementTier.Town;
-            return SettlementTier.City;
+            if (urbanization < 0.20f) return ResidenceTier.Homestead;
+            if (urbanization < 0.45f) return ResidenceTier.Village;
+            if (urbanization < 0.75f) return ResidenceTier.Town;
+            return ResidenceTier.City;
         }
 
         private static float Clamp01(float v) => v < 0f ? 0f : (v > 1f ? 1f : v);
@@ -80,7 +80,7 @@ namespace RegionsAndSocieties.Demographics
     }
 
     /// <summary>The settled tier of a place, from a lone rural homestead to a dense city.</summary>
-    public enum SettlementTier { Homestead, Village, Town, City }
+    public enum ResidenceTier { Homestead, Village, Town, City }
 
     /// <summary>The derived residence picture for a population.</summary>
     public struct ResidenceProfile
@@ -91,6 +91,6 @@ namespace RegionsAndSocieties.Demographics
         public float occupancy;         // average people per residence
         public float landPerResidence;  // relative land one residence occupies
         public float landPerPawn;       // relative personal land per person
-        public SettlementTier tier;
+        public ResidenceTier tier;
     }
 }

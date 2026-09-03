@@ -31,9 +31,9 @@ namespace ResidenceRulesTests
             Check("empty population has no residences", ResidenceRules.For(0).residences == 0);
             Check("a person always has at least one home", ResidenceRules.For(1).residences >= 1);
             Check("country: few big homes", country.residences <= 3);
-            Check("country reads as a homestead/village", country.tier == SettlementTier.Homestead || country.tier == SettlementTier.Village);
+            Check("country reads as a homestead/village", country.tier == ResidenceTier.Homestead || country.tier == ResidenceTier.Village);
             Check("city: many small homes", city.residences >= 100);
-            Check("city reads as a city", city.tier == SettlementTier.City);
+            Check("city reads as a city", city.tier == ResidenceTier.City);
             Check("city has more homes per person than country",
                 (city.residences / (float)city.population) > (country.residences / (float)country.population));
             Check("residences x occupancy reconstructs population (country)", Math.Abs(country.residences * country.occupancy - country.population) <= country.occupancy);
@@ -46,10 +46,10 @@ namespace ResidenceRulesTests
             Check("fewer tiles per pawn in the city", country.landPerPawn > city.landPerPawn);
 
             Section("tiers step up with urbanization");
-            Check("0 is homestead", ResidenceRules.TierFor(0f) == SettlementTier.Homestead);
-            Check("mid-low is village", ResidenceRules.TierFor(0.3f) == SettlementTier.Village);
-            Check("mid-high is town", ResidenceRules.TierFor(0.6f) == SettlementTier.Town);
-            Check("high is city", ResidenceRules.TierFor(0.9f) == SettlementTier.City);
+            Check("0 is homestead", ResidenceRules.TierFor(0f) == ResidenceTier.Homestead);
+            Check("mid-low is village", ResidenceRules.TierFor(0.3f) == ResidenceTier.Village);
+            Check("mid-high is town", ResidenceRules.TierFor(0.6f) == ResidenceTier.Town);
+            Check("high is city", ResidenceRules.TierFor(0.9f) == ResidenceTier.City);
 
             Console.WriteLine();
             Console.WriteLine(failures == 0 ? "ALL RESIDENCE TESTS PASSED" : failures + " RESIDENCE TEST(S) FAILED");
