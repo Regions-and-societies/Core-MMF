@@ -610,21 +610,33 @@ namespace RegionsAndSocieties
             if (hiddenOnes.Count < 3 || hiddenOnes.Count < ordinary.Count * 0.5f) return;
 
             int repaired = 0;
+            var needLeaders = new List<Faction>();
             foreach (var faction in hiddenOnes)
             {
                 faction.hidden = faction.def.hidden;   // = false for an ordinary def
-                if (!faction.Hidden && faction.leader == null)
-                {
-                    try { faction.TryGenerateNewLeader(); }
-                    catch (System.Exception e)
-                    {
-                        // Leader upkeep will retry on tick; never let the repair throw during load.
-                        Log.Warning($"[RegionsAndSocieties] #32 migration: leader regen for '{faction.Name}' threw: {e.Message}");
-                    }
-                }
+                if (!faction.Hidden && faction.leader == null) needLeaders.Add(faction);
                 repaired++;
             }
-            Log.Message($"[RegionsAndSocieties] #32 migration: restored {repaired} faction(s) that a pre-0.3.0 bug created hidden (visibility/goodwill/leader).");
+
+            // Un-hiding is the essential repair and is done above. Leader generation, however, walks pawn
+            // and ideo state that is NOT fully wired up this early in a load (it NREs for some factions in
+            // FinalizeInit), so defer it until the load long-event completes and the world is live.
+            if (needLeaders.Count > 0)
+            {
+                LongEventHandler.ExecuteWhenFinished(() =>
+                {
+                    foreach (var f in needLeaders)
+                    {
+                        if (f == null || f.Hidden || f.leader != null) continue;
+                        try { f.TryGenerateNewLeader(); }
+                        catch (System.Exception e)
+                        {
+                            Log.Warning($"[RegionsAndSocieties] #32 migration: deferred leader regen for '{f.Name}' threw: {e.Message}");
+                        }
+                    }
+                });
+            }
+            Log.Message($"[RegionsAndSocieties] #32 migration: restored {repaired} faction(s) that a pre-0.3.0 bug created hidden (visibility/goodwill; leaders generated once the load completes).");
         }
 
         /// <summary>
