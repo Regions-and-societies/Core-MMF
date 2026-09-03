@@ -1,6 +1,10 @@
 # Regions and Societies (Core, Map Mode Framework edition)
 A comprehensive layer for creating world population and resource calculations
 
+## How the world is divided into territories
+
+![How the world is divided into territories: nature draws the walls, each area gets a fitting number of territories, then each is sliced into even pieces](https://i.imgur.com/hmYiihY.png)
+
 ## Roadmap
 
 Where the mod is and where it's headed — describe the people, let them live and change,
