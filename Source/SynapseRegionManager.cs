@@ -867,11 +867,6 @@ namespace RegionsAndSocieties
             BuildProvinceTopology();
 
             Log.Message($"[RegionsAndSocieties] Generated {provinces.Count} Geographic Domains.");
-
-            DiagnoseTinyRegions(5);
-            DiagnoseBigRegions(150);
-            DiagnoseUnmergedSlivers();
-            ExportWorldMapCsv(@"C:\RimWorldDevData\partition_export.csv");
         }
 
         /// <summary>
