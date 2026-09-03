@@ -1,5 +1,5 @@
 [b]Discord Community:[/b] [url=https://discord.gg/eVBebZ2N9s]https://discord.gg/eVBebZ2N9s[/url]
-[b]Version:[/b] v0.2.3 (Target: RimWorld 1.5 / 1.6)
+[b]Version:[/b] v0.3.0 (Target: RimWorld 1.5 / 1.6)
 
 [h2]Compatibility Patches[/h2]
 Regions and Societies extends its demographic hooks to the mods below — install the matching patch and their factions, settlements, and events stay in sync with each region's live demographics, ownership, and population:
@@ -44,12 +44,16 @@ Regions and Societies does most of its work during world generation: it draws th
 
 ---
 
-[h2]Changelog (v0.2.3) - Worldgen resilience with missing DLC content[/h2]
+[h2]Changelog (v0.3.0) - Living Population Model[/h2]
 [list]
-[*] [b]Fixed: black world when DLC content is unresolved.[/b] Classic (no-expansion) ideoligion role naming crashed world generation when the Ideology DLC was missing but other content added classic leader-role precepts - including for the player faction, which the 0.2.2 guard could not reach. Role naming is now guarded directly: a missing foundation gets a fallback title, and any naming failure degrades to the fallback instead of a dead world.
-[*] [b]Graceful DLC degradation in faction generation.[/b] A faction needing Royalty title content that isn't resolved is skipped with a single log line and the world generates without it.
-[*] [b]Marked incompatible with Layered Atmosphere and Orbit (LAO).[/b] It restructures the planet-layer stack that faction placement hooks into, breaking world generation.
-[*] [b]Dev quality-of-life.[/b] The map-mode test helper now only runs on -quicktest launches, so playing with dev mode on no longer pulls you to the world map after starting a colony.
+[*] [b]New region partitioning.[/b] Regions are drawn inside the terrain's natural sections - biome, mountains and coasts - then cut into even pieces, so borders follow the land. Every region is guaranteed to be a single connected landmass.
+[*] [b]Pluggable partition algorithm.[/b] Pick how the world is cut from a dropdown in mod settings (contain-then-subdivide, or the legacy anchor-Voronoi look), and other mods can register their own. Each world remembers the algorithm and version it was generated with, so loading an old save never re-cuts its map.
+[*] [b]Region inspection panel.[/b] A three-tab region window - Region (shape mini-map, ownership, features, resources, wildlife), Population (the seven demographic axes), and Economy (goods, housing, crises).
+[*] [b]Faction character.[/b] A faction's education, wealth and standing now reflect what it is - raiders read as raiders, an imperial court as an elite.
+[*] [b]Settlement growth[/b] from in-game birthrates, [b]outpost seeding[/b] around settlements, a [b]residence layer[/b] (dwellings modelled separately from population), and all map overlays consolidated under one menu button.
+[*] [b]Performance.[/b] Region demographics are precomputed at load, so overlays open instantly, and the aggregation stays linear even at 100% coverage.
+[*] [b]Odyssey multi-layer worlds[/b] - off-surface world objects (orbital habitats, space sites) are handled cleanly, so regions, demographics and placement stay correct with space factions on the orbit layer. (Layered Atmosphere and Orbit remains incompatible.)
+[*] [b]Fixed (thanks to community member 96localk):[/b] every generated faction was created hidden with no leader, and unselected factions could leak in. Factions now generate visible with leaders, only chosen factions appear, and a one-time repair fixes old saves.
 [/list]
 [b]Full version history:[/b] [url=https://github.com/Regions-and-societies/Core-MMF/wiki/Changelog]github.com/Regions-and-societies/Core-MMF/wiki[/url]
 

@@ -36,6 +36,14 @@ Useful when: choosing where to settle, or working out why one region feels busie
 
 ---
 
+## Residences (0.3.0)
+
+Shades each tile by how its people are housed — dwellings are modelled separately from raw population, so this reads the *homes*, not the head-count. A rural tile holds a few large extended-family residences on wide land; toward a city, homes get smaller and denser and occupancy drops toward nuclear families. Green (rural) through to red (city). The label reports the residence count on the tile.
+
+Useful when: seeing at a glance where the world is rural versus urban.
+
+---
+
 ## Demographic overlays (0.2.0)
 
 Seven overlays, one per demographic axis, each shading every **settled** region (unsettled wilderness and water stay unshaded — an unshaded region means "no people", not "no data"). Hovering a tile shows that axis's full breakdown for the region; the same numbers appear in the expanded region panel.
