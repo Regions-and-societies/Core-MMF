@@ -530,6 +530,11 @@ namespace RegionsAndSocieties
                 settlementModeledPop = new Dictionary<int, float>();
             }
 
+            // One-time repair flag for the pre-0.3.0 "every faction generated hidden" bug (#32). Old saves
+            // lack this key, so it loads false and the repair runs once on FinalizeInit; new/repaired worlds
+            // scribe true and skip it forever.
+            Scribe_Values.Look(ref factionHiddenMigrationDone, "factionHiddenMigrationDone", false);
+
             List<int> tempList = null;
             if (Scribe.mode == LoadSaveMode.Saving)
             {
@@ -562,6 +567,59 @@ namespace RegionsAndSocieties
                     MarkOwnersDirty();
                 }
             }
+        }
+
+        /// <summary>Set once the pre-0.3.0 hidden-faction repair (#32) has been attempted for this world.</summary>
+        private bool factionHiddenMigrationDone;
+
+        public override void FinalizeInit(bool fromLoad)
+        {
+            base.FinalizeInit(fromLoad);
+            MigrateHiddenFactions();
+        }
+
+        /// <summary>
+        /// One-time repair for worlds generated before 0.3.0, where a bug (#32) created EVERY ordinary
+        /// faction hidden — absent from the Factions tab, with no goodwill and no leader. Runs once per
+        /// world (scribed flag) and is signature-gated so it never exposes factions another mod hides on
+        /// purpose: it fires only when the bug's fingerprint is present — at least three ordinary
+        /// (non-player, non-def-hidden) factions exist and at least half of them are instance-hidden.
+        /// It only un-hides instances (and regenerates a missing leader); it never deletes a faction,
+        /// since settlements, relations and quests may reference it.
+        /// </summary>
+        private void MigrateHiddenFactions()
+        {
+            if (factionHiddenMigrationDone) return;
+            factionHiddenMigrationDone = true;   // attempt once, whatever the outcome
+
+            var factionManager = Find.FactionManager;
+            if (factionManager == null) return;
+
+            var ordinary = factionManager.AllFactions
+                .Where(f => f != null && !f.IsPlayer && f.def != null && !f.def.isPlayer && !f.def.hidden)
+                .ToList();
+            if (ordinary.Count < 3) return;
+
+            var hiddenOnes = ordinary.Where(f => f.Hidden).ToList();
+            // Signature: >= 3 ordinary factions hidden AND >= 50% of the ordinary factions hidden.
+            if (hiddenOnes.Count < 3 || hiddenOnes.Count < ordinary.Count * 0.5f) return;
+
+            int repaired = 0;
+            foreach (var faction in hiddenOnes)
+            {
+                faction.hidden = faction.def.hidden;   // = false for an ordinary def
+                if (!faction.Hidden && faction.leader == null)
+                {
+                    try { faction.TryGenerateNewLeader(); }
+                    catch (System.Exception e)
+                    {
+                        // Leader upkeep will retry on tick; never let the repair throw during load.
+                        Log.Warning($"[RegionsAndSocieties] #32 migration: leader regen for '{faction.Name}' threw: {e.Message}");
+                    }
+                }
+                repaired++;
+            }
+            Log.Message($"[RegionsAndSocieties] #32 migration: restored {repaired} faction(s) that a pre-0.3.0 bug created hidden (visibility/goodwill/leader).");
         }
 
         /// <summary>
