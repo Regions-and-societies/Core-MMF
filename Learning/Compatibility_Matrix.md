@@ -58,7 +58,7 @@ No ordering constraint has been observed against Empire, VOE, VEF, World Dominat
 
 ## Known incompatibilities
 
-- **Layered Atmosphere and Orbit (LAO)** (`MrHydralisk.LayeredAtmosphereOrbit`) — declared `incompatibleWith` since 0.2.3. LAO restructures the planet-layer stack that this mod's faction placement hooks into, leaving world generation without the base surface layer it expects; the result is a broken ("black") world on generate.
+- **Layered Atmosphere and Orbit (LAO)** (`MrHydralisk.LayeredAtmosphereOrbit`) — **compatible as of 0.3.0.** It was `incompatibleWith` in 0.2.3: LAO's `WorldDrawLayer.Visible` render patch dereferences each layer's planet layer, and this mod's region-border and capital overlays are *global* draw layers with none, so LAO null-referenced and black-worlded the map. Those overlays are now pinned to the surface layer, so LAO renders cleanly; the incompatibility has been removed. (LAO requires the Odyssey DLC.)
 
 ---
 

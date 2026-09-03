@@ -22,9 +22,6 @@
              MapModeFramework assembly may load. This block was documented but missing until 0.2.3. -->
         <li>RegionsAndSocieties.CoreRP2</li>
         <li>koth.RealisticPlanets2</li>
-        <!-- LAO restructures the planet-layer stack that faction placement hooks into, leaving
-             world generation without the base surface layer it expects (0.2.3). -->
-        <li>MrHydralisk.LayeredAtmosphereOrbit</li>
         <!-- Regions and Societies IS the continuation of Regions and Territories under a new identity.
              Running both loads two competing region/territory generators over the same world — duplicated
              provinces, doubled worldgen cost, and clashing overlays. R&S replaces R&T; never load both. -->
@@ -75,7 +72,8 @@ Requires: Map Mode Framework, Harmony
 - Map overlays consolidated under a single Regions and Societies menu button.
 - Performance: every region's demographics are precomputed at load, so opening a demographic overlay is instant.
 - Fixed (with thanks to community member 96localk): every generated faction was created hidden - absent from the Factions tab, with no goodwill or leader - and unselected factions could leak into worlds. Factions now generate visible with leaders, only the factions you chose appear, and a one-time repair fixes worlds saved under the bug.
-- Odyssey multi-layer worlds: off-surface world objects (orbital habitats, space sites) are classified and skipped cleanly instead of warning, so regions, demographics and placement stay correct with space factions on the orbit layer. (Layered Atmosphere and Orbit remains incompatible.)
+- Odyssey multi-layer worlds: off-surface world objects (orbital habitats, space sites) are classified and skipped cleanly instead of warning, so regions, demographics and placement stay correct with space factions on the orbit layer.
+- Now compatible with Layered Atmosphere and Orbit: the region-border and capital map overlays are pinned to the surface layer, so LAO's world-render patch no longer null-references on them (previously a "black" world). It is no longer marked incompatible.
 
 Source code: https://github.com/Regions-and-societies/Core-MMF
 Steam Workshop: https://steamcommunity.com/sharedfiles/filedetails/?id=3784666060

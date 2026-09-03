@@ -52,7 +52,8 @@ Regions and Societies does most of its work during world generation: it draws th
 [*] [b]Faction character.[/b] A faction's education, wealth and standing now reflect what it is - raiders read as raiders, an imperial court as an elite.
 [*] [b]Settlement growth[/b] from in-game birthrates, [b]outpost seeding[/b] around settlements, a [b]residence layer[/b] (dwellings modelled separately from population), and all map overlays consolidated under one menu button.
 [*] [b]Performance.[/b] Region demographics are precomputed at load, so overlays open instantly, and the aggregation stays linear even at 100% coverage.
-[*] [b]Odyssey multi-layer worlds[/b] - off-surface world objects (orbital habitats, space sites) are handled cleanly, so regions, demographics and placement stay correct with space factions on the orbit layer. (Layered Atmosphere and Orbit remains incompatible.)
+[*] [b]Odyssey multi-layer worlds[/b] - off-surface world objects (orbital habitats, space sites) are handled cleanly, so regions, demographics and placement stay correct with space factions on the orbit layer.
+[*] [b]Now compatible with Layered Atmosphere and Orbit[/b] - the region-border and capital overlays are pinned to the surface layer, so LAO's world-render patch no longer null-references on them. No longer marked incompatible.
 [*] [b]Fixed (thanks to community member 96localk):[/b] every generated faction was created hidden with no leader, and unselected factions could leak in. Factions now generate visible with leaders, only chosen factions appear, and a one-time repair fixes old saves.
 [/list]
 [b]Full version history:[/b] [url=https://github.com/Regions-and-societies/Core-MMF/wiki/Changelog]github.com/Regions-and-societies/Core-MMF/wiki[/url]
