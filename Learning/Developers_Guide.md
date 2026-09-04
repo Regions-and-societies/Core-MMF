@@ -591,7 +591,7 @@ Two public static settings classes. Consumers should read the **composed gates**
 | `EconomyGovernanceActive` | Production modifiers apply. |
 | `MilitaryGovernanceActive` | Adjacency/supply restrictions on military actions apply. |
 | `SettlementTiersActive` | Village→metropolis tiering runs. |
-| `OutpostSeedingActive` | Worldgen outpost seeding runs (needs a creator from a patch). |
+| `OutpostSeedingActive` | Outpost seeding runs (needs a creator from a patch). Worldgen seeding is deferred to 0.4.0, so the switch is inert in 0.3.0. |
 | `PopulationCapsActive` | The per-tier population-cap model runs. |
 
 Raw fields (`masterEnabled`, `placementGovernance`, ..., `populationCapMultiplier`, `demographicReach`, `demographicFalloff`, `demographicFalloffModel`, `demographicGenerationYears` (how many in-game years a generational sex skew takes to decay; default 15), `logUnknownWorldObjects`) are public and persisted, but flip them only from a settings UI acting for the player.

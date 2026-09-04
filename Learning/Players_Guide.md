@@ -55,9 +55,9 @@ After generation the same evaluator governs every new placement — yours and th
 
 Settlements are classified into tiers — village, town, city, major city, metropolis — from population and, where a companion patch supplies it, the owning mod's own upgrade level. The tier drives production scaling, territory footprint and outpost allowance, and each faction's capital carries a star marker. Toggleable in the mod settings.
 
-## Outpost seeding
+## Outpost seeding (deferred to 0.4.0)
 
-At world generation, outposts can be seeded around settlements up to each territory's tier-based allowance — but core cannot build another mod's outposts by itself. Seeding takes effect when a compatibility patch that contributes an outpost creator is installed (the Vanilla Outposts Expanded patch). Without one, a generated world carries only settlements, which is correct rather than a fault.
+Seeding outposts around settlements at world generation, up to each territory's tier-based allowance, is built but switched out of world generation for 0.3.0: its placement checks did not scale to the finer 0.3.0 partition on large worlds. It returns in 0.4.0. Core cannot build another mod's outposts by itself in any case — seeding will take effect only with a compatibility patch that contributes an outpost creator (the Vanilla Outposts Expanded patch). A generated world carrying only settlements is correct, not a fault.
 
 ## Settlement growth (0.3.0)
 
@@ -85,7 +85,7 @@ In Options → Mod settings → Regions and Societies:
 - **Ownership calculation breakdown** — show the derivation readout in the region panel without Dev Mode.
 - **Region panel modifier** — Ctrl+click or Shift+click, and how many comparison panels may be open at once.
 - **World-object integration (master)** — off means only vanilla objects are governed.
-- **Settlement tiers & capitals**, **Seed outposts at world generation**, **Population caps** — per-mechanic switches, with a cap multiplier slider.
+- **Settlement tiers & capitals**, **Seed outposts at world generation** (inert in 0.3.0 — seeding returns in 0.4.0), **Population caps** — per-mechanic switches, with a cap multiplier slider.
 - **Demographic pressure tuning** — reach and falloff sliders shaping how far a settlement's make-up carries, plus the **war/draft skew recovery** slider (how many in-game years a region's sex ratio takes to recover from combat losses; default 15).
 - **Draw region borders on the world map** — the border overlay toggle.
 

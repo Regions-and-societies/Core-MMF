@@ -50,7 +50,7 @@ Regions and Societies does most of its work during world generation: it draws th
 [*] [b]Pluggable partition algorithm.[/b] Pick how the world is cut from a dropdown in mod settings (contain-then-subdivide, or the legacy anchor-Voronoi look), and other mods can register their own. Each world remembers the algorithm and version it was generated with, so loading an old save never re-cuts its map.
 [*] [b]Region inspection panel.[/b] A three-tab region window - Region (shape mini-map, ownership, features, resources, wildlife), Population (the seven demographic axes), and Economy (goods, housing, crises).
 [*] [b]Faction character.[/b] A faction's education, wealth and standing now reflect what it is - raiders read as raiders, an imperial court as an elite.
-[*] [b]Settlement growth[/b] from in-game birthrates, [b]outpost seeding[/b] around settlements, a [b]residence layer[/b] (dwellings modelled separately from population), and all map overlays consolidated under one menu button.
+[*] [b]Settlement growth[/b] from in-game birthrates, a [b]residence layer[/b] (dwellings modelled separately from population), and all map overlays consolidated under one menu button.
 [*] [b]Performance.[/b] Region demographics are precomputed at load, so overlays open instantly, and the aggregation stays linear even at 100% coverage.
 [*] [b]Odyssey multi-layer worlds[/b] - off-surface world objects (orbital habitats, space sites) are handled cleanly, so regions, demographics and placement stay correct with space factions on the orbit layer.
 [*] [b]Now compatible with Layered Atmosphere and Orbit[/b] - the region-border and capital overlays are pinned to the surface layer, so LAO's world-render patch no longer null-references on them. No longer marked incompatible.

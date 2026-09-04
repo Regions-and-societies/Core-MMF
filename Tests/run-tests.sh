@@ -157,6 +157,12 @@ run_suite border Exe \
     Tests/BorderRulesTests.cs \
     $SRC/Partition/BorderRules.cs
 
+# 0.3.0 road-linking search core (#38): hop-bounded settlement road search. Same road as the old
+# unbounded search for any reachable pair; a local scan instead of a landmass flood for a cut-off one.
+run_suite roads Exe \
+    Tests/RoadPathRulesTests.cs \
+    $SRC/Roads/RoadPathRules.cs
+
 run_suite resource Exe \
     Tests/RimWorldStubs.cs Tests/ResourceTests.cs \
     $INTEGRATION_PURE $SRC/Economy/*.cs

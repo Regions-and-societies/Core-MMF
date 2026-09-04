@@ -102,6 +102,7 @@ namespace RegionsAndSocieties
             var world = new PlacementWorld
             {
                 Distance = (a, b) => grid.TraversalDistanceBetween(a, b),
+                DistanceWithin = (a, b, maxDist) => BoundedTraversalDistance(grid, a, b, maxDist),
                 Holdings = CollectHoldings(),
                 FactionsMatch = (a, b) => playerControlled.Contains(a as Faction) && playerControlled.Contains(b as Faction),
                 ProvinceIdAt = tile => regionManager != null ? regionManager.GetProvinceId(tile) : -1,
@@ -127,6 +128,22 @@ namespace RegionsAndSocieties
             _cachedWorldTick = tick;
             _cachedWorldObjCount = objCount;
             return world;
+        }
+
+        /// <summary>
+        /// Traversal distance capped at <paramref name="maxDist"/> (#38). The unbounded pathfinder floods
+        /// outward until it reaches its target, so measuring a holding on the far side of the planet walked
+        /// every tile — and the placement rules asked that of every holding for every candidate tile, which
+        /// is what ground worldgen's outpost seeding to a halt at high coverage. A straight-line pre-check
+        /// skips holdings that cannot possibly be within range (a hop path is never shorter than roughly the
+        /// great-circle tile distance; the ×2+2 margin covers tile-size variation), and the flood itself is
+        /// told to stop at the cap. Returns int.MaxValue beyond the cap.
+        /// </summary>
+        public static int BoundedTraversalDistance(WorldGrid grid, int a, int b, int maxDist)
+        {
+            if (a == b) return 0;
+            if (maxDist < int.MaxValue && grid.ApproxDistanceInTiles(a, b) > maxDist * 2f + 2f) return int.MaxValue;
+            return grid.TraversalDistanceBetween(a, b, true, maxDist);
         }
 
         private static List<PlacementHolding> CollectHoldings()
@@ -161,7 +178,7 @@ namespace RegionsAndSocieties
         {
             var factions = new HashSet<Faction>();
 
-            Faction player = Faction.OfPlayer;
+            Faction player = Faction.OfPlayerSilentFail;
             if (player != null) factions.Add(player);
 
             if (Find.WorldObjects == null) return factions;

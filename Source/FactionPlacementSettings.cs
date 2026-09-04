@@ -59,6 +59,16 @@ namespace RegionsAndSocieties
         public static float maxThreatPercent = 0.50f;
 
         /// <summary>
+        /// Dev-only knobs, not in the settings UI (set them in the mod-settings XML). They exist for the
+        /// #38 worldgen perf matrix: <c>devQuicktestCoverage</c> above 0 overrides the planet coverage of a
+        /// <c>-quicktest</c> launch (vanilla quicktest fixes it at 30%) and <c>devQuicktestSeed</c> pins the
+        /// world seed, so a scripted run can generate the same world at 30/50/100%. Neither has any effect
+        /// on a normal game.
+        /// </summary>
+        public static float devQuicktestCoverage = 0f;
+        public static string devQuicktestSeed = "";
+
+        /// <summary>
         /// #51: the single density knob — the target fraction of livable LAND area claimed by territories.
         /// Worldgen sizes total settlement volume to this (against the count of land provinces, the unit of
         /// claimed ground), instead of the old raw tile-count scaling that made planets wall-to-wall and
@@ -118,6 +128,8 @@ namespace RegionsAndSocieties
             Scribe_Values.Look(ref minRegionSize, "minRegionSize", 75);
             Scribe_Values.Look(ref maxRegionSize, "maxRegionSize", 150);
             Scribe_Values.Look(ref maxThreatPercent, "maxThreatPercent", 0.50f);
+            Scribe_Values.Look(ref devQuicktestCoverage, "devQuicktestCoverage", 0f);
+            Scribe_Values.Look(ref devQuicktestSeed, "devQuicktestSeed", "");
             Scribe_Values.Look(ref claimedLandAreaPercent, "maxSettlementPercentOfRegions", 0.50f);
             Scribe_Values.Look(ref territoryCompactness, "territoryCompactness", 0.6f);
             Scribe_Values.Look(ref partitionAlgorithmId, "partitionAlgorithmId", Partition.RegionPartitionerRegistry.DefaultAlgorithmId);
