@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Reflection;
 using LudeonTK;
 using RimWorld;
@@ -163,6 +164,54 @@ namespace RegionsAndSocieties.UI
             for (int i = 0; i < changed.Count && i < 12; i++)
                 sb.AppendLine($"  region {changed[i].id}: delta {changed[i].before:0.0} -> {changed[i].after:0.0}");
             Log.Message(sb.ToString());
+        }
+
+        // Headless visual validation (0.3.0): switch the world view to an overlay, then grab the rendered
+        // frame with Unity's own capture — no OS-level screenshot needed, and it works while the game sits
+        // on another virtual desktop. Two parameterless actions (a parameter breaks the whole debug menu).
+        [DebugAction("Regions and Societies", "R&S: show population density overlay", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        private static void ShowPopulationDensityOverlay()
+        {
+            if (Find.World == null) return;
+            Find.World.renderer.wantedMode = WorldRenderMode.Planet;
+            var comp = MapModeFramework.MapModeComponent.Instance;
+            var mode = comp?.mapModes?.FirstOrDefault(m => m.def.defName == "SynapsePopulationDensity");
+            if (mode == null) { Log.Warning("[R&S] density overlay: map mode 'SynapsePopulationDensity' not found"); return; }
+            comp.SwitchMapMode(mode);
+
+            // Clear the stage: the debug log auto-opens on any warning and would cover the map.
+            Find.WindowStack?.TryRemove(typeof(EditWindow_Log), false);
+
+            // Frame the densest tile in the world (the biggest city and its sprawl), zoomed in.
+            int best = -1, bestPop = 0;
+            int tiles = Find.WorldGrid.TilesCount;
+            for (int t = 0; t < tiles; t++)
+            {
+                int p = PopulationDensityUtility.GetSourcePopulationAtTile(t);
+                if (p > bestPop) { bestPop = p; best = t; }
+            }
+            if (best >= 0)
+            {
+                Find.WorldCameraDriver.JumpTo(best);
+                // Altitude is a private field on the driver; nudge it close so a city and its outskirts fill the view.
+                var drv = Find.WorldCameraDriver;
+                foreach (string f in new[] { "desiredAltitude", "altitude" })
+                {
+                    var fi = typeof(WorldCameraDriver).GetField(f, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+                    if (fi != null && fi.FieldType == typeof(float)) fi.SetValue(drv, 170f);
+                }
+            }
+            Log.Message($"[R&S] density overlay: world view opened, population density map mode active, camera on tile {best} (pop {bestPop}).");
+        }
+
+        [DebugAction("Regions and Societies", "R&S: screenshot current view (Unity capture)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        private static void ScreenshotCurrentView()
+        {
+            string dir = System.IO.Path.Combine(GenFilePaths.SaveDataFolderPath, "Screenshots");
+            System.IO.Directory.CreateDirectory(dir);
+            string path = System.IO.Path.Combine(dir, "rs-view-" + System.DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".png");
+            ScreenCapture.CaptureScreenshot(path);
+            Log.Message("[R&S] screenshot requested: " + path + " (written by Unity at the end of the frame)");
         }
 
         [DebugAction("Regions and Societies", "R&S: open region demographics panel (#26)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
