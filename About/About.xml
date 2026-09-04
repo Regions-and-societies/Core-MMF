@@ -66,7 +66,7 @@ Requires: Map Mode Framework, Harmony
 - Regional demographic inspection: a three-tab region panel (Region / Population / Economy) with a province mini-map, and seven demographic axes - age, sex, xenotype, ideoligion, wealth, education, employment - as world-map overlays and visual bars. Xenotype/ideoligion degrade cleanly without Biotech/Ideology.
 - Faction character: a faction's education, wealth and standing now reflect what it is - raiders read as raiders, an imperial court as an elite - instead of everyone reading the same.
 - Settlements grow over time from in-game birthrates, converging on a tier target without exceeding it.
-- Worldgen performance: two steps that did not scale to the finer partition - R&S settlement road-linking and outpost seeding at world generation - are out of this release and return reworked in 0.4.0. World generation now logs its total time; measured with all five DLCs and all four companion patches: 24 s at 30% coverage, about 3 minutes at 100% (2,442 regions, 910 settlements).
+- Worldgen performance: two steps that did not scale to the finer partition - Regions and Societies settlement road-linking and outpost seeding at world generation - are out of this release and return reworked in 0.4.0. World generation now logs its total time; measured with all five DLCs and all four companion patches: 24 s at 30% coverage, about 3 minutes at 100% (2,442 regions, 910 settlements).
 - Residence layer: dwellings are modelled separately from raw population, with a rural-to-city occupancy gradient.
 - Map overlays consolidated under a single Regions and Societies menu button.
 - Performance: every region's demographics are precomputed at load, so opening a demographic overlay is instant.
