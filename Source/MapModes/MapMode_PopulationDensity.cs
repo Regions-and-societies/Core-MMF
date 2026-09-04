@@ -28,8 +28,10 @@ namespace RegionsAndSocieties
             new Color(1.00f, 0.90f, 0.25f, 0.72f)    // 4: bright yellow — at the theoretical max
         };
 
-        // Fraction-of-reference-max thresholds for the five bands. Tuned in-game against the heatmap.
-        private static readonly float[] SegmentThresholds = new float[] { 0.15f, 0.35f, 0.60f, 0.85f };
+        // Band thresholds on the LOG scale (fraction = log(1+pop) / log(1+densest tile)). Against a
+        // 150-person core: violet up to ~3 people (a hamlet), magenta to ~11 (outskirts, pockets), red
+        // to ~33 (a village core), orange to ~80 (a town core), yellow above (city and metropolis cores).
+        private static readonly float[] SegmentThresholds = new float[] { 0.30f, 0.50f, 0.70f, 0.88f };
 
         public static void InitializeMaterials()
         {
@@ -112,8 +114,14 @@ namespace RegionsAndSocieties
             // conserved, so a settlement tile holds its core share, never the theoretical cap, and a
             // fixed reference left the whole map in the bottom band. Relative to the densest tile, the
             // biggest city is always the top colour and everything else reads against it.
+            // Logarithmic, not linear: a city's outskirts hold a few percent of its core, so a linear
+            // scale put every tile but the core in the bottom band. On a log scale (against the densest
+            // tile) a hamlet is violet, a village core red, a town core orange and only the biggest
+            // cities yellow — the hotspots visibly step up through the ramp.
             int referenceMax = PopulationDensityUtility.MaxTilePopulation();
-            float fraction = referenceMax > 0 ? (float)pop / referenceMax : 0f;
+            float fraction = referenceMax > 1
+                ? Mathf.Log(1f + pop) / Mathf.Log(1f + referenceMax)
+                : (referenceMax > 0 ? (float)pop / referenceMax : 0f);
 
             int densitySegment = 0;
             for (int s = SegmentThresholds.Length - 1; s >= 0; s--)
