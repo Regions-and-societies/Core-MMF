@@ -25,9 +25,6 @@ namespace RegionsAndSocieties
         {
             public int tileId;
             public int population;
-            /// <summary>Rings of suburbs around the tile (0 = the head count stays on the tile). Settlements
-            /// spread over their tier footprint (0.3.0); outposts and other objects stay pointlike.</summary>
-            public int suburbRadius;
         }
 
         // The old IsVoeOutpost/GetVoeOutpostPopulation belt-and-suspenders pair is gone (Core-MMF#3):
@@ -35,20 +32,18 @@ namespace RegionsAndSocieties
         // core reached around its own adapter layer to compensate. Populations now come only from
         // the adapter registry, and the typed adapter in VOE-CP cannot fail the way the profile did.
 
-        // Two arrays, two meanings, deliberately kept apart (#62 / #55):
-        //   cachedTilePopulations       - the *smeared* influence field: a settlement's head count
-        //                                 flooded outward with decay. Good for a heatmap gradient,
-        //                                 wrong for any total (summing the smear double-counts).
-        //   cachedTileSourcePopulations - the dwellings actually *at* a tile: the settlement's own
-        //                                 head count, or a natural pocket's capped size. This is what
-        //                                 the per-tile "Pawn dwellings" label shows and what province
-        //                                 population totals sum, so a region's population is the sum
-        //                                 of who lives in it, not the sum of everyone's influence on it.
+        // Two arrays with a history (#62 / #55): cachedTilePopulations was the unnormalised *smear*
+        // (heatmap only) and cachedTileSourcePopulations the dwellings *at* a tile (labels, totals).
+        // Since 0.3.0 the current algorithm fills both with ONE field — the conserved sprawl — so the
+        // heatmap, the "Pawn dwellings" label, province totals and the residence layer agree by
+        // construction. Legacy (0.7.1) worlds still get the old smear in both, exactly as they did.
         private static int[] cachedTilePopulations = null;
         private static int[] cachedTileSourcePopulations = null;
-        // Tiles whose source population came from a settlement's suburb spread (0.3.0), so reports can
-        // tell a suburb from a natural pocket.
+        // Tiles that received part of a settlement's sprawl (0.3.0), so reports can tell sprawl from a
+        // natural pocket.
         private static bool[] cachedTileIsSuburb = null;
+        // The densest tile in the world after the last refresh — the heatmap's top of scale.
+        private static int cachedMaxTilePopulation = 0;
         private static bool cacheDirty = true;
 
         // Natural-pocket realism (#62). A pocket that forms on its own stays small unless a landmark
@@ -164,9 +159,7 @@ namespace RegionsAndSocieties
                     int pop = GetSettlementPopulation(settlement);
                     if (pop > 0)
                     {
-                        // Suburb reach follows the tier footprint: village/town 1 ring, city 2, major 3, metropolis 4.
-                        int radius = Sizing.SettlementSizeRules.TerritoryFootprint(Sizing.SettlementSizeUtility.TierOf(settlement));
-                        popSources.Add(new PopSource { tileId = settlement.Tile, population = pop, suburbRadius = radius });
+                        popSources.Add(new PopSource { tileId = settlement.Tile, population = pop });
                     }
                 }
             }
@@ -194,35 +187,29 @@ namespace RegionsAndSocieties
                 }
             }
 
-            // 3. Population propagation from sources: the head count is spread over the settlement's
-            //    footprint as suburbs (the SOURCE field: labels, totals, residences), then flooded
-            //    outward with decay (the INFLUENCE field: the heatmap gradient). Both passes are
-            //    allocation-free per tile — one reusable neighbour buffer and an int stamp array in
-            //    place of a per-source HashSet — so a 900-settlement world refreshes in tens of ms.
-            var regionManager = Find.World?.GetComponent<SynapseRegionManager>();
+            // 3. Population propagation from sources. The sprawl — the terrain-aware flood below (roads
+            //    and rivers carry people further, hills, swamps and coasts thin them, impassable ground
+            //    and sea stop them) — is the ONE population field (0.3.0): each settlement keeps a core
+            //    share on its own tile and the rest is spread over the tiles its sprawl reaches, in
+            //    proportion to the sprawl weight there, normalised so the total is conserved
+            //    (Demographics.SprawlRules). The heatmap, the per-tile label, region totals and the
+            //    residence layer all read this field, so a tinted tile always has people on it and a
+            //    region's total is the sum of who lives there. Legacy (0.7.1) worlds keep the old
+            //    unnormalised smear exactly. The pass is allocation-free per tile — one reusable
+            //    neighbour buffer and an int stamp array in place of a per-source HashSet.
             var neighborBuf = new List<PlanetTile>(8);
-            int[] stamp = new int[count];   // stamp[t] == currentStamp  <=>  t visited for the current pass
+            int[] stamp = new int[count];   // stamp[t] == currentStamp  <=>  t visited for the current source
             int currentStamp = 0;
-            var ringA = new List<int>(64);
-            var ringB = new List<int>(64);
-            var rings = new List<List<int>>();
-            int[] ringCounts = new int[8];
             var queue = new Queue<QueueEntry>();
+            var reachedTiles = new List<int>(512);
+            var reachedWeights = new List<float>(512);
+            var reachedShares = new List<float>(512);
+            float floodCutoff = refreshingLegacy ? 0.001f : Demographics.SprawlRules.WeightCutoff;
 
             foreach (var source in popSources)
             {
                 int startTileId = source.tileId;
                 if (startTileId < 0 || startTileId >= count) continue;
-
-                // The head count lives on the settlement's own tile and its suburbs (#55; spread added in
-                // 0.3.0): counted once, over its footprint, nowhere else. Legacy worlds have no separate
-                // source field; their totals sum the smear, so attribution is skipped and tempSource is
-                // overwritten with the smear below.
-                if (!refreshingLegacy)
-                {
-                    currentStamp++;
-                    AttributeWithSuburbs(source, regionManager, stamp, currentStamp, ringA, ringB, rings, ringCounts, neighborBuf, tempSource);
-                }
 
                 // A PlanetTile for the start (the grid hands neighbours back as PlanetTiles, so fetch the
                 // start's own struct through a neighbour's neighbour list).
@@ -239,10 +226,17 @@ namespace RegionsAndSocieties
                         if (neighborBuf[k].tileId == startTileId) { startPlanetTile = neighborBuf[k]; break; }
                     }
                 }
-                if (startPlanetTile == PlanetTile.Invalid) continue;
+                if (startPlanetTile == PlanetTile.Invalid)
+                {
+                    // No neighbours at all (degenerate grid): the head count stays put.
+                    if (!refreshingLegacy) tempSource[startTileId] += source.population;
+                    continue;
+                }
 
                 currentStamp++;
                 queue.Clear();
+                reachedTiles.Clear();
+                reachedWeights.Clear();
                 queue.Enqueue(new QueueEntry(startPlanetTile, 1.0f));
                 stamp[startTileId] = currentStamp;
 
@@ -253,9 +247,17 @@ namespace RegionsAndSocieties
                     int currentTileId = currentTile.tileId;
                     float currentMultiplier = current.multiplier;
 
-                    if (currentMultiplier < 0.001f) continue;
+                    if (currentMultiplier < floodCutoff) continue;
 
-                    tempPops[currentTileId] += (source.population * currentMultiplier);
+                    if (refreshingLegacy)
+                    {
+                        tempPops[currentTileId] += (source.population * currentMultiplier);
+                    }
+                    else if (currentTileId != startTileId)
+                    {
+                        reachedTiles.Add(currentTileId);
+                        reachedWeights.Add(currentMultiplier);
+                    }
 
                     neighborBuf.Clear();
                     Find.WorldGrid.GetTileNeighbors(currentTileId, neighborBuf);
@@ -273,17 +275,45 @@ namespace RegionsAndSocieties
                         }
                     }
                 }
+
+                if (!refreshingLegacy)
+                {
+                    // Hand the head count out: core share on the settlement tile, the rest over the
+                    // sprawl in proportion to its weights, total conserved.
+                    float centre = Demographics.SprawlRules.Spread(source.population, reachedWeights, reachedShares);
+                    tempSource[startTileId] += centre;
+                    for (int i = 0; i < reachedTiles.Count; i++)
+                    {
+                        float share = reachedShares[i];
+                        if (share <= 0f) continue;
+                        int t = reachedTiles[i];
+                        tempSource[t] += share;
+                        cachedTileIsSuburb[t] = true;
+                    }
+                }
             }
 
+            int maxTile = 0;
             for (int i = 0; i < count; i++)
             {
-                cachedTilePopulations[i] = UnityEngine.Mathf.RoundToInt(tempPops[i]);
-                // Legacy worlds have no source/smear distinction: the per-tile label and province
-                // totals read the smeared field exactly as they did in 0.7.1 (overcount included).
-                cachedTileSourcePopulations[i] = refreshingLegacy
-                    ? cachedTilePopulations[i]
-                    : UnityEngine.Mathf.RoundToInt(tempSource[i]);
+                if (refreshingLegacy)
+                {
+                    // Legacy worlds have no source/smear distinction: the per-tile label and province
+                    // totals read the smeared field exactly as they did in 0.7.1 (overcount included).
+                    cachedTilePopulations[i] = UnityEngine.Mathf.RoundToInt(tempPops[i]);
+                    cachedTileSourcePopulations[i] = cachedTilePopulations[i];
+                }
+                else
+                {
+                    // One field: the conserved sprawl is what the heatmap colours AND what the label,
+                    // the totals and the residence layer count.
+                    int v = UnityEngine.Mathf.RoundToInt(tempSource[i]);
+                    cachedTilePopulations[i] = v;
+                    cachedTileSourcePopulations[i] = v;
+                }
+                if (cachedTilePopulations[i] > maxTile) maxTile = cachedTilePopulations[i];
             }
+            cachedMaxTilePopulation = maxTile;
 
             cacheDirty = false;
 
@@ -296,76 +326,15 @@ namespace RegionsAndSocieties
             }
         }
 
-        /// <summary>
-        /// Put a source's head count on its tile and its suburbs (0.3.0): rings 1..suburbRadius around the
-        /// tile, counting only habitable land in the settlement's own region, split by
-        /// <see cref="Demographics.SuburbRules.Distribute"/> (centre keeps at least half; each ring out
-        /// weighs half the last per tile; whatever the rings cannot take stays on the centre, so the total
-        /// is conserved exactly). Rings expand through any tile — a lake between suburbs does not hide the
-        /// far shore — but only eligible tiles receive people. Allocation-free apart from the tiny per-ring
-        /// share array; the caller supplies the reusable buffers.
-        /// </summary>
-        private static void AttributeWithSuburbs(PopSource source, SynapseRegionManager mgr, int[] stamp, int mark,
-            List<int> frontier, List<int> next, List<List<int>> rings, int[] ringCounts, List<PlanetTile> neighborBuf, float[] tempSource)
+
+        /// <summary>The densest tile in the world after the last refresh — the heatmap's top of scale.</summary>
+        public static int MaxTilePopulation()
         {
-            int start = source.tileId;
-            int radius = source.suburbRadius;
-            if (radius > ringCounts.Length) radius = ringCounts.Length;
-            if (radius <= 0 || mgr == null)
-            {
-                tempSource[start] += source.population;
-                return;
-            }
-
-            int homeProvince = mgr.GetProvinceId(start);
-            while (rings.Count < radius) rings.Add(new List<int>(32));
-            for (int r = 0; r < radius; r++) { rings[r].Clear(); ringCounts[r] = 0; }
-
-            frontier.Clear();
-            frontier.Add(start);
-            stamp[start] = mark;
-
-            for (int r = 0; r < radius; r++)
-            {
-                next.Clear();
-                for (int i = 0; i < frontier.Count; i++)
-                {
-                    neighborBuf.Clear();
-                    Find.WorldGrid.GetTileNeighbors(frontier[i], neighborBuf);
-                    for (int k = 0; k < neighborBuf.Count; k++)
-                    {
-                        int n = neighborBuf[k].tileId;
-                        if (n < 0 || n >= stamp.Length || stamp[n] == mark) continue;
-                        stamp[n] = mark;
-                        next.Add(n);
-                        if (mgr.GetProvinceId(n) == homeProvince && IsHabitable(Find.WorldGrid[n]))
-                        {
-                            rings[r].Add(n);
-                        }
-                    }
-                }
-                ringCounts[r] = rings[r].Count;
-                var swap = frontier; frontier = next; next = swap;
-            }
-
-            int[] counts = new int[radius];
-            for (int r = 0; r < radius; r++) counts[r] = ringCounts[r];
-            float centre = Demographics.SuburbRules.Distribute(source.population, counts, out float[] perTile);
-            tempSource[start] += centre;
-            for (int r = 0; r < radius; r++)
-            {
-                float share = perTile[r];
-                if (share <= 0f) continue;
-                List<int> ring = rings[r];
-                for (int i = 0; i < ring.Count; i++)
-                {
-                    tempSource[ring[i]] += share;
-                    if (cachedTileIsSuburb != null) cachedTileIsSuburb[ring[i]] = true;
-                }
-            }
+            EnsureCache();
+            return cachedMaxTilePopulation;
         }
 
-        /// <summary>Whether the tile's source population includes a settlement's suburb spread (0.3.0).</summary>
+        /// <summary>Whether the tile's population includes part of a settlement's sprawl (0.3.0).</summary>
         public static bool IsSuburbTile(int tileId)
         {
             EnsureCache();

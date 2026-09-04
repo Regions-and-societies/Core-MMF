@@ -108,9 +108,11 @@ namespace RegionsAndSocieties
                 return BaseContent.ClearMat;   // no dwellings here — leave the terrain unshaded
             }
 
-            // Normalise against the highest theoretical settlement population in this world (0.8), so
-            // the ramp means the same thing regardless of the multiplier or the factions' tech levels.
-            int referenceMax = Sizing.SettlementSizeUtility.ReferenceMaxPopulation();
+            // Normalise against the densest tile actually in the world (0.3.0): the sprawl field is
+            // conserved, so a settlement tile holds its core share, never the theoretical cap, and a
+            // fixed reference left the whole map in the bottom band. Relative to the densest tile, the
+            // biggest city is always the top colour and everything else reads against it.
+            int referenceMax = PopulationDensityUtility.MaxTilePopulation();
             float fraction = referenceMax > 0 ? (float)pop / referenceMax : 0f;
 
             int densitySegment = 0;

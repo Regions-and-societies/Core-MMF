@@ -157,11 +157,11 @@ run_suite border Exe \
     Tests/BorderRulesTests.cs \
     $SRC/Partition/BorderRules.cs
 
-# 0.3.0 suburb spread: a settlement's people over its own tile and the rings around it, total
-# conserved. Pure, no game.
-run_suite suburbs Exe \
-    Tests/SuburbRulesTests.cs \
-    $SRC/Demographics/SuburbRules.cs
+# 0.3.0 sprawl spread: a settlement's people over its own tile and the tiles its terrain-aware sprawl
+# reaches, in proportion to the sprawl weights, total conserved. Pure, no game.
+run_suite sprawl Exe \
+    Tests/SprawlRulesTests.cs \
+    $SRC/Demographics/SprawlRules.cs
 
 # 0.3.0 road-linking search core (#38): hop-bounded settlement road search. Same road as the old
 # unbounded search for any reachable pair; a local scan instead of a landmass flood for a cut-off one.

@@ -78,8 +78,8 @@ namespace RegionsAndSocieties.Integration
             sb.AppendLine("=== R&T density report (#62/#55) ===");
             sb.AppendLine($"Algorithm: {verName}");
             sb.AppendLine($"Source-pop tiles by band: 1-5={band1to5}, 6-12={band6to12}, 13-30={band13to30}, 31+={band31plus}");
-            sb.AppendLine($"Suburb tiles (a settlement's spread, not pockets): {suburbTiles}");
-            sb.AppendLine($"Natural pockets (no world object, not a suburb): {naturalPockets}; max={maxNatural} (cap 12), max off-landmark={maxNaturalOffLandmark} (cap 5)");
+            sb.AppendLine($"Sprawl tiles (a settlement's spread, not pockets): {suburbTiles}");
+            sb.AppendLine($"Natural pockets (no world object, no sprawl): {naturalPockets}; max={maxNatural} (cap 12), max off-landmark={maxNaturalOffLandmark} (cap 5)");
             sb.AppendLine($"Off-landmark natural pockets over cap (>5): {offLandmarkOverCap}  [expect 0]");
 
             var mgr = Find.World.GetComponent<SynapseRegionManager>();
