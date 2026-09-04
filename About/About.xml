@@ -54,7 +54,6 @@ Features:
 - Demographic Map Overlays: seven world-map overlays, one per axis, plus faction territory and population density.
 - Region Panel Breakdown: the expanded region readout shows the full demographic profile alongside ownership and economics.
 - Hooks for Other Mods: a public API lets war and drafting mods skew a region's sex ratio (drafts, combat losses) with generational recovery, and lets expansion mods rank territory the way core does.
-- Procedural Trade Infrastructure: trade roads between settlements and historical ruins across the world map.
 
 *** BEST ON A NEW COLONY - EXISTING SAVES ARE SUPPORTED IN COMPATIBILITY MODE ***
 A world generated with the mod installed gets everything, including placement rules. A world already in progress is adopted in Compatibility Mode: provinces are drawn and territory is owned and shown, but placement stays with vanilla or whichever mod owns it. The mode is decided once per save and shown under Strict territorial ownership in the mod settings. Removing the mod from an in-progress save is not supported and will log errors.
@@ -67,7 +66,7 @@ Requires: Map Mode Framework, Harmony
 - Regional demographic inspection: a three-tab region panel (Region / Population / Economy) with a province mini-map, and seven demographic axes - age, sex, xenotype, ideoligion, wealth, education, employment - as world-map overlays and visual bars. Xenotype/ideoligion degrade cleanly without Biotech/Ideology.
 - Faction character: a faction's education, wealth and standing now reflect what it is - raiders read as raiders, an imperial court as an elite - instead of everyone reading the same.
 - Settlements grow over time from in-game birthrates, converging on a tier target without exceeding it.
-- Outposts are seeded around settlements at world generation, position- and faction-aware (needs a compatibility patch that contributes an outpost creator).
+- Worldgen performance: two steps that did not scale to the finer partition - R&S settlement road-linking and outpost seeding at world generation - are out of this release and return reworked in 0.4.0. World generation now logs its total time; measured with all five DLCs and all four companion patches: 24 s at 30% coverage, about 3 minutes at 100% (2,442 regions, 910 settlements).
 - Residence layer: dwellings are modelled separately from raw population, with a rural-to-city occupancy gradient.
 - Map overlays consolidated under a single Regions and Societies menu button.
 - Performance: every region's demographics are precomputed at load, so opening a demographic overlay is instant.
