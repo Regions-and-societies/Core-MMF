@@ -25,6 +25,9 @@ namespace RegionsAndSocieties
         {
             public int tileId;
             public int population;
+            /// <summary>Rings of suburbs around the tile (0 = the head count stays on the tile). Settlements
+            /// spread over their tier footprint (0.3.0); outposts and other objects stay pointlike.</summary>
+            public int suburbRadius;
         }
 
         // The old IsVoeOutpost/GetVoeOutpostPopulation belt-and-suspenders pair is gone (Core-MMF#3):
@@ -43,6 +46,9 @@ namespace RegionsAndSocieties
         //                                 of who lives in it, not the sum of everyone's influence on it.
         private static int[] cachedTilePopulations = null;
         private static int[] cachedTileSourcePopulations = null;
+        // Tiles whose source population came from a settlement's suburb spread (0.3.0), so reports can
+        // tell a suburb from a natural pocket.
+        private static bool[] cachedTileIsSuburb = null;
         private static bool cacheDirty = true;
 
         // Natural-pocket realism (#62). A pocket that forms on its own stays small unless a landmark
@@ -80,7 +86,10 @@ namespace RegionsAndSocieties
         {
             if (Find.World == null || Find.WorldGrid == null) return;
             refreshingLegacy = IsLegacyDensity();
+            var swRefresh = System.Diagnostics.Stopwatch.StartNew();
             int count = Find.WorldGrid.TilesCount;
+            if (cachedTileIsSuburb == null || cachedTileIsSuburb.Length != count) cachedTileIsSuburb = new bool[count];
+            else System.Array.Clear(cachedTileIsSuburb, 0, count);
             if (cachedTilePopulations == null || cachedTilePopulations.Length != count)
             {
                 cachedTilePopulations = new int[count];
@@ -155,7 +164,9 @@ namespace RegionsAndSocieties
                     int pop = GetSettlementPopulation(settlement);
                     if (pop > 0)
                     {
-                        popSources.Add(new PopSource { tileId = settlement.Tile, population = pop });
+                        // Suburb reach follows the tier footprint: village/town 1 ring, city 2, major 3, metropolis 4.
+                        int radius = Sizing.SettlementSizeRules.TerritoryFootprint(Sizing.SettlementSizeUtility.TierOf(settlement));
+                        popSources.Add(new PopSource { tileId = settlement.Tile, population = pop, suburbRadius = radius });
                     }
                 }
             }
@@ -183,44 +194,57 @@ namespace RegionsAndSocieties
                 }
             }
 
-            // 3. Population propagation from sources
+            // 3. Population propagation from sources: the head count is spread over the settlement's
+            //    footprint as suburbs (the SOURCE field: labels, totals, residences), then flooded
+            //    outward with decay (the INFLUENCE field: the heatmap gradient). Both passes are
+            //    allocation-free per tile — one reusable neighbour buffer and an int stamp array in
+            //    place of a per-source HashSet — so a 900-settlement world refreshes in tens of ms.
+            var regionManager = Find.World?.GetComponent<SynapseRegionManager>();
+            var neighborBuf = new List<PlanetTile>(8);
+            int[] stamp = new int[count];   // stamp[t] == currentStamp  <=>  t visited for the current pass
+            int currentStamp = 0;
+            var ringA = new List<int>(64);
+            var ringB = new List<int>(64);
+            var rings = new List<List<int>>();
+            int[] ringCounts = new int[8];
+            var queue = new Queue<QueueEntry>();
+
             foreach (var source in popSources)
             {
                 int startTileId = source.tileId;
+                if (startTileId < 0 || startTileId >= count) continue;
 
-                // The head count lives *here*. It flows outward into the smear below, but for totals
-                // and the tile label it must be counted once, at its own tile, and nowhere else (#55).
-                // Legacy worlds have no separate source field; their totals sum the smear, so this
-                // per-tile attribution is skipped and tempSource is overwritten with the smear below.
-                if (!refreshingLegacy && startTileId >= 0 && startTileId < count)
+                // The head count lives on the settlement's own tile and its suburbs (#55; spread added in
+                // 0.3.0): counted once, over its footprint, nowhere else. Legacy worlds have no separate
+                // source field; their totals sum the smear, so attribution is skipped and tempSource is
+                // overwritten with the smear below.
+                if (!refreshingLegacy)
                 {
-                    tempSource[startTileId] += source.population;
+                    currentStamp++;
+                    AttributeWithSuburbs(source, regionManager, stamp, currentStamp, ringA, ringB, rings, ringCounts, neighborBuf, tempSource);
                 }
 
+                // A PlanetTile for the start (the grid hands neighbours back as PlanetTiles, so fetch the
+                // start's own struct through a neighbour's neighbour list).
                 PlanetTile startPlanetTile = PlanetTile.Invalid;
-                var tempNeighbors = new List<PlanetTile>();
-                Find.WorldGrid.GetTileNeighbors(startTileId, tempNeighbors);
-                if (tempNeighbors.Any())
+                neighborBuf.Clear();
+                Find.WorldGrid.GetTileNeighbors(startTileId, neighborBuf);
+                if (neighborBuf.Count > 0)
                 {
-                    var doubleNeighbors = new List<PlanetTile>();
-                    Find.WorldGrid.GetTileNeighbors(tempNeighbors[0].tileId, doubleNeighbors);
-                    foreach (var t in doubleNeighbors)
+                    int firstNeighbor = neighborBuf[0].tileId;
+                    neighborBuf.Clear();
+                    Find.WorldGrid.GetTileNeighbors(firstNeighbor, neighborBuf);
+                    for (int k = 0; k < neighborBuf.Count; k++)
                     {
-                        if (t.tileId == startTileId)
-                        {
-                            startPlanetTile = t;
-                            break;
-                        }
+                        if (neighborBuf[k].tileId == startTileId) { startPlanetTile = neighborBuf[k]; break; }
                     }
                 }
-
                 if (startPlanetTile == PlanetTile.Invalid) continue;
 
-                var visited = new HashSet<int>();
-                var queue = new Queue<QueueEntry>();
-
+                currentStamp++;
+                queue.Clear();
                 queue.Enqueue(new QueueEntry(startPlanetTile, 1.0f));
-                visited.Add(startTileId);
+                stamp[startTileId] = currentStamp;
 
                 while (queue.Count > 0)
                 {
@@ -233,20 +257,19 @@ namespace RegionsAndSocieties
 
                     tempPops[currentTileId] += (source.population * currentMultiplier);
 
-                    var neighbors = new List<PlanetTile>();
-                    Find.WorldGrid.GetTileNeighbors(currentTileId, neighbors);
-                    foreach (var neighbor in neighbors)
+                    neighborBuf.Clear();
+                    Find.WorldGrid.GetTileNeighbors(currentTileId, neighborBuf);
+                    for (int k = 0; k < neighborBuf.Count; k++)
                     {
+                        PlanetTile neighbor = neighborBuf[k];
                         int neighborId = neighbor.tileId;
-                        if (!visited.Contains(neighborId))
-                        {
-                            visited.Add(neighborId);
+                        if (neighborId < 0 || neighborId >= count || stamp[neighborId] == currentStamp) continue;
+                        stamp[neighborId] = currentStamp;
 
-                            float stepMultiplier = GetStepMultiplier(currentTile, neighbor);
-                            if (stepMultiplier > 0f)
-                            {
-                                queue.Enqueue(new QueueEntry(neighbor, currentMultiplier * stepMultiplier));
-                            }
+                        float stepMultiplier = GetStepMultiplier(currentTile, neighbor);
+                        if (stepMultiplier > 0f)
+                        {
+                            queue.Enqueue(new QueueEntry(neighbor, currentMultiplier * stepMultiplier));
                         }
                     }
                 }
@@ -263,6 +286,90 @@ namespace RegionsAndSocieties
             }
 
             cacheDirty = false;
+
+            swRefresh.Stop();
+            // The refresh runs on every world-object change, so it is only worth a log line when it is
+            // actually slow — a regression guard, not a trace.
+            if (swRefresh.ElapsedMilliseconds >= 250)
+            {
+                Log.Message($"[RegionsAndSocieties] Density cache refresh: {popSources.Count} sources over {count} tiles in {swRefresh.ElapsedMilliseconds} ms.");
+            }
+        }
+
+        /// <summary>
+        /// Put a source's head count on its tile and its suburbs (0.3.0): rings 1..suburbRadius around the
+        /// tile, counting only habitable land in the settlement's own region, split by
+        /// <see cref="Demographics.SuburbRules.Distribute"/> (centre keeps at least half; each ring out
+        /// weighs half the last per tile; whatever the rings cannot take stays on the centre, so the total
+        /// is conserved exactly). Rings expand through any tile — a lake between suburbs does not hide the
+        /// far shore — but only eligible tiles receive people. Allocation-free apart from the tiny per-ring
+        /// share array; the caller supplies the reusable buffers.
+        /// </summary>
+        private static void AttributeWithSuburbs(PopSource source, SynapseRegionManager mgr, int[] stamp, int mark,
+            List<int> frontier, List<int> next, List<List<int>> rings, int[] ringCounts, List<PlanetTile> neighborBuf, float[] tempSource)
+        {
+            int start = source.tileId;
+            int radius = source.suburbRadius;
+            if (radius > ringCounts.Length) radius = ringCounts.Length;
+            if (radius <= 0 || mgr == null)
+            {
+                tempSource[start] += source.population;
+                return;
+            }
+
+            int homeProvince = mgr.GetProvinceId(start);
+            while (rings.Count < radius) rings.Add(new List<int>(32));
+            for (int r = 0; r < radius; r++) { rings[r].Clear(); ringCounts[r] = 0; }
+
+            frontier.Clear();
+            frontier.Add(start);
+            stamp[start] = mark;
+
+            for (int r = 0; r < radius; r++)
+            {
+                next.Clear();
+                for (int i = 0; i < frontier.Count; i++)
+                {
+                    neighborBuf.Clear();
+                    Find.WorldGrid.GetTileNeighbors(frontier[i], neighborBuf);
+                    for (int k = 0; k < neighborBuf.Count; k++)
+                    {
+                        int n = neighborBuf[k].tileId;
+                        if (n < 0 || n >= stamp.Length || stamp[n] == mark) continue;
+                        stamp[n] = mark;
+                        next.Add(n);
+                        if (mgr.GetProvinceId(n) == homeProvince && IsHabitable(Find.WorldGrid[n]))
+                        {
+                            rings[r].Add(n);
+                        }
+                    }
+                }
+                ringCounts[r] = rings[r].Count;
+                var swap = frontier; frontier = next; next = swap;
+            }
+
+            int[] counts = new int[radius];
+            for (int r = 0; r < radius; r++) counts[r] = ringCounts[r];
+            float centre = Demographics.SuburbRules.Distribute(source.population, counts, out float[] perTile);
+            tempSource[start] += centre;
+            for (int r = 0; r < radius; r++)
+            {
+                float share = perTile[r];
+                if (share <= 0f) continue;
+                List<int> ring = rings[r];
+                for (int i = 0; i < ring.Count; i++)
+                {
+                    tempSource[ring[i]] += share;
+                    if (cachedTileIsSuburb != null) cachedTileIsSuburb[ring[i]] = true;
+                }
+            }
+        }
+
+        /// <summary>Whether the tile's source population includes a settlement's suburb spread (0.3.0).</summary>
+        public static bool IsSuburbTile(int tileId)
+        {
+            EnsureCache();
+            return cachedTileIsSuburb != null && tileId >= 0 && tileId < cachedTileIsSuburb.Length && cachedTileIsSuburb[tileId];
         }
 
         /// <summary>Force the density caches current if a world object has changed since the last read.</summary>

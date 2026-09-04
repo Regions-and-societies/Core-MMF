@@ -45,7 +45,7 @@ namespace RegionsAndSocieties.Integration
             }
 
             int band1to5 = 0, band6to12 = 0, band13to30 = 0, band31plus = 0;
-            int naturalPockets = 0, maxNatural = 0, maxNaturalOffLandmark = 0, offLandmarkOverCap = 0;
+            int naturalPockets = 0, maxNatural = 0, maxNaturalOffLandmark = 0, offLandmarkOverCap = 0, suburbTiles = 0;
 
             for (int i = 0; i < count; i++)
             {
@@ -58,6 +58,7 @@ namespace RegionsAndSocieties.Integration
                 else band31plus++;
 
                 if (objectTiles.Contains(i)) continue;   // a settlement, not a natural pocket
+                if (PopulationDensityUtility.IsSuburbTile(i)) { suburbTiles++; continue; }   // a settlement's spread (0.3.0)
 
                 naturalPockets++;
                 if (src > maxNatural) maxNatural = src;
@@ -77,7 +78,8 @@ namespace RegionsAndSocieties.Integration
             sb.AppendLine("=== R&T density report (#62/#55) ===");
             sb.AppendLine($"Algorithm: {verName}");
             sb.AppendLine($"Source-pop tiles by band: 1-5={band1to5}, 6-12={band6to12}, 13-30={band13to30}, 31+={band31plus}");
-            sb.AppendLine($"Natural pockets (no world object): {naturalPockets}; max={maxNatural} (cap 12), max off-landmark={maxNaturalOffLandmark} (cap 5)");
+            sb.AppendLine($"Suburb tiles (a settlement's spread, not pockets): {suburbTiles}");
+            sb.AppendLine($"Natural pockets (no world object, not a suburb): {naturalPockets}; max={maxNatural} (cap 12), max off-landmark={maxNaturalOffLandmark} (cap 5)");
             sb.AppendLine($"Off-landmark natural pockets over cap (>5): {offLandmarkOverCap}  [expect 0]");
 
             var mgr = Find.World.GetComponent<SynapseRegionManager>();
