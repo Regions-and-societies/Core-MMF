@@ -28,7 +28,7 @@ Useful when: you want to see the political shape of the planet, find a frontier,
 
 ## Population Density
 
-A gradient showing where people actually are, propagated outward from settlements through biomes, terrain and roads rather than drawn as flat circles. Mountains and water slow the spread; roads carry it further.
+A gradient showing where people actually are, propagated outward from settlements through biomes, terrain and roads rather than drawn as flat circles. Mountains and water slow the spread; roads carry it further. The ramp runs violet (a few pawn dwellings) through magenta and red to orange and bright yellow (a settlement at the world's theoretical maximum), so it never blends into green land or blue sea; tile labels show the dwellings actually on the tile.
 
 This is the layer that feeds population-derived figures elsewhere in the suite, so if a settlement tier or a density-based number looks wrong, this overlay is where to check the input.
 

@@ -88,7 +88,7 @@ namespace RegionsAndSocieties
                 float mult = Integration.WorldObjectIntegrationSettings.populationCapMultiplier;
                 mult = Mathf.RoundToInt(l.SliderLabeled(
                     $"   Population cap multiplier: {mult:0}  (metropolis ≈ {15 * mult:0} pawns, village ≈ {mult:0})",
-                    mult, 1f, 30f));
+                    mult, 5f, 60f));
                 Integration.WorldObjectIntegrationSettings.populationCapMultiplier = mult;
 
                 float growth = Integration.WorldObjectIntegrationSettings.growthRateMultiplier;

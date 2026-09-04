@@ -12,16 +12,20 @@ namespace RegionsAndSocieties
         private static Material[] densityMats = null;
 
         // The heatmap is normalised against the highest THEORETICAL settlement population in the world
-        // (0.8): a tile at that ceiling is rich red, most settlements — which drift to two-thirds of
-        // their cap — land in yellow, and small pawn-dwelling pockets stay a faded green. Five
-        // fraction bands run green → yellow-green → yellow → orange → red, each darkened by elevation.
+        // (0.8): a tile at that ceiling is bright yellow, most settlements — which drift to two-thirds of
+        // their cap — land in the red-orange bands, and small pawn-dwelling pockets stay a faded violet.
+        // Five fraction bands run violet → magenta → hot red → orange → bright yellow (the "magma" ramp),
+        // each darkened by elevation. 0.3.0: this replaces green-to-red, which dissolved into the green
+        // terrain; blue was tried and read as water. Violet/magenta/yellow occur nowhere in the planet's
+        // own palette (green land, blue sea, tan desert, grey rock), and the ramp matches the density
+        // heatmap in the mod's preview art.
         private static readonly Color[] SegmentBase = new Color[]
         {
-            new Color(0.35f, 0.65f, 0.25f, 0.50f),   // 0: faded green — low, pawn dwellings
-            new Color(0.65f, 0.78f, 0.18f, 0.55f),   // 1: yellow-green
-            new Color(0.92f, 0.85f, 0.12f, 0.60f),   // 2: yellow — where most settlements sit (~2/3 cap)
-            new Color(0.95f, 0.50f, 0.10f, 0.65f),   // 3: orange
-            new Color(0.90f, 0.12f, 0.10f, 0.70f)    // 4: rich red — at the theoretical max
+            new Color(0.45f, 0.20f, 0.75f, 0.50f),   // 0: violet — low, pawn dwellings
+            new Color(0.75f, 0.20f, 0.70f, 0.55f),   // 1: magenta
+            new Color(0.95f, 0.30f, 0.42f, 0.60f),   // 2: hot red-pink — where most settlements sit (~2/3 cap)
+            new Color(0.98f, 0.58f, 0.15f, 0.65f),   // 3: orange
+            new Color(1.00f, 0.90f, 0.25f, 0.72f)    // 4: bright yellow — at the theoretical max
         };
 
         // Fraction-of-reference-max thresholds for the five bands. Tuned in-game against the heatmap.

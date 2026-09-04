@@ -47,8 +47,18 @@ namespace RegionsAndSocieties.Integration
         public static bool populationCaps = true;
 
         /// <summary>Cap multiplier — a tier's cap is its required-territories count times this.
-        /// Player-tunable via the mod-menu slider. Default 10 → T1 caps at 10, T5 at 150 (industrial).</summary>
-        public static float populationCapMultiplier = 10f;
+        /// Player-tunable via the mod-menu slider. Default 30 (0.3.0; was 10) → T1 caps at 30, T5 at 450
+        /// (industrial), so a settled region reads in the hundreds.</summary>
+        public static float populationCapMultiplier = DefaultPopulationCapMultiplier;
+
+        /// <summary>Mirror of <c>Sizing.PopulationCapRules.DefaultMultiplier</c> — kept as a literal here so
+        /// this file stays compilable in the dependency-free test suites. Keep the two equal.</summary>
+        public const float DefaultPopulationCapMultiplier = 30f;
+
+        /// <summary>Set once the 0.3.0 cap-multiplier rescale has been applied to a saved settings file,
+        /// so a value of exactly 10 left over from the old default is lifted to 30 once and a player who
+        /// later chooses 10 on purpose keeps it.</summary>
+        private static bool capMultiplierRescaled030;
 
         /// <summary>How fast settlement populations grow, as a multiple of real-world demographic rates
         /// (#6). Real growth (~1-2%/yr) is invisible over a playthrough, so the default 10× makes a
@@ -92,7 +102,16 @@ namespace RegionsAndSocieties.Integration
             Scribe_Values.Look(ref settlementTiers, "integration_settlementTiers", true);
             Scribe_Values.Look(ref outpostSeeding, "integration_outpostSeeding", true);
             Scribe_Values.Look(ref populationCaps, "integration_populationCaps", true);
-            Scribe_Values.Look(ref populationCapMultiplier, "integration_populationCapMultiplier", 10f);
+            Scribe_Values.Look(ref populationCapMultiplier, "integration_populationCapMultiplier", DefaultPopulationCapMultiplier);
+            Scribe_Values.Look(ref capMultiplierRescaled030, "integration_capMultiplierRescaled030", false);
+            if (!capMultiplierRescaled030)
+            {
+                // One-time 0.3.0 rescale: a settings file written under the old default (10) carries that
+                // value explicitly, so it would otherwise pin the old scale forever. Runs once whichever
+                // way the file is being scribed; the flag is then written true.
+                if (populationCapMultiplier == 10f) populationCapMultiplier = DefaultPopulationCapMultiplier;
+                capMultiplierRescaled030 = true;
+            }
             Scribe_Values.Look(ref growthRateMultiplier, "integration_growthRateMultiplier", 10f);
             Scribe_Values.Look(ref demographicReach, "integration_demographicReach", 1.0f);
             Scribe_Values.Look(ref demographicFalloff, "integration_demographicFalloff", 1.0f);

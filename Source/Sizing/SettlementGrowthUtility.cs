@@ -18,9 +18,11 @@ namespace RegionsAndSocieties.Sizing
         /// female, and ~two-thirds of working age (15-64) is fertile age (15-45).</summary>
         private const float FertileShareOfWorkingAge = 0.5f * 0.66f;
 
-        /// <summary>A newly-modeled settlement starts at this fraction of its capacity, so it visibly
-        /// grows up toward (and past) its cap rather than popping in full.</summary>
-        public const float SeedFractionOfCapacity = 1f / 3f;
+        /// <summary>A newly-modeled settlement starts at this fraction of its capacity (the ⅔-max target).
+        /// 1.0 (0.3.0; was ⅓): a freshly generated world is an established one — its towns and cities
+        /// already stand at their comfortable size — and growth still shows, crowding from the target up
+        /// toward the tier max (150% of target) instead of climbing from a near-empty seed.</summary>
+        public const float SeedFractionOfCapacity = 1f;
 
         /// <summary>
         /// Build the growth-factor inputs for a settlement from its faction (tech → mortality) and its
