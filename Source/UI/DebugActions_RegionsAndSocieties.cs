@@ -712,5 +712,56 @@ namespace RegionsAndSocieties.UI
             int nl = text.IndexOf('\n', idx);
             return nl < 0 ? text.Split('\n').Length : text.Substring(0, nl).Split('\n').Length;
         }
+
+        // 0.3.2 (#37): tile SEARCHES ask TileFinder.IsValidTileForNewSettlement for every candidate of a flood
+        // (vanilla TryFindNewSiteTile, quest nodes, other mods' site finders). This replays a vanilla-shaped
+        // search — a 7-27 tile band around the player's first settlement, the band quest sites use — and
+        // reports what our postfix cost it and how many candidates were refused. With governance scoped to
+        // player-facing checks (a reason is requested) the search must be cheap and any refusals must be
+        // vanilla's own; the same tile asked WITH a reason must still be governed.
+        [DebugAction("Regions and Societies", "R&S: site-search governance probe (#37)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        private static void SiteSearchGovernanceProbe()
+        {
+            if (Find.World == null || Find.WorldGrid == null) return;
+
+            PlanetTile root = PlanetTile.Invalid;
+            foreach (var s in Find.WorldObjects.Settlements)
+            {
+                if (s.Faction == Faction.OfPlayerSilentFail) { root = s.Tile; break; }
+            }
+            if (root == PlanetTile.Invalid)
+            {
+                Log.Warning("[R&S] site-search probe: no player settlement to search around.");
+                return;
+            }
+
+            int validatorCalls = 0, refused = 0;
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            bool found = TileFinder.TryFindPassableTileWithTraversalDistance(root, 7, 27, out PlanetTile site, tile =>
+            {
+                validatorCalls++;
+                if (Find.WorldObjects.AnyWorldObjectAt(tile)) return false;
+                bool ok = TileFinder.IsValidTileForNewSettlement(tile);
+                if (!ok) refused++;
+                return ok;
+            });
+            sw.Stop();
+            double searchMs = sw.Elapsed.TotalMilliseconds;
+
+            // The player-facing form of the same question is still governed: ask about the found tile with a
+            // reason builder, the way the settle button does, and see whether our evaluator had a say.
+            var reason = new System.Text.StringBuilder();
+            PlanetTile probeTile = found ? site : root;
+            bool playerFormValid = TileFinder.IsValidTileForNewSettlement(probeTile, reason);
+            Placement.PlacementDecision ours = Faction.OfPlayerSilentFail != null
+                ? WorldObjectPlacementUtility.Evaluate(probeTile.tileId, Faction.OfPlayerSilentFail, WorldObjectKind.Settlement)
+                : Placement.PlacementDecision.Allow();
+            bool governedAgrees = ours.Allowed || (!playerFormValid && reason.ToString().Contains(ours.Reason ?? string.Empty));
+
+            bool pass = searchMs < 250 && governedAgrees;
+            Log.Message($"[SYNAPSE-TEST] {(pass ? "PASS" : "FAIL")} RT_SiteSearchGovernance | search from tile {root.tileId}: " +
+                        $"{searchMs:0} ms, validator calls={validatorCalls}, refused={refused}, found={found}{(found ? " tile " + site.tileId : "")} " +
+                        $"| player-facing check on tile {probeTile.tileId}: valid={playerFormValid} ourVerdict={(ours.Allowed ? "allow" : "refuse")} agrees={governedAgrees}");
+        }
     }
 }
