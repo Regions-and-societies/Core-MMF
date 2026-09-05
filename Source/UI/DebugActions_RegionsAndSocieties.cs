@@ -574,5 +574,127 @@ namespace RegionsAndSocieties.UI
                         $"orbitTiles={(grid.Orbit != null ? grid.Orbit.TilesCount : 0)} rejectsOob={rejectsOob} rejectsOrbit={rejectsOrbit} " +
                         $"acceptsSurface={acceptsSurface} sampleOwnerNull={sampleSafe}. Expect NO 'Attempted to access a tile' error above (#77).");
         }
+
+        private static int hintStressRuns;
+
+        // 0.3.2 (#44/#45): drive the REAL inspect-pane getter the way a tile-hopping player does, headlessly.
+        // Phase A selects 60 province tiles in a tight loop and times the getter — with the hint scheduled
+        // behind a dwell, each call must be sub-millisecond. Phase B times the evaluation those same 60
+        // clicks used to pay inline (the pre-0.3.2 cost). Phase C rests on the last tile past the dwell and
+        // checks the hint line arrives and matches the evaluator. The action leaves the world view on that
+        // tile, so with Map Preview loaded its worker-thread preview runs against the live pane afterwards:
+        // read the log for 'Nested FloodFill' after a few runs.
+        [DebugAction("Regions and Societies", "R&S: inspect-pane hint stress (#44/#45)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        private static void InspectPaneHintStress()
+        {
+            if (Find.World == null || Find.WorldGrid == null || Find.WorldSelector == null) return;
+            Find.World.renderer.wantedMode = WorldRenderMode.Planet;
+
+            var getter = HarmonyLib.AccessTools.PropertyGetter(typeof(WorldInspectPane), "TileInspectString");
+            object pane = HarmonyLib.AccessTools.Field(typeof(WorldInterface), "inspectPane")?.GetValue(Find.WorldInterface)
+                          ?? (object)Find.WindowStack?.WindowOfType<WorldInspectPane>();
+            if (getter == null || pane == null)
+            {
+                Log.Warning("[R&S] hint stress: WorldInspectPane.TileInspectString or the pane instance not found; cannot drive the getter.");
+                return;
+            }
+
+            var selector = Find.WorldSelector;
+            var setter = HarmonyLib.AccessTools.PropertySetter(typeof(WorldSelector), "SelectedTile");
+            var field = HarmonyLib.AccessTools.Field(typeof(WorldSelector), "selectedTile");
+            if (setter == null && field == null)
+            {
+                Log.Warning("[R&S] hint stress: no way to set WorldSelector.SelectedTile.");
+                return;
+            }
+            System.Action<int> select = id =>
+            {
+                var pt = new PlanetTile(id, Find.WorldGrid.Surface);
+                if (setter != null) setter.Invoke(selector, new object[] { pt });
+                else field.SetValue(selector, pt);
+            };
+
+            var regionManager = Find.World.GetComponent<SynapseRegionManager>();
+            var provinces = regionManager?.Provinces?.Where(p => p != null && p.tiles != null && p.tiles.Count > 0).ToList();
+            if (provinces == null || provinces.Count == 0)
+            {
+                Log.Warning("[R&S] hint stress: no provinces.");
+                return;
+            }
+            int offset = (hintStressRuns++ * 7) % provinces.Count;
+            var tiles = Enumerable.Range(0, System.Math.Min(60, provinces.Count))
+                .Select(i => provinces[(offset + i * System.Math.Max(1, provinces.Count / 60)) % provinces.Count].tiles[0])
+                .ToList();
+            Faction player = Faction.OfPlayerSilentFail;
+
+            // Phase A: hop.
+            var sw = new System.Diagnostics.Stopwatch();
+            double hopTotalMs = 0, hopMaxMs = 0;
+            int withRegionLine = 0, withHintLine = 0;
+            string lastText = null;
+            foreach (int t in tiles)
+            {
+                select(t);
+                sw.Restart();
+                lastText = getter.Invoke(pane, null) as string ?? string.Empty;
+                sw.Stop();
+                double ms = sw.Elapsed.TotalMilliseconds;
+                hopTotalMs += ms;
+                if (ms > hopMaxMs) hopMaxMs = ms;
+                if (lastText.Contains("Region: ")) withRegionLine++;
+                if (lastText.Contains("Territory: ") && lastText.Split('\n').Length > CountVanillaLines(lastText)) withHintLine++;
+            }
+
+            // Phase B: what those clicks cost before 0.3.2 (inline evaluation per selection).
+            double inlineTotalMs = 0;
+            int refused = 0;
+            if (player != null)
+            {
+                foreach (int t in tiles)
+                {
+                    sw.Restart();
+                    Placement.PlacementDecision d = WorldObjectPlacementUtility.Evaluate(t, player, WorldObjectKind.Settlement);
+                    sw.Stop();
+                    inlineTotalMs += sw.Elapsed.TotalMilliseconds;
+                    if (!d.Allowed) refused++;
+                }
+            }
+
+            // Phase C: dwell on the last tile past the threshold; the hint must now appear iff the evaluator refuses.
+            int last = tiles[tiles.Count - 1];
+            select(last);
+            getter.Invoke(pane, null);
+            System.Threading.Thread.Sleep((int)(Placement.PlacementHintCache.DefaultDwellSeconds * 1000) + 150);
+            bool busy = Compat.MapPreviewCompat.IsGeneratingPreview;
+            string dwelt = getter.Invoke(pane, null) as string ?? string.Empty;
+            Placement.PlacementDecision expected = player != null
+                ? WorldObjectPlacementUtility.Evaluate(last, player, WorldObjectKind.Settlement)
+                : Placement.PlacementDecision.Allow();
+            bool expectHint = !expected.Allowed && !string.IsNullOrEmpty(expected.Reason);
+            bool hintShown = expectHint && dwelt.Contains(expected.Reason);
+            bool dwellOk = busy || (expectHint ? hintShown : dwelt == lastText || dwelt.Length <= lastText.Length + 1);
+
+            sw.Restart();
+            getter.Invoke(pane, null);
+            sw.Stop();
+            double revisitMs = sw.Elapsed.TotalMilliseconds;
+
+            bool hopFast = tiles.Count > 0 && hopTotalMs / tiles.Count < 2.0;
+            bool pass = hopFast && dwellOk;
+            Log.Message($"[SYNAPSE-TEST] {(pass ? "PASS" : "FAIL")} RT_InspectPaneHintStress | tiles={tiles.Count} " +
+                        $"hop: total={hopTotalMs:0.00}ms avg={(tiles.Count > 0 ? hopTotalMs / tiles.Count : 0):0.000}ms max={hopMaxMs:0.00}ms regionLines={withRegionLine} " +
+                        $"| pre-0.3.2 inline cost for the same clicks: {inlineTotalMs:0.0}ms ({refused} refused) " +
+                        $"| dwell: expectHint={expectHint} hintShown={hintShown} busy={busy} revisit={revisitMs:0.000}ms " +
+                        $"| MapPreview present={Compat.MapPreviewCompat.Present}. Now hop tiles by hand (or rerun) and check the log for 'Nested FloodFill' (#45).");
+        }
+
+        private static int CountVanillaLines(string text)
+        {
+            // Everything up to and including the "Territory:" line is ours-or-vanilla; a line after it is the hint.
+            int idx = text.IndexOf("Territory: ", System.StringComparison.Ordinal);
+            if (idx < 0) return int.MaxValue;
+            int nl = text.IndexOf('\n', idx);
+            return nl < 0 ? text.Split('\n').Length : text.Substring(0, nl).Split('\n').Length;
+        }
     }
 }
