@@ -1,0 +1,328 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Regions and Societies — economic sector tree (0.4.0 SCAFFOLD; 0.5.0 Economy Framework tunes and prices it).
+
+  Replaces the four-member OccupationSector enum with a Def hierarchy so the economy has every sub-category
+  from the start and companion patches can add their own (VFE Vikings → mead brewing, etc.) with plain XML.
+
+  Fields:
+    parent         the sector this one is a sub-category of. Roots (no parent) are the tiers of RS_Sector in the
+                   influence graph; children are the tiers of their parent's sub-distribution (RS_Sector_<Root>).
+    laborTier      minimum education tier at which the sub-sector produces meaningfully (the 0.3.0 ladder:
+                   Illiterate / Primary / Secondary / Undergrad / Postgrad). Below it, output collapses.
+    inputs         what it consumes: a Context factor (land, ore, water) or another sector's output. 0.5.0 reads
+                   these to build the production/consumption chain (#7); 0.4.0 only records them.
+    outputs        vanilla ThingCategoryDef / ThingDef examples, so 0.5.0 can price against real market values.
+    requiresDlc    Biotech / Ideology / Royalty / Anomaly / Odyssey when the category only exists with the DLC.
+    biomeNeeds     for growers: what land it needs (fertile, temperate, warm). Read from the region's biome mix.
+  Nothing here is a level or a weight — the levels live in DemographicFactors_Core.xml as RS_Sector_* factors.
+-->
+<Defs>
+
+  <!-- ============================== ROOTS (the tiers of RS_Sector) ============================== -->
+
+  <RegionsAndSocieties.Economy.EconomicSectorDef>
+    <defName>RS_Agriculture</defName><label>agriculture</label>
+    <description>Working the land and the herd: food, fibre, medicine, cash crops, timber.</description>
+    <laborTier>Illiterate</laborTier>
+  </RegionsAndSocieties.Economy.EconomicSectorDef>
+
+  <RegionsAndSocieties.Economy.EconomicSectorDef>
+    <defName>RS_Extraction</defName><label>extraction</label>
+    <description>Taking raw material out of the ground: ore, stone, fuel, salvage.</description>
+    <laborTier>Primary</laborTier>
+  </RegionsAndSocieties.Economy.EconomicSectorDef>
+
+  <RegionsAndSocieties.Economy.EconomicSectorDef>
+    <defName>RS_Manufacturing</defName><label>manufacturing</label>
+    <description>Turning raw material into goods: refining, building, textiles, arms, components, chemicals, food, power, fabrication.</description>
+    <laborTier>Secondary</laborTier>
+  </RegionsAndSocieties.Economy.EconomicSectorDef>
+
+  <RegionsAndSocieties.Economy.EconomicSectorDef>
+    <defName>RS_Services</defName><label>services</label>
+    <description>Moving, selling, hosting, healing and teaching: trade, transport, hospitality, finance, healthcare, education.</description>
+    <laborTier>Primary</laborTier>
+  </RegionsAndSocieties.Economy.EconomicSectorDef>
+
+  <RegionsAndSocieties.Economy.EconomicSectorDef>
+    <defName>RS_Military</defName><label>military</label>
+    <description>People under arms: garrisons, raiders, mercenaries.</description>
+    <laborTier>Illiterate</laborTier>
+  </RegionsAndSocieties.Economy.EconomicSectorDef>
+
+  <RegionsAndSocieties.Economy.EconomicSectorDef>
+    <defName>RS_Public</defName><label>public</label>
+    <description>Administration and belief: the people who run the place and the people who preach in it.</description>
+    <laborTier>Secondary</laborTier>
+  </RegionsAndSocieties.Economy.EconomicSectorDef>
+
+  <!-- ============================== AGRICULTURE ============================== -->
+
+  <RegionsAndSocieties.Economy.EconomicSectorDef>
+    <defName>RS_Agri_Food</defName><label>food crops</label><parent>RS_Agriculture</parent>
+    <description>Staples: rice, potatoes, corn, berries. The floor under everything else.</description>
+    <laborTier>Illiterate</laborTier>
+    <inputs><li>RS_BiomeFertility</li></inputs>
+    <outputs><li>FoodRaw</li><li>RawRice</li><li>RawPotatoes</li><li>RawCorn</li><li>RawBerries</li></outputs>
+    <biomeNeeds><li>fertile</li></biomeNeeds>
+  </RegionsAndSocieties.Economy.EconomicSectorDef>
+
+  <RegionsAndSocieties.Economy.EconomicSectorDef>
+    <defName>RS_Agri_Livestock</defName><label>livestock</label><parent>RS_Agriculture</parent>
+    <description>Herding and ranching: meat, milk, eggs, wool and leather. Works on grazing land crops cannot use.</description>
+    <laborTier>Illiterate</laborTier>
+    <inputs><li>RS_BiomeFertility</li><li>RS_Agri_Food</li></inputs>
+    <outputs><li>MeatRaw</li><li>AnimalProductRaw</li><li>Milk</li><li>Wools</li><li>Leathers</li></outputs>
+    <biomeNeeds><li>grazing</li></biomeNeeds>
+  </RegionsAndSocieties.Economy.EconomicSectorDef>
+
+  <RegionsAndSocieties.Economy.EconomicSectorDef>
+    <defName>RS_Agri_Fiber</defName><label>fibre crops</label><parent>RS_Agriculture</parent>
+    <description>Cotton and devilstrand for cloth. Feeds the textile trade; no fibre, no clothing industry.</description>
+    <laborTier>Primary</laborTier>
+    <inputs><li>RS_BiomeFertility</li></inputs>
+    <outputs><li>Cloth</li><li>DevilstrandCloth</li></outputs>
+    <biomeNeeds><li>fertile</li><li>temperate</li></biomeNeeds>
+  </RegionsAndSocieties.Economy.EconomicSectorDef>
+
+  <RegionsAndSocieties.Economy.EconomicSectorDef>
+    <defName>RS_Agri_Medicinal</defName><label>medicinal crops</label><parent>RS_Agriculture</parent>
+    <description>Healroot for herbal medicine, and the raw plant stock the pharmaceutical labs refine.</description>
+    <laborTier>Primary</laborTier>
+    <inputs><li>RS_BiomeFertility</li></inputs>
+    <outputs><li>MedicineHerbal</li></outputs>
+    <biomeNeeds><li>fertile</li></biomeNeeds>
+  </RegionsAndSocieties.Economy.EconomicSectorDef>
+
+  <RegionsAndSocieties.Economy.EconomicSectorDef>
+    <defName>RS_Agri_CashCrops</defName><label>cash crops</label><parent>RS_Agriculture</parent>
+    <description>Smokeleaf, psychoid, hops, ambrosia: grown to sell, not to eat. High value, addictive end products, the raw side of the drug trade.</description>
+    <laborTier>Primary</laborTier>
+    <inputs><li>RS_BiomeFertility</li></inputs>
+    <outputs><li>SmokeleafLeaves</li><li>PsychoidLeaves</li><li>RawHops</li><li>Ambrosia</li></outputs>
+    <biomeNeeds><li>fertile</li><li>warm</li></biomeNeeds>
+  </RegionsAndSocieties.Economy.EconomicSectorDef>
+
+  <RegionsAndSocieties.Economy.EconomicSectorDef>
+    <defName>RS_Agri_Forestry</defName><label>forestry</label><parent>RS_Agriculture</parent>
+    <description>Timber. The construction and fuel material for anyone below industrial tech.</description>
+    <laborTier>Illiterate</laborTier>
+    <inputs><li>RS_BiomeFertility</li></inputs>
+    <outputs><li>WoodLog</li></outputs>
+    <biomeNeeds><li>forested</li></biomeNeeds>
+  </RegionsAndSocieties.Economy.EconomicSectorDef>
+
+  <!-- ============================== EXTRACTION ============================== -->
+
+  <RegionsAndSocieties.Economy.EconomicSectorDef>
+    <defName>RS_Ext_Mining</defName><label>mining</label><parent>RS_Extraction</parent>
+    <description>Ore: steel, plasteel, gold, silver, uranium, jade. Reads the region's mineral pools.</description>
+    <laborTier>Primary</laborTier>
+    <inputs><li>RS_MineralPool</li></inputs>
+    <outputs><li>Steel</li><li>Plasteel</li><li>Gold</li><li>Silver</li><li>Uranium</li><li>Jade</li></outputs>
+  </RegionsAndSocieties.Economy.EconomicSectorDef>
+
+  <RegionsAndSocieties.Economy.EconomicSectorDef>
+    <defName>RS_Ext_Quarrying</defName><label>quarrying</label><parent>RS_Extraction</parent>
+    <description>Stone chunks for blocks. Mountains and hills are the input.</description>
+    <laborTier>Illiterate</laborTier>
+    <inputs><li>RS_StonePool</li></inputs>
+    <outputs><li>StoneChunks</li></outputs>
+  </RegionsAndSocieties.Economy.EconomicSectorDef>
+
+  <RegionsAndSocieties.Economy.EconomicSectorDef>
+    <defName>RS_Ext_Fuel</defName><label>fuel</label><parent>RS_Extraction</parent>
+    <description>Chemfuel from deep drilling, boomalope ranching and refineries. The energy input for industrial power and vehicles.</description>
+    <laborTier>Secondary</laborTier>
+    <inputs><li>RS_MineralPool</li><li>RS_Agri_Livestock</li></inputs>
+    <outputs><li>Chemfuel</li></outputs>
+  </RegionsAndSocieties.Economy.EconomicSectorDef>
+
+  <RegionsAndSocieties.Economy.EconomicSectorDef>
+    <defName>RS_Ext_Salvage</defName><label>salvage</label><parent>RS_Extraction</parent>
+    <description>Scavenging ruins and wrecks for components and scrap. The raider and scavenger economy's extraction arm.</description>
+    <laborTier>Illiterate</laborTier>
+    <inputs><li>RS_RuinsPool</li></inputs>
+    <outputs><li>ComponentIndustrial</li><li>Steel</li></outputs>
+  </RegionsAndSocieties.Economy.EconomicSectorDef>
+
+  <!-- ============================== MANUFACTURING ============================== -->
+
+  <RegionsAndSocieties.Economy.EconomicSectorDef>
+    <defName>RS_Mfg_Refining</defName><label>refining and smelting</label><parent>RS_Manufacturing</parent>
+    <description>Ore and scrap into usable metal.</description>
+    <laborTier>Secondary</laborTier>
+    <inputs><li>RS_Ext_Mining</li><li>RS_Ext_Salvage</li><li>RS_Mfg_Energy</li></inputs>
+    <outputs><li>Steel</li><li>Plasteel</li></outputs>
+  </RegionsAndSocieties.Economy.EconomicSectorDef>
+
+  <RegionsAndSocieties.Economy.EconomicSectorDef>
+    <defName>RS_Mfg_Construction</defName><label>construction materials</label><parent>RS_Manufacturing</parent>
+    <description>Stone blocks, timber and steel into walls and roofs. Feeds settlement growth directly.</description>
+    <laborTier>Primary</laborTier>
+    <inputs><li>RS_Ext_Quarrying</li><li>RS_Agri_Forestry</li><li>RS_Mfg_Refining</li></inputs>
+    <outputs><li>StoneBlocks</li><li>WoodLog</li><li>Steel</li></outputs>
+  </RegionsAndSocieties.Economy.EconomicSectorDef>
+
+  <RegionsAndSocieties.Economy.EconomicSectorDef>
+    <defName>RS_Mfg_Textiles</defName><label>textiles and apparel</label><parent>RS_Manufacturing</parent>
+    <description>Cloth, leather and wool into clothing. Tailoring benches.</description>
+    <laborTier>Primary</laborTier>
+    <inputs><li>RS_Agri_Fiber</li><li>RS_Agri_Livestock</li></inputs>
+    <outputs><li>Apparel</li><li>Textiles</li></outputs>
+  </RegionsAndSocieties.Economy.EconomicSectorDef>
+
+  <RegionsAndSocieties.Economy.EconomicSectorDef>
+    <defName>RS_Mfg_Armaments</defName><label>armaments</label><parent>RS_Manufacturing</parent>
+    <description>Weapons and armour. Smithies at tribal tech, machining tables at industrial.</description>
+    <laborTier>Secondary</laborTier>
+    <inputs><li>RS_Mfg_Refining</li><li>RS_Mfg_Components</li><li>RS_Agri_Forestry</li></inputs>
+    <outputs><li>Weapons</li><li>ApparelArmor</li></outputs>
+  </RegionsAndSocieties.Economy.EconomicSectorDef>
+
+  <RegionsAndSocieties.Economy.EconomicSectorDef>
+    <defName>RS_Mfg_Components</defName><label>components and electronics</label><parent>RS_Manufacturing</parent>
+    <description>Industrial and advanced components. The bottleneck for every high-tech chain.</description>
+    <laborTier>Undergrad</laborTier>
+    <inputs><li>RS_Mfg_Refining</li><li>RS_Mfg_Energy</li></inputs>
+    <outputs><li>ComponentIndustrial</li><li>ComponentSpacer</li></outputs>
+  </RegionsAndSocieties.Economy.EconomicSectorDef>
+
+  <RegionsAndSocieties.Economy.EconomicSectorDef>
+    <defName>RS_Mfg_Pharma</defName><label>pharmaceuticals</label><parent>RS_Manufacturing</parent>
+    <description>Drug labs: medicine from herbal stock and neutroamine, penoxycyline, go-juice, wake-up. Industrial medicine depends on it.</description>
+    <laborTier>Undergrad</laborTier>
+    <inputs><li>RS_Agri_Medicinal</li><li>RS_Agri_Fiber</li><li>RS_Svc_Trade</li></inputs>
+    <outputs><li>MedicineIndustrial</li><li>Penoxycyline</li><li>GoJuice</li><li>WakeUp</li></outputs>
+  </RegionsAndSocieties.Economy.EconomicSectorDef>
+
+  <RegionsAndSocieties.Economy.EconomicSectorDef>
+    <defName>RS_Mfg_Drugs</defName><label>recreational drugs and alcohol</label><parent>RS_Manufacturing</parent>
+    <description>Cash crops refined: smokeleaf joints, psychite tea, flake, yayo, beer. High margin, addictive, the demand side of the cash-crop trade.</description>
+    <laborTier>Primary</laborTier>
+    <inputs><li>RS_Agri_CashCrops</li></inputs>
+    <outputs><li>SmokeleafJoint</li><li>PsychiteTea</li><li>Flake</li><li>Yayo</li><li>Beer</li></outputs>
+  </RegionsAndSocieties.Economy.EconomicSectorDef>
+
+  <RegionsAndSocieties.Economy.EconomicSectorDef>
+    <defName>RS_Mfg_FoodProcessing</defName><label>food processing</label><parent>RS_Manufacturing</parent>
+    <description>Meals, pemmican, kibble, brewing and butchering. Stretches raw food into stored food.</description>
+    <laborTier>Illiterate</laborTier>
+    <inputs><li>RS_Agri_Food</li><li>RS_Agri_Livestock</li></inputs>
+    <outputs><li>FoodMeals</li><li>Pemmican</li><li>Kibble</li></outputs>
+  </RegionsAndSocieties.Economy.EconomicSectorDef>
+
+  <RegionsAndSocieties.Economy.EconomicSectorDef>
+    <defName>RS_Mfg_Energy</defName><label>energy</label><parent>RS_Manufacturing</parent>
+    <description>Power generation: wood and chemfuel burners, solar, wind, geothermal, watermills. Every industrial sub-sector consumes it.</description>
+    <laborTier>Secondary</laborTier>
+    <inputs><li>RS_Agri_Forestry</li><li>RS_Ext_Fuel</li><li>RS_GeothermalPool</li></inputs>
+    <outputs><li>Power</li></outputs>
+  </RegionsAndSocieties.Economy.EconomicSectorDef>
+
+  <RegionsAndSocieties.Economy.EconomicSectorDef>
+    <defName>RS_Mfg_Fabrication</defName><label>advanced fabrication</label><parent>RS_Manufacturing</parent>
+    <description>Fabrication benches: bionics, advanced components, spacer gear, mechanoids with Biotech. The top of the tech tree.</description>
+    <laborTier>Postgrad</laborTier>
+    <inputs><li>RS_Mfg_Components</li><li>RS_Mfg_Refining</li><li>RS_Mfg_Energy</li></inputs>
+    <outputs><li>BodyPartsBionic</li><li>ComponentSpacer</li></outputs>
+  </RegionsAndSocieties.Economy.EconomicSectorDef>
+
+  <!-- ============================== SERVICES ============================== -->
+
+  <RegionsAndSocieties.Economy.EconomicSectorDef>
+    <defName>RS_Svc_Trade</defName><label>merchants and caravans</label><parent>RS_Services</parent>
+    <description>Buying and selling across regions. Moves every other sector's surplus; brings in neutroamine and other imports.</description>
+    <laborTier>Primary</laborTier>
+    <inputs><li>RS_Roads</li></inputs>
+    <outputs><li>Silver</li><li>Neutroamine</li></outputs>
+  </RegionsAndSocieties.Economy.EconomicSectorDef>
+
+  <RegionsAndSocieties.Economy.EconomicSectorDef>
+    <defName>RS_Svc_Transport</defName><label>transport and logistics</label><parent>RS_Services</parent>
+    <description>Hauling on roads and rivers; shuttles at spacer tech. Scales with road connectivity (#39).</description>
+    <laborTier>Primary</laborTier>
+    <inputs><li>RS_Roads</li><li>RS_Ext_Fuel</li></inputs>
+  </RegionsAndSocieties.Economy.EconomicSectorDef>
+
+  <RegionsAndSocieties.Economy.EconomicSectorDef>
+    <defName>RS_Svc_Hospitality</defName><label>hospitality and recreation</label><parent>RS_Services</parent>
+    <description>Taverns, lodging, entertainment. Consumes food, drink and drugs; grows with wealth and traffic.</description>
+    <laborTier>Illiterate</laborTier>
+    <inputs><li>RS_Mfg_FoodProcessing</li><li>RS_Mfg_Drugs</li><li>RS_Svc_Transport</li></inputs>
+  </RegionsAndSocieties.Economy.EconomicSectorDef>
+
+  <RegionsAndSocieties.Economy.EconomicSectorDef>
+    <defName>RS_Svc_Finance</defName><label>finance and markets</label><parent>RS_Services</parent>
+    <description>Silver, credit and market-making. Only appears in wealthy, urban, connected regions.</description>
+    <laborTier>Undergrad</laborTier>
+    <inputs><li>RS_Svc_Trade</li></inputs>
+    <outputs><li>Silver</li></outputs>
+  </RegionsAndSocieties.Economy.EconomicSectorDef>
+
+  <RegionsAndSocieties.Economy.EconomicSectorDef>
+    <defName>RS_Svc_Healthcare</defName><label>healthcare</label><parent>RS_Services</parent>
+    <description>Doctors and hospitals. Consumes medicine; lowers mortality.</description>
+    <laborTier>Undergrad</laborTier>
+    <inputs><li>RS_Agri_Medicinal</li><li>RS_Mfg_Pharma</li></inputs>
+  </RegionsAndSocieties.Economy.EconomicSectorDef>
+
+  <RegionsAndSocieties.Economy.EconomicSectorDef>
+    <defName>RS_Svc_Education</defName><label>education and research</label><parent>RS_Services</parent>
+    <description>Schools and research benches. The sector that moves people up the education ladder.</description>
+    <laborTier>Undergrad</laborTier>
+    <inputs><li>RS_Mfg_Energy</li></inputs>
+  </RegionsAndSocieties.Economy.EconomicSectorDef>
+
+  <RegionsAndSocieties.Economy.EconomicSectorDef>
+    <defName>RS_Svc_SlaveTrade</defName><label>slave trade</label><parent>RS_Services</parent>
+    <description>Buying and selling people. Exists only where stratification allows it; the Imperium's underclass supply.</description>
+    <laborTier>Illiterate</laborTier>
+    <requiresDlc>Ideology</requiresDlc>
+    <inputs><li>RS_Stratification</li><li>RS_Military</li></inputs>
+  </RegionsAndSocieties.Economy.EconomicSectorDef>
+
+  <!-- ============================== MILITARY ============================== -->
+
+  <RegionsAndSocieties.Economy.EconomicSectorDef>
+    <defName>RS_Mil_Garrison</defName><label>garrison</label><parent>RS_Military</parent>
+    <description>Standing forces defending the region. Consumes armaments and food; produces nothing.</description>
+    <laborTier>Illiterate</laborTier>
+    <inputs><li>RS_Mfg_Armaments</li><li>RS_Mfg_FoodProcessing</li></inputs>
+  </RegionsAndSocieties.Economy.EconomicSectorDef>
+
+  <RegionsAndSocieties.Economy.EconomicSectorDef>
+    <defName>RS_Mil_Raiding</defName><label>raiding and piracy</label><parent>RS_Military</parent>
+    <description>Living off others. The raider archetype's whole economy: loot replaces production.</description>
+    <laborTier>Illiterate</laborTier>
+    <inputs><li>RS_Mfg_Armaments</li><li>RS_Conflict</li></inputs>
+    <outputs><li>Silver</li><li>Weapons</li><li>Apparel</li></outputs>
+  </RegionsAndSocieties.Economy.EconomicSectorDef>
+
+  <RegionsAndSocieties.Economy.EconomicSectorDef>
+    <defName>RS_Mil_Mercenary</defName><label>mercenaries</label><parent>RS_Military</parent>
+    <description>Soldiers for hire. Exported labour that returns silver.</description>
+    <laborTier>Primary</laborTier>
+    <inputs><li>RS_Mfg_Armaments</li><li>RS_Conflict</li></inputs>
+    <outputs><li>Silver</li></outputs>
+  </RegionsAndSocieties.Economy.EconomicSectorDef>
+
+  <!-- ============================== PUBLIC ============================== -->
+
+  <RegionsAndSocieties.Economy.EconomicSectorDef>
+    <defName>RS_Pub_Administration</defName><label>administration</label><parent>RS_Public</parent>
+    <description>Governance, tax, record-keeping. Larger and more stratified societies need more of it.</description>
+    <laborTier>Secondary</laborTier>
+    <inputs><li>RS_Stratification</li></inputs>
+  </RegionsAndSocieties.Economy.EconomicSectorDef>
+
+  <RegionsAndSocieties.Economy.EconomicSectorDef>
+    <defName>RS_Pub_Clergy</defName><label>clergy</label><parent>RS_Public</parent>
+    <description>Priests, rituals, temples. Scales with ideology strength; the institutional side of belief.</description>
+    <laborTier>Primary</laborTier>
+    <requiresDlc>Ideology</requiresDlc>
+    <inputs><li>RS_Ideology</li></inputs>
+  </RegionsAndSocieties.Economy.EconomicSectorDef>
+
+</Defs>
