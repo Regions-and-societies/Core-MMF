@@ -21,12 +21,12 @@ namespace RegionsAndSocieties.Patches
             //
             // IsValidTileForNewSettlement has two kinds of caller. The settle button and the starting-site
             // page pass a StringBuilder because they will show the player why a tile is refused. Site
-            // SEARCHES — vanilla's TryFindNewSiteTile, quest nodes, other mods' site finders (VFE Deserters
-            // probes a 7-27 tile band around the colony when its network dialog opens) — pass no reason
-            // and call this for every candidate tile of a flood. Running a full placement evaluation per
-            // candidate turned those searches into multi-second stalls (a "freeze" on the Deserters comms
-            // console), and refusing candidates on the player's supply rule starved quests of sites
-            // altogether. Those objects are not player settlements, so our rules have no say in them.
+            // SEARCHES — vanilla's TryFindNewSiteTile, quest nodes, other mods' site finders — pass no
+            // reason and call this for every candidate tile of a flood. Running a full placement evaluation
+            // per candidate turned those searches into long main-thread stalls, and refusing candidates on
+            // the player's supply rule starved quests of sites altogether. The objects such searches place
+            // are not player settlements, so our rules have no say in them. Mod-specific symptoms of this
+            // (a dialog that runs such a search when it opens) are tracked in that mod's compatibility patch.
             if (reason == null) return;
             // PlanetTile is a struct in 1.6, so the old `tile == null` guard was dead code the
             // compiler warned about. This is what it was reaching for: reject the invalid tile.
