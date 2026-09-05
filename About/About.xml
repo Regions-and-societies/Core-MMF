@@ -6,7 +6,6 @@
     <url>https://github.com/Regions-and-societies/Core-MMF</url>
     <modVersion>0.3.1</modVersion>
     <supportedVersions>
-        <li>1.5</li>
         <li>1.6</li>
     </supportedVersions>
     <modDependencies>
@@ -39,7 +38,7 @@
     </loadAfter>
     <description>
 Discord Community: https://discord.gg/eVBebZ2N9s
-Version: v0.3.1 (Target: RimWorld 1.5 / 1.6)
+Version: v0.3.1 (Target: RimWorld 1.6)
 
 Regions and Societies
 Official Wiki and Documentation: https://github.com/Regions-and-societies/Core-MMF/wiki

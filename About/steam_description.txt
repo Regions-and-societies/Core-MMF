@@ -1,5 +1,5 @@
 [b]Discord Community:[/b] [url=https://discord.gg/eVBebZ2N9s]https://discord.gg/eVBebZ2N9s[/url]
-[b]Version:[/b] v0.3.1 (Target: RimWorld 1.5 / 1.6)
+[b]Version:[/b] v0.3.1 (Target: RimWorld 1.6)
 
 [h2]Compatibility Patches[/h2]
 Install the matching patch and that mod's factions, settlements and events stay in sync with each region's demographics, ownership and population:
