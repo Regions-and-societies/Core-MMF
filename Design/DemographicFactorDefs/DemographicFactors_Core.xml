@@ -1,0 +1,588 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Regions and Societies — demographic influence graph (0.4.0 keystone, TEMPLATE).
+
+  One Def per demographic FACTOR (a node). Each mutable factor lists what STRESSES it from other
+  factors (edges), Democracy-3 style: the factor's TARGET level is its seeded baseline plus the weighted
+  sum of its inbound influences; its CURRENT level chases the target with hysteresis.
+
+  Per demographic year, for every mutable factor i:
+      gap      = target_i - current_i
+      moving_i = moving_i ? |gap| > releaseBand : |gap| > deadband       (hysteresis: harder to start than to stop)
+      v_i      = inertia * v_i + velocity * gap                          (velocity = multiplier of stress)
+      step     = moving_i ? clamp(v_i, -maxStepPerYear, +maxStepPerYear) : 0
+      current_i += step
+  Distribution factors apply the same step to the pushed tier and take it proportionally from the others,
+  so every distribution stays normalised.
+
+  category:
+    Stock    IMMUTABLE at the person level (xenotype, sex, birth year). The region's stock moves ONLY through
+             Flow factors (births, deaths, migration, ageing). Stocks have NO <influences>; the loader rejects any.
+    Flow     A rate that acts on the Stocks. Mutable, has influences.
+    Mutable  A trait people can change in their lifetime. Fast ones (sector, residence, wealth) have a high
+             velocity; slow ones (education, ideology) a low velocity, high inertia and a wide deadband.
+    Context  Not a demographic; an exogenous stress SOURCE with no current/target of its own (biome fertility,
+             faction character, conflict, roads, outposts, the player's colony). Companion patches add their
+             own Context factors and edges with PatchOperationAdd — Core never learns what an "outpost" is.
+
+  influence:
+    source   defName of the source factor; add <tier> to read one tier of a distribution (e.g. Education/Secondary).
+    weight   signed. Positive pushes the target up (or toward the named <tier>), negative down. First-pass values.
+    curve    Linear (default) | Saturating (diminishing past 0.5) | Threshold (no effect until <threshold>).
+    lagYears reads the source as it was N demographic years ago (schooling takes time to show up in wealth).
+
+  Live editing: the "reload demographic factors" debug action re-parses this file at runtime so weights can be
+  tuned against the persistent-world dry runs without restarting. Weights below are PLACEHOLDERS to calibrate.
+-->
+<Defs>
+
+  <!-- ================================================================================================ -->
+  <!-- STOCKS — immutable per person; moved only by Flows. No influences allowed.                       -->
+  <!-- ================================================================================================ -->
+
+  <RegionsAndSocieties.Demographics.DemographicFactorDef>
+    <defName>RS_Population</defName>
+    <label>population</label>
+    <description>People living in the region (the sprawl field summed). Changes only by births, deaths and migration.</description>
+    <category>Stock</category>
+    <kind>Scalar</kind>
+    <movedBy><li>RS_BirthRate</li><li>RS_MortalityRate</li><li>RS_MigrationNet</li></movedBy>
+  </RegionsAndSocieties.Demographics.DemographicFactorDef>
+
+  <RegionsAndSocieties.Demographics.DemographicFactorDef>
+    <defName>RS_XenotypeMix</defName>
+    <label>xenotype mix</label>
+    <description>Share of each xenotype present. Genes enter only by birth (fertility by xenotype) and migration; never by conversion.</description>
+    <category>Stock</category>
+    <kind>Distribution</kind>
+    <tiersFrom>XenotypeDef</tiersFrom>
+    <movedBy><li>RS_BirthRate</li><li>RS_MortalityRate</li><li>RS_MigrationNet</li></movedBy>
+  </RegionsAndSocieties.Demographics.DemographicFactorDef>
+
+  <RegionsAndSocieties.Demographics.DemographicFactorDef>
+    <defName>RS_SexRatio</defName>
+    <label>sex ratio</label>
+    <description>Female fraction. Moves only by births (parity) and by sex-specific deaths (combat losses).</description>
+    <category>Stock</category>
+    <kind>Scalar</kind>
+    <movedBy><li>RS_BirthRate</li><li>RS_MortalityRate</li><li>RS_CombatLosses</li></movedBy>
+  </RegionsAndSocieties.Demographics.DemographicFactorDef>
+
+  <RegionsAndSocieties.Demographics.DemographicFactorDef>
+    <defName>RS_AgeStructure</defName>
+    <label>age structure</label>
+    <description>Child / working-age / elder shares. Moves only by ageing (one year per demographic year), births at age 0 and deaths by the age-mortality curve.</description>
+    <category>Stock</category>
+    <kind>Distribution</kind>
+    <tiers><li>Child</li><li>WorkingAge</li><li>Elder</li></tiers>
+    <movedBy><li>RS_Ageing</li><li>RS_BirthRate</li><li>RS_MortalityRate</li><li>RS_MigrationNet</li></movedBy>
+  </RegionsAndSocieties.Demographics.DemographicFactorDef>
+
+  <!-- ================================================================================================ -->
+  <!-- FLOWS — rates acting on the stocks.                                                              -->
+  <!-- ================================================================================================ -->
+
+  <RegionsAndSocieties.Demographics.DemographicFactorDef>
+    <defName>RS_Ageing</defName>
+    <label>ageing</label>
+    <description>Everyone gets one year older per demographic year. Fixed; listed so the graph is complete.</description>
+    <category>Flow</category>
+    <kind>Scalar</kind>
+    <velocity>0</velocity>
+  </RegionsAndSocieties.Demographics.DemographicFactorDef>
+
+  <RegionsAndSocieties.Demographics.DemographicFactorDef>
+    <defName>RS_BirthRate</defName>
+    <label>birth rate</label>
+    <description>Births per working-age adult per year. The ONLY door through which ideology reaches xenotype and age (the one-way valve).</description>
+    <category>Flow</category>
+    <kind>Scalar</kind>
+    <velocity>0.5</velocity>
+    <inertia>0.2</inertia>
+    <deadband>0.01</deadband>
+    <releaseBand>0.005</releaseBand>
+    <maxStepPerYear>0.05</maxStepPerYear>
+    <influences>
+      <li><source>RS_AgeStructure</source><tier>WorkingAge</tier><weight>0.40</weight></li>
+      <li><source>RS_Ideology</source><tier>Natalist</tier><weight>0.30</weight></li>
+      <li><source>RS_XenotypeFertility</source><weight>0.30</weight></li>
+      <li><source>RS_Wealth</source><weight>-0.20</weight><curve>Saturating</curve></li>
+      <li><source>RS_Education</source><tier>Undergrad</tier><weight>-0.20</weight></li>
+      <li><source>RS_Urbanisation</source><weight>-0.20</weight></li>
+      <li><source>RS_Conflict</source><weight>-0.15</weight></li>
+    </influences>
+  </RegionsAndSocieties.Demographics.DemographicFactorDef>
+
+  <RegionsAndSocieties.Demographics.DemographicFactorDef>
+    <defName>RS_MortalityRate</defName>
+    <label>mortality rate</label>
+    <description>Deaths per person per year on top of the age curve.</description>
+    <category>Flow</category>
+    <kind>Scalar</kind>
+    <velocity>0.6</velocity>
+    <inertia>0.1</inertia>
+    <deadband>0.005</deadband>
+    <releaseBand>0.002</releaseBand>
+    <maxStepPerYear>0.05</maxStepPerYear>
+    <influences>
+      <li><source>RS_AgeStructure</source><tier>Elder</tier><weight>0.40</weight></li>
+      <li><source>RS_Conflict</source><weight>0.50</weight></li>
+      <li><source>RS_Wealth</source><weight>-0.30</weight><curve>Saturating</curve></li>
+      <li><source>RS_Education</source><tier>Secondary</tier><weight>-0.10</weight></li>
+      <li><source>RS_SES</source><tier>Subsistence</tier><weight>0.20</weight></li>
+    </influences>
+  </RegionsAndSocieties.Demographics.DemographicFactorDef>
+
+  <RegionsAndSocieties.Demographics.DemographicFactorDef>
+    <defName>RS_MigrationNet</defName>
+    <label>net migration</label>
+    <description>People arriving minus leaving, per year, as a fraction of population. Migrants carry their own xenotype, age, sex, education and ideology with them — this is how genes and ideas cross regions.</description>
+    <category>Flow</category>
+    <kind>Scalar</kind>
+    <velocity>0.7</velocity>
+    <inertia>0.3</inertia>
+    <deadband>0.01</deadband>
+    <releaseBand>0.005</releaseBand>
+    <maxStepPerYear>0.10</maxStepPerYear>
+    <influences>
+      <li><source>RS_EmploymentRate</source><weight>0.40</weight></li>
+      <li><source>RS_Wealth</source><weight>0.30</weight></li>
+      <li><source>RS_Urbanisation</source><weight>0.20</weight></li>
+      <li><source>RS_Conflict</source><weight>-0.50</weight></li>
+      <li><source>RS_Stratification</source><weight>-0.20</weight></li>
+      <li><source>RS_PlayerColonyPull</source><weight>0.30</weight><curve>Saturating</curve></li>
+      <li><source>RS_Roads</source><weight>0.20</weight></li>
+    </influences>
+  </RegionsAndSocieties.Demographics.DemographicFactorDef>
+
+  <RegionsAndSocieties.Demographics.DemographicFactorDef>
+    <defName>RS_CombatLosses</defName>
+    <label>combat losses</label>
+    <description>Sex-specific deaths reported by a companion patch (RegionDemographicsStress.RecordCombatLosses). Pure event flow; no chase.</description>
+    <category>Flow</category>
+    <kind>Scalar</kind>
+    <velocity>0</velocity>
+  </RegionsAndSocieties.Demographics.DemographicFactorDef>
+
+  <!-- ================================================================================================ -->
+  <!-- MUTABLE — FAST. People change job, home and fortune within a few years.                          -->
+  <!-- ================================================================================================ -->
+
+  <RegionsAndSocieties.Demographics.DemographicFactorDef>
+    <defName>RS_EmploymentRate</defName>
+    <label>employment rate</label>
+    <description>Share of working-age people in work.</description>
+    <category>Mutable</category>
+    <kind>Scalar</kind>
+    <velocity>0.5</velocity>
+    <inertia>0.2</inertia>
+    <deadband>0.02</deadband>
+    <releaseBand>0.01</releaseBand>
+    <maxStepPerYear>0.10</maxStepPerYear>
+    <influences>
+      <li><source>RS_Education</source><tier>Secondary</tier><weight>0.40</weight></li>
+      <li><source>RS_AgeStructure</source><tier>WorkingAge</tier><weight>0.30</weight></li>
+      <li><source>RS_Wealth</source><weight>0.20</weight></li>
+      <li><source>RS_Roads</source><weight>0.20</weight></li>
+      <li><source>RS_Conflict</source><weight>-0.30</weight></li>
+      <li><source>RS_Stratification</source><weight>-0.30</weight><curve>Threshold</curve><threshold>0.5</threshold></li>
+    </influences>
+  </RegionsAndSocieties.Demographics.DemographicFactorDef>
+
+  <RegionsAndSocieties.Demographics.DemographicFactorDef>
+    <defName>RS_Sector</defName>
+    <label>employment sector</label>
+    <description>Top-level mix of those in work. Tiers are the ROOT EconomicSectorDefs (Agriculture / Extraction / Manufacturing / Services / Military / Public); each root has its own sub-distribution below. The fastest-moving distribution: a job is easy to change.</description>
+    <category>Mutable</category>
+    <kind>Distribution</kind>
+    <tiersFrom>EconomicSectorDef:roots</tiersFrom>
+    <velocity>0.6</velocity>
+    <inertia>0.1</inertia>
+    <deadband>0.02</deadband>
+    <releaseBand>0.01</releaseBand>
+    <maxStepPerYear>0.15</maxStepPerYear>
+    <influences>
+      <li><source>RS_BiomeFertility</source><tier>RS_Agriculture</tier><weight>0.50</weight></li>
+      <li><source>RS_Urbanisation</source><tier>RS_Agriculture</tier><weight>-0.40</weight></li>
+      <li><source>RS_MineralPool</source><tier>RS_Extraction</tier><weight>0.50</weight></li>
+      <li><source>RS_StonePool</source><tier>RS_Extraction</tier><weight>0.20</weight></li>
+      <li><source>RS_Education</source><tier>Secondary</tier><targetTier>RS_Manufacturing</targetTier><weight>0.50</weight></li>
+      <li><source>RS_Urbanisation</source><tier>RS_Manufacturing</tier><weight>0.30</weight></li>
+      <li><source>RS_Roads</source><tier>RS_Services</tier><weight>0.40</weight></li>
+      <li><source>RS_Urbanisation</source><tier>RS_Services</tier><weight>0.30</weight></li>
+      <li><source>RS_Wealth</source><tier>RS_Services</tier><weight>0.20</weight></li>
+      <li><source>RS_Conflict</source><tier>RS_Military</tier><weight>0.50</weight></li>
+      <li><source>RS_FactionCharacter</source><tier>Militarism</tier><targetTier>RS_Military</targetTier><weight>0.40</weight></li>
+      <li><source>RS_Stratification</source><tier>RS_Public</tier><weight>0.30</weight></li>
+      <li><source>RS_Population</source><tier>RS_Public</tier><weight>0.20</weight><curve>Saturating</curve></li>
+    </influences>
+  </RegionsAndSocieties.Demographics.DemographicFactorDef>
+
+  <!-- Sub-sector distributions: one per root, tiers = that root's child EconomicSectorDefs. Same fast pace
+       as RS_Sector. 0.4.0 scaffolds the levels and the pull edges; 0.5.0 adds production/consumption. -->
+
+  <RegionsAndSocieties.Demographics.DemographicFactorDef>
+    <defName>RS_Sector_Agriculture</defName>
+    <label>agriculture mix</label>
+    <description>Food / livestock / fibre / medicinal / cash crops / forestry share of agricultural workers.</description>
+    <category>Mutable</category>
+    <kind>Distribution</kind>
+    <tiersFrom>EconomicSectorDef:RS_Agriculture</tiersFrom>
+    <velocity>0.6</velocity><inertia>0.1</inertia><deadband>0.02</deadband><releaseBand>0.01</releaseBand><maxStepPerYear>0.15</maxStepPerYear>
+    <influences>
+      <li><source>RS_Population</source><tier>RS_Agri_Food</tier><weight>0.40</weight></li>
+      <li><source>RS_SES</source><tier>Subsistence</tier><targetTier>RS_Agri_Food</targetTier><weight>0.30</weight></li>
+      <li><source>RS_BiomeGrazing</source><tier>RS_Agri_Livestock</tier><weight>0.50</weight></li>
+      <li><source>RS_Sector</source><tier>RS_Manufacturing</tier><targetTier>RS_Agri_Fiber</targetTier><weight>0.30</weight></li>
+      <li><source>RS_Wealth</source><tier>RS_Agri_Fiber</tier><weight>0.20</weight></li>
+      <li><source>RS_MortalityRate</source><tier>RS_Agri_Medicinal</tier><weight>0.30</weight></li>
+      <li><source>RS_Education</source><tier>Primary</tier><targetTier>RS_Agri_Medicinal</targetTier><weight>0.20</weight></li>
+      <li><source>RS_Roads</source><tier>RS_Agri_CashCrops</tier><weight>0.40</weight></li>
+      <li><source>RS_Wealth</source><tier>RS_Agri_CashCrops</tier><weight>0.30</weight></li>
+      <li><source>RS_Stratification</source><tier>RS_Agri_CashCrops</tier><weight>0.20</weight></li>
+      <li><source>RS_Ideology</source><tier>Ascetic</tier><targetTier>RS_Agri_CashCrops</targetTier><weight>-0.40</weight></li>
+      <li><source>RS_BiomeForest</source><tier>RS_Agri_Forestry</tier><weight>0.50</weight></li>
+      <li><source>RS_Urbanisation</source><tier>RS_Agri_Forestry</tier><weight>0.20</weight></li>
+    </influences>
+  </RegionsAndSocieties.Demographics.DemographicFactorDef>
+
+  <RegionsAndSocieties.Demographics.DemographicFactorDef>
+    <defName>RS_Sector_Extraction</defName>
+    <label>extraction mix</label>
+    <description>Mining / quarrying / fuel / salvage share of extraction workers.</description>
+    <category>Mutable</category>
+    <kind>Distribution</kind>
+    <tiersFrom>EconomicSectorDef:RS_Extraction</tiersFrom>
+    <velocity>0.6</velocity><inertia>0.1</inertia><deadband>0.02</deadband><releaseBand>0.01</releaseBand><maxStepPerYear>0.15</maxStepPerYear>
+    <influences>
+      <li><source>RS_MineralPool</source><tier>RS_Ext_Mining</tier><weight>0.60</weight></li>
+      <li><source>RS_StonePool</source><tier>RS_Ext_Quarrying</tier><weight>0.50</weight></li>
+      <li><source>RS_Urbanisation</source><tier>RS_Ext_Quarrying</tier><weight>0.20</weight></li>
+      <li><source>RS_Education</source><tier>Secondary</tier><targetTier>RS_Ext_Fuel</targetTier><weight>0.40</weight></li>
+      <li><source>RS_Sector</source><tier>RS_Manufacturing</tier><targetTier>RS_Ext_Fuel</targetTier><weight>0.30</weight></li>
+      <li><source>RS_RuinsPool</source><tier>RS_Ext_Salvage</tier><weight>0.50</weight></li>
+      <li><source>RS_FactionCharacter</source><tier>Militarism</tier><targetTier>RS_Ext_Salvage</targetTier><weight>0.30</weight></li>
+    </influences>
+  </RegionsAndSocieties.Demographics.DemographicFactorDef>
+
+  <RegionsAndSocieties.Demographics.DemographicFactorDef>
+    <defName>RS_Sector_Manufacturing</defName>
+    <label>manufacturing mix</label>
+    <description>Refining / construction / textiles / armaments / components / pharma / drugs / food processing / energy / fabrication share of industrial workers. Each tier needs its laborTier of schooling or its share collapses.</description>
+    <category>Mutable</category>
+    <kind>Distribution</kind>
+    <tiersFrom>EconomicSectorDef:RS_Manufacturing</tiersFrom>
+    <velocity>0.5</velocity><inertia>0.2</inertia><deadband>0.02</deadband><releaseBand>0.01</releaseBand><maxStepPerYear>0.12</maxStepPerYear>
+    <influences>
+      <li><source>RS_Sector_Extraction</source><tier>RS_Ext_Mining</tier><targetTier>RS_Mfg_Refining</targetTier><weight>0.50</weight></li>
+      <li><source>RS_Population</source><tier>RS_Mfg_Construction</tier><weight>0.40</weight></li>
+      <li><source>RS_Urbanisation</source><tier>RS_Mfg_Construction</tier><weight>0.30</weight></li>
+      <li><source>RS_Sector_Agriculture</source><tier>RS_Agri_Fiber</tier><targetTier>RS_Mfg_Textiles</targetTier><weight>0.50</weight></li>
+      <li><source>RS_Sector_Agriculture</source><tier>RS_Agri_Livestock</tier><targetTier>RS_Mfg_Textiles</targetTier><weight>0.20</weight></li>
+      <li><source>RS_Conflict</source><tier>RS_Mfg_Armaments</tier><weight>0.50</weight></li>
+      <li><source>RS_Sector</source><tier>RS_Military</tier><targetTier>RS_Mfg_Armaments</targetTier><weight>0.40</weight></li>
+      <li><source>RS_Education</source><tier>Undergrad</tier><targetTier>RS_Mfg_Components</targetTier><weight>0.50</weight></li>
+      <li><source>RS_Education</source><tier>Undergrad</tier><targetTier>RS_Mfg_Pharma</targetTier><weight>0.40</weight></li>
+      <li><source>RS_Sector_Agriculture</source><tier>RS_Agri_Medicinal</tier><targetTier>RS_Mfg_Pharma</targetTier><weight>0.30</weight></li>
+      <li><source>RS_Sector_Agriculture</source><tier>RS_Agri_CashCrops</tier><targetTier>RS_Mfg_Drugs</targetTier><weight>0.60</weight></li>
+      <li><source>RS_Ideology</source><tier>Ascetic</tier><targetTier>RS_Mfg_Drugs</targetTier><weight>-0.40</weight></li>
+      <li><source>RS_Population</source><tier>RS_Mfg_FoodProcessing</tier><weight>0.30</weight></li>
+      <li><source>RS_Sector_Agriculture</source><tier>RS_Agri_Food</tier><targetTier>RS_Mfg_FoodProcessing</targetTier><weight>0.30</weight></li>
+      <li><source>RS_Urbanisation</source><tier>RS_Mfg_Energy</tier><weight>0.40</weight></li>
+      <li><source>RS_GeothermalPool</source><tier>RS_Mfg_Energy</tier><weight>0.30</weight></li>
+      <li><source>RS_Education</source><tier>Postgrad</tier><targetTier>RS_Mfg_Fabrication</targetTier><weight>0.60</weight></li>
+      <li><source>RS_Wealth</source><tier>RS_Mfg_Fabrication</tier><weight>0.20</weight><curve>Threshold</curve><threshold>0.6</threshold></li>
+    </influences>
+  </RegionsAndSocieties.Demographics.DemographicFactorDef>
+
+  <RegionsAndSocieties.Demographics.DemographicFactorDef>
+    <defName>RS_Sector_Services</defName>
+    <label>services mix</label>
+    <description>Trade / transport / hospitality / finance / healthcare / education / slave trade share of service workers.</description>
+    <category>Mutable</category>
+    <kind>Distribution</kind>
+    <tiersFrom>EconomicSectorDef:RS_Services</tiersFrom>
+    <velocity>0.6</velocity><inertia>0.1</inertia><deadband>0.02</deadband><releaseBand>0.01</releaseBand><maxStepPerYear>0.15</maxStepPerYear>
+    <influences>
+      <li><source>RS_Roads</source><tier>RS_Svc_Trade</tier><weight>0.50</weight></li>
+      <li><source>RS_Roads</source><tier>RS_Svc_Transport</tier><weight>0.40</weight></li>
+      <li><source>RS_Sector</source><tier>RS_Manufacturing</tier><targetTier>RS_Svc_Transport</targetTier><weight>0.20</weight></li>
+      <li><source>RS_Wealth</source><tier>RS_Svc_Hospitality</tier><weight>0.40</weight></li>
+      <li><source>RS_Urbanisation</source><tier>RS_Svc_Hospitality</tier><weight>0.30</weight></li>
+      <li><source>RS_Wealth</source><tier>RS_Svc_Finance</tier><weight>0.40</weight><curve>Threshold</curve><threshold>0.6</threshold></li>
+      <li><source>RS_Education</source><tier>Undergrad</tier><targetTier>RS_Svc_Finance</targetTier><weight>0.30</weight></li>
+      <li><source>RS_Education</source><tier>Undergrad</tier><targetTier>RS_Svc_Healthcare</targetTier><weight>0.40</weight></li>
+      <li><source>RS_MortalityRate</source><tier>RS_Svc_Healthcare</tier><weight>0.30</weight></li>
+      <li><source>RS_AgeStructure</source><tier>Child</tier><targetTier>RS_Svc_Education</targetTier><weight>0.40</weight></li>
+      <li><source>RS_Wealth</source><tier>RS_Svc_Education</tier><weight>0.30</weight></li>
+      <li><source>RS_Stratification</source><tier>RS_Svc_SlaveTrade</tier><weight>0.70</weight><curve>Threshold</curve><threshold>0.5</threshold></li>
+      <li><source>RS_Conflict</source><tier>RS_Svc_SlaveTrade</tier><weight>0.30</weight></li>
+    </influences>
+  </RegionsAndSocieties.Demographics.DemographicFactorDef>
+
+  <RegionsAndSocieties.Demographics.DemographicFactorDef>
+    <defName>RS_Sector_Military</defName>
+    <label>military mix</label>
+    <description>Garrison / raiding / mercenary share of those under arms.</description>
+    <category>Mutable</category>
+    <kind>Distribution</kind>
+    <tiersFrom>EconomicSectorDef:RS_Military</tiersFrom>
+    <velocity>0.6</velocity><inertia>0.1</inertia><deadband>0.02</deadband><releaseBand>0.01</releaseBand><maxStepPerYear>0.15</maxStepPerYear>
+    <influences>
+      <li><source>RS_Stratification</source><tier>RS_Mil_Garrison</tier><weight>0.30</weight></li>
+      <li><source>RS_Wealth</source><tier>RS_Mil_Garrison</tier><weight>0.30</weight></li>
+      <li><source>RS_FactionCharacter</source><tier>Militarism</tier><targetTier>RS_Mil_Raiding</targetTier><weight>0.60</weight></li>
+      <li><source>RS_Wealth</source><tier>RS_Mil_Raiding</tier><weight>-0.40</weight></li>
+      <li><source>RS_EmploymentRate</source><tier>RS_Mil_Raiding</tier><weight>-0.30</weight></li>
+      <li><source>RS_Conflict</source><tier>RS_Mil_Mercenary</tier><weight>0.40</weight></li>
+      <li><source>RS_Roads</source><tier>RS_Mil_Mercenary</tier><weight>0.20</weight></li>
+    </influences>
+  </RegionsAndSocieties.Demographics.DemographicFactorDef>
+
+  <RegionsAndSocieties.Demographics.DemographicFactorDef>
+    <defName>RS_Sector_Public</defName>
+    <label>public mix</label>
+    <description>Administration / clergy share of public workers.</description>
+    <category>Mutable</category>
+    <kind>Distribution</kind>
+    <tiersFrom>EconomicSectorDef:RS_Public</tiersFrom>
+    <velocity>0.4</velocity><inertia>0.3</inertia><deadband>0.02</deadband><releaseBand>0.01</releaseBand><maxStepPerYear>0.10</maxStepPerYear>
+    <influences>
+      <li><source>RS_Population</source><tier>RS_Pub_Administration</tier><weight>0.40</weight><curve>Saturating</curve></li>
+      <li><source>RS_Stratification</source><tier>RS_Pub_Administration</tier><weight>0.30</weight></li>
+      <li><source>RS_Ideology</source><targetTier>RS_Pub_Clergy</targetTier><weight>0.50</weight><curve>Saturating</curve></li>
+    </influences>
+  </RegionsAndSocieties.Demographics.DemographicFactorDef>
+
+  <RegionsAndSocieties.Demographics.DemographicFactorDef>
+    <defName>RS_Urbanisation</defName>
+    <label>urbanisation</label>
+    <description>Residence-tier weighted density (Homestead → Village → Town → City) — where people live. Fast: moving house is cheap.</description>
+    <category>Mutable</category>
+    <kind>Scalar</kind>
+    <velocity>0.4</velocity>
+    <inertia>0.3</inertia>
+    <deadband>0.02</deadband>
+    <releaseBand>0.01</releaseBand>
+    <maxStepPerYear>0.08</maxStepPerYear>
+    <influences>
+      <li><source>RS_Wealth</source><weight>0.30</weight></li>
+      <li><source>RS_Sector</source><tier>Industry</tier><weight>0.30</weight></li>
+      <li><source>RS_Sector</source><tier>Trade</tier><weight>0.20</weight></li>
+      <li><source>RS_Roads</source><weight>0.20</weight></li>
+      <li><source>RS_BiomeFertility</source><weight>-0.10</weight></li>
+      <li><source>RS_Conflict</source><weight>-0.20</weight></li>
+      <li><source>RS_Outposts</source><weight>0.15</weight></li>
+    </influences>
+  </RegionsAndSocieties.Demographics.DemographicFactorDef>
+
+  <RegionsAndSocieties.Demographics.DemographicFactorDef>
+    <defName>RS_Wealth</defName>
+    <label>wealth</label>
+    <description>Median wealth, normalised 0..1 against the planet. Fast to gain and fast to lose.</description>
+    <category>Mutable</category>
+    <kind>Scalar</kind>
+    <velocity>0.5</velocity>
+    <inertia>0.2</inertia>
+    <deadband>0.02</deadband>
+    <releaseBand>0.01</releaseBand>
+    <maxStepPerYear>0.10</maxStepPerYear>
+    <influences>
+      <li><source>RS_EmploymentRate</source><weight>0.40</weight></li>
+      <li><source>RS_Sector</source><tier>Industry</tier><weight>0.30</weight></li>
+      <li><source>RS_Sector</source><tier>Trade</tier><weight>0.30</weight></li>
+      <li><source>RS_Education</source><tier>Secondary</tier><weight>0.30</weight><lagYears>5</lagYears></li>
+      <li><source>RS_Education</source><tier>Postgrad</tier><weight>0.20</weight><lagYears>5</lagYears></li>
+      <li><source>RS_Stratification</source><weight>-0.40</weight><curve>Threshold</curve><threshold>0.4</threshold></li>
+      <li><source>RS_Outposts</source><weight>0.30</weight></li>
+      <li><source>RS_FactionCharacter</source><tier>WealthMultiplier</tier><weight>0.30</weight></li>
+      <li><source>RS_Conflict</source><weight>-0.30</weight></li>
+    </influences>
+  </RegionsAndSocieties.Demographics.DemographicFactorDef>
+
+  <RegionsAndSocieties.Demographics.DemographicFactorDef>
+    <defName>RS_SES</defName>
+    <label>socioeconomic tiers</label>
+    <description>Subsistence / Modest / Prosperous / Affluent shares — the SHAPE of wealth, not its median. Stratification polarises it (thins the middle); wealth lifts it.</description>
+    <category>Mutable</category>
+    <kind>Distribution</kind>
+    <tiers><li>Subsistence</li><li>Modest</li><li>Prosperous</li><li>Affluent</li></tiers>
+    <velocity>0.4</velocity>
+    <inertia>0.3</inertia>
+    <deadband>0.02</deadband>
+    <releaseBand>0.01</releaseBand>
+    <maxStepPerYear>0.08</maxStepPerYear>
+    <influences>
+      <li><source>RS_Wealth</source><tier>Prosperous</tier><weight>0.50</weight></li>
+      <li><source>RS_Wealth</source><tier>Subsistence</tier><weight>-0.40</weight></li>
+      <li><source>RS_Education</source><tier>Secondary</tier><targetTier>Modest</targetTier><weight>0.30</weight></li>
+      <li><source>RS_Stratification</source><tier>Affluent</tier><weight>0.30</weight></li>
+      <li><source>RS_Stratification</source><tier>Subsistence</tier><weight>0.50</weight></li>
+      <li><source>RS_Stratification</source><tier>Modest</tier><weight>-0.50</weight></li>
+      <li><source>RS_EmploymentRate</source><tier>Subsistence</tier><weight>-0.30</weight></li>
+    </influences>
+  </RegionsAndSocieties.Demographics.DemographicFactorDef>
+
+  <!-- ================================================================================================ -->
+  <!-- MUTABLE — SLOW. Schooling takes a generation; belief is sticky, and stickier when surrounded.     -->
+  <!-- ================================================================================================ -->
+
+  <RegionsAndSocieties.Demographics.DemographicFactorDef>
+    <defName>RS_Education</defName>
+    <label>education</label>
+    <description>Illiterate / Primary / Secondary / Undergrad / Postgrad shares. Slow: only the young move up the ladder, so the region's distribution turns over at the pace of its child cohort.</description>
+    <category>Mutable</category>
+    <kind>Distribution</kind>
+    <tiers><li>Illiterate</li><li>Primary</li><li>Secondary</li><li>Undergrad</li><li>Postgrad</li></tiers>
+    <velocity>0.08</velocity>
+    <inertia>0.6</inertia>
+    <deadband>0.04</deadband>
+    <releaseBand>0.02</releaseBand>
+    <maxStepPerYear>0.03</maxStepPerYear>
+    <influences>
+      <li><source>RS_Wealth</source><tier>Secondary</tier><weight>0.30</weight></li>
+      <li><source>RS_Urbanisation</source><tier>Secondary</tier><weight>0.30</weight></li>
+      <li><source>RS_Urbanisation</source><tier>Undergrad</tier><weight>0.20</weight></li>
+      <li><source>RS_AgeStructure</source><tier>Child</tier><targetTier>Primary</targetTier><weight>0.20</weight></li>
+      <li><source>RS_FactionCharacter</source><tier>KnowledgeSkew</tier><targetTier>Undergrad</targetTier><weight>0.50</weight></li>
+      <li><source>RS_Ideology</source><tier>Knowledge</tier><targetTier>Undergrad</targetTier><weight>0.20</weight></li>
+      <li><source>RS_Stratification</source><tier>Illiterate</tier><weight>0.40</weight></li>
+      <li><source>RS_Stratification</source><tier>Secondary</tier><weight>-0.50</weight></li>
+      <li><source>RS_Conflict</source><tier>Secondary</tier><weight>-0.20</weight></li>
+    </influences>
+  </RegionsAndSocieties.Demographics.DemographicFactorDef>
+
+  <RegionsAndSocieties.Demographics.DemographicFactorDef>
+    <defName>RS_Ideology</defName>
+    <label>ideology</label>
+    <description>Ideoligion / meme shares. Slowest of all and self-reinforcing: the stronger a belief's share around you, the harder it is to leave it. Target = pressure blend (live faction pressure + 5-year residual ghost); reaches xenotype and age only through the birth rate.</description>
+    <category>Mutable</category>
+    <kind>Distribution</kind>
+    <tiersFrom>MemeDef</tiersFrom>
+    <velocity>0.04</velocity>
+    <inertia>0.8</inertia>
+    <deadband>0.05</deadband>
+    <releaseBand>0.02</releaseBand>
+    <maxStepPerYear>0.02</maxStepPerYear>
+    <influences>
+      <li><source>RS_SurroundingIdeologyShare</source><weight>0.60</weight><curve>Saturating</curve></li>
+      <li><source>RS_FactionPressure</source><weight>0.40</weight></li>
+      <li><source>RS_ResidualPressure</source><weight>0.20</weight></li>
+      <li><source>RS_MigrationNet</source><weight>0.15</weight></li>
+      <li><source>RS_Education</source><tier>Undergrad</tier><weight>0.10</weight></li>
+      <li><source>RS_Conflict</source><weight>-0.10</weight></li>
+    </influences>
+  </RegionsAndSocieties.Demographics.DemographicFactorDef>
+
+  <!-- ================================================================================================ -->
+  <!-- CONTEXT — stress sources with no level of their own. Core ships the ones it can compute itself;   -->
+  <!-- companion patches add theirs (Outposts, Conflict, PlayerColonyPull) via PatchOperationAdd.       -->
+  <!-- ================================================================================================ -->
+
+  <RegionsAndSocieties.Demographics.DemographicFactorDef>
+    <defName>RS_BiomeFertility</defName><label>biome fertility</label>
+    <description>Fertile share of the region's land (existing fertileFraction).</description>
+    <category>Context</category><kind>Scalar</kind>
+  </RegionsAndSocieties.Demographics.DemographicFactorDef>
+
+  <RegionsAndSocieties.Demographics.DemographicFactorDef>
+    <defName>RS_XenotypeFertility</defName><label>xenotype fertility</label>
+    <description>Population-weighted fertility of the xenotypes present (Biotech; 1.0 without it).</description>
+    <category>Context</category><kind>Scalar</kind>
+  </RegionsAndSocieties.Demographics.DemographicFactorDef>
+
+  <RegionsAndSocieties.Demographics.DemographicFactorDef>
+    <defName>RS_FactionCharacter</defName><label>faction character</label>
+    <description>The owning faction's archetype (FactionCharacterRules): KnowledgeSkew, WealthMultiplier, Militarism read as tiers.</description>
+    <category>Context</category><kind>Distribution</kind>
+    <tiers><li>KnowledgeSkew</li><li>WealthMultiplier</li><li>Militarism</li></tiers>
+  </RegionsAndSocieties.Demographics.DemographicFactorDef>
+
+  <RegionsAndSocieties.Demographics.DemographicFactorDef>
+    <defName>RS_FactionPressure</defName><label>faction pressure</label>
+    <description>Live pressure-weighted faction ideology blend over the region (the existing broadcast model).</description>
+    <category>Context</category><kind>Distribution</kind><tiersFrom>MemeDef</tiersFrom>
+  </RegionsAndSocieties.Demographics.DemographicFactorDef>
+
+  <RegionsAndSocieties.Demographics.DemographicFactorDef>
+    <defName>RS_ResidualPressure</defName><label>residual pressure</label>
+    <description>The previous owner's last pressure, fading linearly over 5 years (the ghost).</description>
+    <category>Context</category><kind>Distribution</kind><tiersFrom>MemeDef</tiersFrom>
+  </RegionsAndSocieties.Demographics.DemographicFactorDef>
+
+  <RegionsAndSocieties.Demographics.DemographicFactorDef>
+    <defName>RS_SurroundingIdeologyShare</defName><label>surrounding ideology</label>
+    <description>Population-weighted ideology shares of the region plus its adjacent regions — the "surrounded by that group" effect.</description>
+    <category>Context</category><kind>Distribution</kind><tiersFrom>MemeDef</tiersFrom>
+  </RegionsAndSocieties.Demographics.DemographicFactorDef>
+
+  <RegionsAndSocieties.Demographics.DemographicFactorDef>
+    <defName>RS_Stratification</defName><label>stratification</label>
+    <description>0..1 rigidity of the social order (#29): caste, serfdom, slavery. 0 = open society. Set by faction character; companion patches may raise it (conquest, Imperium).</description>
+    <category>Context</category><kind>Scalar</kind>
+  </RegionsAndSocieties.Demographics.DemographicFactorDef>
+
+  <RegionsAndSocieties.Demographics.DemographicFactorDef>
+    <defName>RS_Roads</defName><label>road connectivity</label>
+    <description>0..1 share of the region's settlements linked by road (#39).</description>
+    <category>Context</category><kind>Scalar</kind>
+  </RegionsAndSocieties.Demographics.DemographicFactorDef>
+
+  <RegionsAndSocieties.Demographics.DemographicFactorDef>
+    <defName>RS_Conflict</defName><label>conflict</label>
+    <description>0..1 intensity of war touching the region. Core leaves it 0; World-Domination-CP / Empire-CP drive it.</description>
+    <category>Context</category><kind>Scalar</kind>
+  </RegionsAndSocieties.Demographics.DemographicFactorDef>
+
+  <RegionsAndSocieties.Demographics.DemographicFactorDef>
+    <defName>RS_Outposts</defName><label>outposts</label>
+    <description>0..1 outpost intensity in the region (#35). Core leaves it 0; VOE-CP drives it.</description>
+    <category>Context</category><kind>Scalar</kind>
+  </RegionsAndSocieties.Demographics.DemographicFactorDef>
+
+  <RegionsAndSocieties.Demographics.DemographicFactorDef>
+    <defName>RS_PlayerColonyPull</defName><label>player colony pull</label>
+    <description>Adjacency-hop falloff from the player's colony (#36 migration attractor).</description>
+    <category>Context</category><kind>Scalar</kind>
+  </RegionsAndSocieties.Demographics.DemographicFactorDef>
+
+
+  <!-- Resource pools and land classes the sector tree reads (the region panel's natural-resource pools). -->
+
+  <RegionsAndSocieties.Demographics.DemographicFactorDef>
+    <defName>RS_BiomeGrazing</defName><label>grazing land</label>
+    <description>Share of the region's land animals can graze but crops cannot use.</description>
+    <category>Context</category><kind>Scalar</kind>
+  </RegionsAndSocieties.Demographics.DemographicFactorDef>
+
+  <RegionsAndSocieties.Demographics.DemographicFactorDef>
+    <defName>RS_BiomeForest</defName><label>forest cover</label>
+    <description>Share of the region under forest (timber).</description>
+    <category>Context</category><kind>Scalar</kind>
+  </RegionsAndSocieties.Demographics.DemographicFactorDef>
+
+  <RegionsAndSocieties.Demographics.DemographicFactorDef>
+    <defName>RS_MineralPool</defName><label>mineral pool</label>
+    <description>0..1 ore richness from the region's mountains and hills.</description>
+    <category>Context</category><kind>Scalar</kind>
+  </RegionsAndSocieties.Demographics.DemographicFactorDef>
+
+  <RegionsAndSocieties.Demographics.DemographicFactorDef>
+    <defName>RS_StonePool</defName><label>stone pool</label>
+    <description>0..1 quarriable stone.</description>
+    <category>Context</category><kind>Scalar</kind>
+  </RegionsAndSocieties.Demographics.DemographicFactorDef>
+
+  <RegionsAndSocieties.Demographics.DemographicFactorDef>
+    <defName>RS_GeothermalPool</defName><label>geothermal</label>
+    <description>0..1 geothermal vents in the region (no clean world-tile source yet; 0 until one exists).</description>
+    <category>Context</category><kind>Scalar</kind>
+  </RegionsAndSocieties.Demographics.DemographicFactorDef>
+
+  <RegionsAndSocieties.Demographics.DemographicFactorDef>
+    <defName>RS_RuinsPool</defName><label>ruins</label>
+    <description>0..1 ancient ruins and wrecks to salvage.</description>
+    <category>Context</category><kind>Scalar</kind>
+  </RegionsAndSocieties.Demographics.DemographicFactorDef>
+
+</Defs>
