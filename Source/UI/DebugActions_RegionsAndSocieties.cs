@@ -607,8 +607,11 @@ namespace RegionsAndSocieties.UI
                 Log.Warning("[R&S] hint stress: no way to set WorldSelector.SelectedTile.");
                 return;
             }
+            // Mirror a real click: vanilla deselects any world object before selecting a bare tile, and Map
+            // Preview keys its preview off that bare-tile selection.
             System.Action<int> select = id =>
             {
+                selector.ClearSelection();
                 var pt = new PlanetTile(id, Find.WorldGrid.Surface);
                 if (setter != null) setter.Invoke(selector, new object[] { pt });
                 else field.SetValue(selector, pt);
@@ -663,6 +666,7 @@ namespace RegionsAndSocieties.UI
             // Phase C: dwell on the last tile past the threshold; the hint must now appear iff the evaluator refuses.
             int last = tiles[tiles.Count - 1];
             select(last);
+            Find.WorldCameraDriver?.JumpTo(last);
             getter.Invoke(pane, null);
             System.Threading.Thread.Sleep((int)(Placement.PlacementHintCache.DefaultDwellSeconds * 1000) + 150);
             bool busy = Compat.MapPreviewCompat.IsGeneratingPreview;
@@ -681,12 +685,24 @@ namespace RegionsAndSocieties.UI
 
             bool hopFast = tiles.Count > 0 && hopTotalMs / tiles.Count < 2.0;
             bool pass = hopFast && dwellOk;
+
+            // Pane counters since the previous run: evaluations the live pane actually performed, frames it
+            // stood down for a generating Map Preview, and cache hits. The delta is what tells you whether a
+            // preview overlapped the pane (busy > 0) and that the hops above did not turn into evaluations.
+            int evals = Patches.Patch_WorldInspectPane_TileInspectString.Evaluations - lastEvaluations;
+            int busyFrames = Patches.Patch_WorldInspectPane_TileInspectString.BusyFrames - lastBusyFrames;
+            int hitFrames = Patches.Patch_WorldInspectPane_TileInspectString.HitFrames - lastHitFrames;
+            lastEvaluations += evals; lastBusyFrames += busyFrames; lastHitFrames += hitFrames;
+
             Log.Message($"[SYNAPSE-TEST] {(pass ? "PASS" : "FAIL")} RT_InspectPaneHintStress | tiles={tiles.Count} " +
                         $"hop: total={hopTotalMs:0.00}ms avg={(tiles.Count > 0 ? hopTotalMs / tiles.Count : 0):0.000}ms max={hopMaxMs:0.00}ms regionLines={withRegionLine} " +
                         $"| pre-0.3.2 inline cost for the same clicks: {inlineTotalMs:0.0}ms ({refused} refused) " +
                         $"| dwell: expectHint={expectHint} hintShown={hintShown} busy={busy} revisit={revisitMs:0.000}ms " +
-                        $"| MapPreview present={Compat.MapPreviewCompat.Present}. Now hop tiles by hand (or rerun) and check the log for 'Nested FloodFill' (#45).");
+                        $"| pane since last run: evaluations={evals} busyFrames={busyFrames} hitFrames={hitFrames} " +
+                        $"| MapPreview present={Compat.MapPreviewCompat.Present}. Rerun after a preview has generated: busyFrames>0 proves the stand-down; the log must stay free of the nested flood-fill error (#45).");
         }
+
+        private static int lastEvaluations, lastBusyFrames, lastHitFrames;
 
         private static int CountVanillaLines(string text)
         {

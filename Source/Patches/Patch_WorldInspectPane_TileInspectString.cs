@@ -28,6 +28,12 @@ namespace RegionsAndSocieties.Patches
         private static readonly PlacementHintCache hints = new PlacementHintCache();
         private static World hintsWorld;
 
+        // Diagnostics for the "R&S: inspect-pane hint stress" debug action: how often the pane actually
+        // evaluated, and how many frames it stood down because Map Preview was generating.
+        internal static int Evaluations;
+        internal static int BusyFrames;
+        internal static int HitFrames;
+
         [HarmonyPostfix]
         static void Postfix(ref string __result)
         {
@@ -139,14 +145,17 @@ namespace RegionsAndSocieties.Patches
             int worldVersion = Find.WorldObjects?.AllWorldObjects?.Count ?? 0;
             float realtime = Time.realtimeSinceStartup;
             bool busy = MapPreviewCompat.IsGeneratingPreview;
+            if (busy) BusyFrames++;
 
             string hint;
             switch (hints.Lookup(tileId, worldVersion, gameTick, realtime, busy, out hint))
             {
                 case HintLookup.Hit:
+                    HitFrames++;
                     return hint;
 
                 case HintLookup.Evaluate:
+                    Evaluations++;
                     PlacementDecision decision = WorldObjectPlacementUtility.Evaluate(
                         tileId, player, WorldObjectKind.Settlement);
                     hint = !decision.Allowed && !string.IsNullOrEmpty(decision.Reason) ? decision.Reason : null;
