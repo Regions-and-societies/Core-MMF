@@ -574,5 +574,83 @@ namespace RegionsAndSocieties.UI
                         $"orbitTiles={(grid.Orbit != null ? grid.Orbit.TilesCount : 0)} rejectsOob={rejectsOob} rejectsOrbit={rejectsOrbit} " +
                         $"acceptsSurface={acceptsSurface} sampleOwnerNull={sampleSafe}. Expect NO 'Attempted to access a tile' error above (#77).");
         }
+
+        // 0.3.2 (#37): the VFE Deserters comms-console freeze. Opening the Deserter network fills a list of ten
+        // service quests; each candidate quest script is test-run, and the site-based ones search a 7-27 tile
+        // band around the player with TileFinder.IsValidTileForNewSettlement as the validator. Our postfix on
+        // that method ran a full placement evaluation for every candidate tile — thousands per search — and
+        // refused most of them. This probe (a) replays that exact search and counts what the postfix cost, and
+        // (b) when Deserters is loaded, times WorldComponent_Deserters.EnsureQuestListFilled() itself.
+        [DebugAction("Regions and Societies", "R&S: Deserters comms probe (#37)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        private static void DesertersCommsProbe()
+        {
+            if (Find.World == null || Find.WorldGrid == null) return;
+
+            PlanetTile root = PlanetTile.Invalid;
+            foreach (var s in Find.WorldObjects.Settlements)
+            {
+                if (s.Faction == Faction.OfPlayerSilentFail) { root = s.Tile; break; }
+            }
+            if (root == PlanetTile.Invalid)
+            {
+                Log.Warning("[R&S] Deserters probe: no player settlement to search around.");
+                return;
+            }
+
+            // (a) The Deserters-style site search (QuestNode_GetSiteTileForComplex.TryFindTile, first form).
+            int validatorCalls = 0, refusedByUs = 0;
+            var grid = Find.WorldGrid;
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            bool found = TileFinder.TryFindPassableTileWithTraversalDistance(root, 7, 27, out PlanetTile site, tile =>
+            {
+                validatorCalls++;
+                if (grid[tile].hilliness != Hilliness.Flat || Find.WorldObjects.AnyWorldObjectAt(tile)) return false;
+                bool ok = TileFinder.IsValidTileForNewSettlement(tile);
+                if (!ok) refusedByUs++;
+                return ok;
+            });
+            sw.Stop();
+            double searchMs = sw.Elapsed.TotalMilliseconds;
+
+            // (b) The real thing, when Deserters is loaded.
+            string desertersPart = "Deserters not loaded";
+            bool desertersOk = true;
+            var compType = HarmonyLib.AccessTools.TypeByName("VFED.WorldComponent_Deserters");
+            if (compType != null)
+            {
+                try
+                {
+                    object comp = HarmonyLib.AccessTools.Property(compType, "Instance")?.GetValue(null)
+                                  ?? HarmonyLib.AccessTools.Field(compType, "Instance")?.GetValue(null);
+                    var fill = HarmonyLib.AccessTools.Method(compType, "EnsureQuestListFilled");
+                    var listField = HarmonyLib.AccessTools.Field(compType, "ServiceQuests");
+                    if (comp == null || fill == null)
+                    {
+                        desertersPart = "Deserters loaded but WorldComponent_Deserters.Instance/EnsureQuestListFilled not found";
+                        desertersOk = false;
+                    }
+                    else
+                    {
+                        int before = (listField?.GetValue(comp) as System.Collections.ICollection)?.Count ?? -1;
+                        sw.Restart();
+                        fill.Invoke(comp, null);
+                        sw.Stop();
+                        int after = (listField?.GetValue(comp) as System.Collections.ICollection)?.Count ?? -1;
+                        desertersPart = $"EnsureQuestListFilled took {sw.Elapsed.TotalMilliseconds:0} ms (ServiceQuests {before} -> {after})";
+                        desertersOk = sw.Elapsed.TotalMilliseconds < 2000;
+                    }
+                }
+                catch (System.Exception ex)
+                {
+                    desertersPart = "EnsureQuestListFilled threw: " + ex.GetType().Name + ": " + ex.Message;
+                    desertersOk = false;
+                }
+            }
+
+            bool pass = searchMs < 250 && desertersOk;
+            Log.Message($"[SYNAPSE-TEST] {(pass ? "PASS" : "FAIL")} RT_DesertersCommsProbe | site search from tile {root.tileId}: " +
+                        $"{searchMs:0} ms, validator calls={validatorCalls}, refused by IsValidTileForNewSettlement={refusedByUs}, found={found}" +
+                        $"{(found ? " tile " + site.tileId : "")} | {desertersPart}");
+        }
     }
 }
