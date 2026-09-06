@@ -116,12 +116,20 @@ namespace RegionsAndSocieties.UI
             const float tabH = 32f;
             Rect body = new Rect(0f, headerH + tabH, inRect.width, inRect.height - headerH - tabH);
 
+            // #53: Population and Economy are the Societies tabs; with Societies off the panel is
+            // Region-only, and a stale selection falls back to the Region tab.
+            bool societies = RegionsAndSocietiesMod.SocietiesEnabled;
+            if (!societies) currentTab = Tab.Region;
+
             var tabs = new List<TabRecord>
             {
                 new TabRecord("Region", () => currentTab = Tab.Region, currentTab == Tab.Region),
-                new TabRecord("Population", () => currentTab = Tab.Demographics, currentTab == Tab.Demographics),
-                new TabRecord("Economy", () => currentTab = Tab.Economy, currentTab == Tab.Economy),
             };
+            if (societies)
+            {
+                tabs.Add(new TabRecord("Population", () => currentTab = Tab.Demographics, currentTab == Tab.Demographics));
+                tabs.Add(new TabRecord("Economy", () => currentTab = Tab.Economy, currentTab == Tab.Economy));
+            }
             TabDrawer.DrawTabs(body, tabs, 200f);
 
             Rect content = body.ContractedBy(8f);
