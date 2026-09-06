@@ -697,6 +697,11 @@ namespace RegionsAndSocieties.Patches
             }
 
             // Redistribute NPC faction colors deterministically to ensure high vibrance and distinct visual separation
+            // #57: split a scattered low-tech faction (tribe / rough union) into loosely-related kin
+            // sub-factions by region — the tribe that once spanned the map, carved into a north and a
+            // south tribe. Runs before the colour pass so each new faction gets its own map colour.
+            SplitFactionsIntoSubFactions(layer, factionManager, regionManager, worldObjects, worldGrid);
+
             var assignableFactions = factionManager.AllFactions
                 .Where(f => !f.IsPlayer && !f.def.hidden && f.def.defName != "Empire")
                 .ToList();
@@ -790,6 +795,192 @@ namespace RegionsAndSocieties.Patches
         /// faction-gen throw degrades to a skipped, logged faction rather than a dead world.</para>
         /// </summary>
         private static bool loggedSkipDetail;
+
+        /// <summary>Cap on total world factions after splitting, so a dense low-tech world does not
+        /// explode the faction list (#57).</summary>
+        private const int MaxWorldFactionsAfterSplit = 40;
+
+        /// <summary>
+        /// #57: split each scattered low-tech faction (a finite cluster cap below Spacer tech — tribes and
+        /// rough unions) into loosely-related kin sub-factions, one per geographic section of its
+        /// settlements. The largest section keeps the faction; the others become new factions of the same
+        /// def, renamed by direction (North/South, or West/East), with friendly goodwill to their kin.
+        /// Runs after placement, before the colour pass.
+        /// </summary>
+        private static void SplitFactionsIntoSubFactions(PlanetLayer layer, FactionManager factionManager,
+            SynapseRegionManager regionManager, WorldObjectsHolder worldObjects, WorldGrid worldGrid)
+        {
+            if (factionManager == null || regionManager == null || worldObjects == null || worldGrid == null) return;
+
+            // Settlement provinces per faction (only surface settlements count).
+            var provincesByFaction = new Dictionary<Faction, List<GeographicProvince>>();
+            foreach (var o in worldObjects.AllWorldObjects)
+            {
+                if (o?.Faction == null || o.Faction.IsPlayer) continue;
+                if (Integration.WorldObjectClassifier.Classify(o) != Integration.WorldObjectKind.Settlement) continue;
+                var p = regionManager.GetProvinceForTile(o.Tile);
+                if (p == null) continue;
+                if (!provincesByFaction.TryGetValue(o.Faction, out var list)) { list = new List<GeographicProvince>(); provincesByFaction[o.Faction] = list; }
+                if (!list.Contains(p)) list.Add(p);
+            }
+
+            // Snapshot the eligible parents up front — we add factions as we go and must not re-split one.
+            var parents = factionManager.AllFactions
+                .Where(f => f != null && !f.IsPlayer && !f.def.hidden && f.def.techLevel < TechLevel.Spacer)
+                .ToList();
+
+            int created = 0;
+            foreach (var parent in parents)
+            {
+                if (factionManager.AllFactions.Count() >= MaxWorldFactionsAfterSplit) break;
+                if (!provincesByFaction.TryGetValue(parent, out var provs) || provs.Count == 0) continue;
+
+                var profile = FactionPlacementSettings.GetProfile(parent.def);
+                int cap = Placement.ClusteringRules.Snap(profile != null ? profile.clusterSize : 0);
+
+                var bodies = BuildFactionBodies(provs);
+                if (!Placement.SubFactionRules.ShouldSplit((int)parent.def.techLevel, cap, bodies.Count)) continue;
+
+                int k = Placement.SubFactionRules.SectionCount(bodies.Count, Placement.SubFactionRules.MaxSections);
+                if (k <= 1) continue;
+
+                var centroids = new List<Placement.GeoPoint>(bodies.Count);
+                foreach (var b in bodies) centroids.Add(BodyCentroid(b, worldGrid));
+                int[] sectionOf = Placement.SubFactionRules.AssignSections(centroids, k);
+
+                var sectionProvs = new List<List<GeographicProvince>>();
+                for (int s = 0; s < k; s++) sectionProvs.Add(new List<GeographicProvince>());
+                var sx = new double[k]; var sy = new double[k]; var sz = new double[k]; var sc = new int[k];
+                for (int bi = 0; bi < bodies.Count; bi++)
+                {
+                    int s = sectionOf[bi];
+                    sectionProvs[s].AddRange(bodies[bi]);
+                    sx[s] += centroids[bi].X; sy[s] += centroids[bi].Y; sz[s] += centroids[bi].Z; sc[s]++;
+                }
+                var sectionPts = new List<Placement.GeoPoint>(k);
+                for (int s = 0; s < k; s++) { int n = System.Math.Max(1, sc[s]); sectionPts.Add(new Placement.GeoPoint(sx[s] / n, sy[s] / n, sz[s] / n)); }
+
+                // The section with the most settlement provinces keeps the parent faction.
+                int keep = 0;
+                for (int s = 1; s < k; s++) if (sectionProvs[s].Count > sectionProvs[keep].Count) keep = s;
+
+                string[] labels = Placement.SubFactionRules.SectionLabels(sectionPts);
+                string baseName = parent.Name;
+                if (!string.IsNullOrEmpty(labels[keep])) parent.Name = labels[keep] + " " + baseName;
+
+                var kin = new List<Faction> { parent };
+                for (int s = 0; s < k; s++)
+                {
+                    if (s == keep) continue;
+                    if (factionManager.AllFactions.Count() >= MaxWorldFactionsAfterSplit) break;
+
+                    Faction sub = TryGenerateFaction(layer, parent.def);
+                    if (sub == null) continue;
+                    sub.Name = (string.IsNullOrEmpty(labels[s]) ? "" : labels[s] + " ") + baseName;
+
+                    // Relations against every existing faction, then friendly kin goodwill with the parent
+                    // and any siblings already made — loosely related, not merged, not hostile.
+                    foreach (var other in factionManager.AllFactions)
+                        if (other != sub) sub.RelationWith(other, true);
+                    foreach (var k2 in kin) SetKinGoodwill(sub, k2);
+                    TryShareIdeo(parent, sub);
+                    kin.Add(sub);
+
+                    // Reassign this section's settlements and province ownership to the sub-faction.
+                    string subId = sub.GetUniqueLoadID();
+                    string parentId = parent.GetUniqueLoadID();
+                    var sectionSet = new HashSet<GeographicProvince>(sectionProvs[s]);
+                    foreach (var o in worldObjects.AllWorldObjects)
+                    {
+                        if (o?.Faction != parent) continue;
+                        if (Integration.WorldObjectClassifier.Classify(o) != Integration.WorldObjectKind.Settlement) continue;
+                        var p = regionManager.GetProvinceForTile(o.Tile);
+                        if (p != null && sectionSet.Contains(p)) o.SetFaction(sub);
+                    }
+                    foreach (var p in sectionProvs[s])
+                    {
+                        p.owningFactionIds.Remove(parentId);
+                        if (!p.owningFactionIds.Contains(subId)) p.owningFactionIds.Add(subId);
+                    }
+                    created++;
+                    Log.Message($"[RegionsAndSocieties] #57: split '{sub.Name}' off '{parent.Name}' ({sectionProvs[s].Count} provinces).");
+                }
+            }
+            if (created > 0)
+                Log.Message($"[RegionsAndSocieties] Split {created} sub-faction(s) off scattered low-tech factions (#57).");
+        }
+
+        /// <summary>Connected components of a faction's settlement provinces under land adjacency.</summary>
+        private static List<List<GeographicProvince>> BuildFactionBodies(List<GeographicProvince> provs)
+        {
+            var byId = new Dictionary<int, GeographicProvince>();
+            foreach (var p in provs) byId[p.id] = p;
+            var seen = new HashSet<int>();
+            var bodies = new List<List<GeographicProvince>>();
+            foreach (var start in provs)
+            {
+                if (seen.Contains(start.id)) continue;
+                var comp = new List<GeographicProvince>();
+                var stack = new Stack<GeographicProvince>();
+                stack.Push(start); seen.Add(start.id);
+                while (stack.Count > 0)
+                {
+                    var cur = stack.Pop();
+                    comp.Add(cur);
+                    if (cur.borderShares != null)
+                        foreach (int nid in cur.borderShares.Keys)
+                            if (byId.TryGetValue(nid, out var np) && seen.Add(nid)) stack.Push(np);
+                }
+                bodies.Add(comp);
+            }
+            return bodies;
+        }
+
+        private static Placement.GeoPoint BodyCentroid(List<GeographicProvince> body, WorldGrid worldGrid)
+        {
+            double x = 0, y = 0, z = 0; int n = 0;
+            foreach (var p in body)
+            {
+                if (p.tiles == null || p.tiles.Count == 0) continue;
+                Vector3 c = worldGrid.GetTileCenter(p.tiles[0]);
+                x += c.x; y += c.y; z += c.z; n++;
+            }
+            if (n == 0) return new Placement.GeoPoint(0, 0, 0);
+            return new Placement.GeoPoint(x / n, y / n, z / n);
+        }
+
+        private static void SetKinGoodwill(Faction a, Faction b)
+        {
+            try
+            {
+                // Both directions must exist before goodwill is affected: two brand-new sibling factions
+                // each only created the relation from their own side, so TryAffectGoodwillWith NREs on the
+                // missing reverse. RelationWith(other, true) creates the record if absent.
+                a.RelationWith(b, true);
+                b.RelationWith(a, true);
+                int current = a.GoodwillWith(b);
+                int delta = Placement.SubFactionRules.LooseKinGoodwill - current;
+                if (delta != 0) a.TryAffectGoodwillWith(b, delta, canSendMessage: false, canSendHostilityLetter: false, reason: null);
+            }
+            catch (Exception ex)
+            {
+                Log.Warning($"[RegionsAndSocieties] #57: could not set kin goodwill between '{a?.Name}' and '{b?.Name}': {ex.Message}");
+            }
+        }
+
+        private static void TryShareIdeo(Faction parent, Faction sub)
+        {
+            if (!ModsConfig.IdeologyActive) return;
+            try
+            {
+                var primary = parent.ideos?.PrimaryIdeo;
+                if (primary != null && sub.ideos != null) sub.ideos.SetPrimary(primary);
+            }
+            catch (Exception ex)
+            {
+                Log.Warning($"[RegionsAndSocieties] #57: could not share ideoligion from '{parent?.Name}' to '{sub?.Name}': {ex.Message}");
+            }
+        }
 
         private static Faction TryGenerateFaction(PlanetLayer layer, FactionDef def)
         {

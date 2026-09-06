@@ -1,0 +1,165 @@
+using System;
+using System.Collections.Generic;
+
+namespace RegionsAndSocieties.Placement
+{
+    /// <summary>A point on the world sphere (a body or section centroid), pure so grouping is testable.</summary>
+    public struct GeoPoint
+    {
+        public double X, Y, Z;
+        public GeoPoint(double x, double y, double z) { X = x; Y = y; Z = z; }
+    }
+
+    /// <summary>
+    /// When a scattered low-tech faction's clusters become separate kin factions (#57). A faction once
+    /// spanned the map; newer factions carved it up, so its far-flung clusters read as a north tribe and a
+    /// south tribe — loosely related, no longer one polity. Only <b>capped</b> factions (#46) <b>below
+    /// Spacer tech</b> split: tribes and rough unions. A high-tech polity (pirates, the Empire, spacer
+    /// civs) holds together across distance. Pure: geometry and gates in, groupings and labels out.
+    /// </summary>
+    public static class SubFactionRules
+    {
+        /// <summary>Spacer tech ordinal; a faction at or above this never splits.</summary>
+        public const int TechSpacer = 5;
+        /// <summary>Most sections one faction may split into (parent included): the owner's "2–3".</summary>
+        public const int MaxSections = 3;
+        /// <summary>Goodwill set between the kin factions a split produces — friendly, not merged.</summary>
+        public const int LooseKinGoodwill = 60;
+
+        /// <summary>A faction splits when it has a finite cluster cap, is below Spacer tech, and its
+        /// settlements form two or more separate bodies.</summary>
+        public static bool ShouldSplit(int techLevel, int clusterCap, int bodyCount)
+        {
+            return bodyCount >= 2
+                && clusterCap < ClusteringRules.Unbounded
+                && techLevel < TechSpacer;
+        }
+
+        /// <summary>How many sections a faction with this many bodies splits into: at least 1, at most
+        /// <paramref name="maxSections"/>, never more than the bodies it has.</summary>
+        public static int SectionCount(int bodyCount, int maxSections)
+        {
+            int k = Math.Min(maxSections, bodyCount);
+            return k < 1 ? 1 : k;
+        }
+
+        /// <summary>
+        /// Assign each body to one of <paramref name="sections"/> geographic sections — farthest-point
+        /// seeding (the two, then three, most-separated bodies as seeds), then each body to its nearest
+        /// seed. Deterministic: ties go to the lower index. Returns a section index per body.
+        /// </summary>
+        public static int[] AssignSections(IList<GeoPoint> bodies, int sections)
+        {
+            int n = bodies?.Count ?? 0;
+            var result = new int[n];
+            int k = Math.Min(sections, n);
+            if (k <= 1) return result;   // all zeros
+
+            var seeds = new List<int>(k);
+
+            // Seed 0: the body farthest from the overall centroid.
+            GeoPoint c = Centroid(bodies);
+            seeds.Add(Farthest(bodies, i => Dist2(bodies[i], c)));
+            // Seed 1: farthest from seed 0.
+            seeds.Add(Farthest(bodies, i => Dist2(bodies[i], bodies[seeds[0]])));
+            // Seed 2 (if wanted): farthest from its nearest existing seed.
+            if (k >= 3)
+                seeds.Add(Farthest(bodies, i => MinDistToSeeds(bodies, i, seeds)));
+
+            for (int i = 0; i < n; i++)
+            {
+                int best = 0;
+                double bestD = Dist2(bodies[i], bodies[seeds[0]]);
+                for (int s = 1; s < seeds.Count; s++)
+                {
+                    double d = Dist2(bodies[i], bodies[seeds[s]]);
+                    if (d < bestD) { bestD = d; best = s; }
+                }
+                result[i] = best;
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// A direction label per section, from the geography of the section centroids. When the sections
+        /// spread mainly north–south the labels are South / North (and Central for three); when they
+        /// spread mainly east–west, West / East / Central. Labels are aligned to section index.
+        /// </summary>
+        public static string[] SectionLabels(IList<GeoPoint> sectionCentroids)
+        {
+            int k = sectionCentroids?.Count ?? 0;
+            var labels = new string[k];
+            if (k <= 0) return labels;
+            if (k == 1) { labels[0] = ""; return labels; }
+
+            // Dominant spread axis: north–south (Y) versus the wider of the two longitudinal axes (X, Z).
+            double ry = Range(sectionCentroids, p => p.Y);
+            double rx = Range(sectionCentroids, p => p.X);
+            double rz = Range(sectionCentroids, p => p.Z);
+            bool northSouth = ry >= rx && ry >= rz;
+            Func<GeoPoint, double> axis = northSouth ? (Func<GeoPoint, double>)(p => p.Y) : (rx >= rz ? (p => p.X) : (p => p.Z));
+
+            // Section indices ordered along the axis, low to high.
+            var order = new List<int>();
+            for (int i = 0; i < k; i++) order.Add(i);
+            order.Sort((a, b) => { int c = axis(sectionCentroids[a]).CompareTo(axis(sectionCentroids[b])); return c != 0 ? c : a.CompareTo(b); });
+
+            string[] ordered = OrderedLabels(k, northSouth);
+            for (int rank = 0; rank < k; rank++) labels[order[rank]] = ordered[rank];
+            return labels;
+        }
+
+        /// <summary>The ordered label list, low axis value to high.</summary>
+        private static string[] OrderedLabels(int k, bool northSouth)
+        {
+            string low = northSouth ? "South" : "West";
+            string high = northSouth ? "North" : "East";
+            if (k <= 2) return new[] { low, high };
+            if (k == 3) return new[] { low, "Central", high };
+            // More than three (not used by MaxSections, kept total): number the middle ones.
+            var arr = new string[k];
+            arr[0] = low; arr[k - 1] = high;
+            for (int i = 1; i < k - 1; i++) arr[i] = "Central " + i;
+            return arr;
+        }
+
+        private static GeoPoint Centroid(IList<GeoPoint> pts)
+        {
+            double x = 0, y = 0, z = 0;
+            foreach (var p in pts) { x += p.X; y += p.Y; z += p.Z; }
+            int n = pts.Count > 0 ? pts.Count : 1;
+            return new GeoPoint(x / n, y / n, z / n);
+        }
+
+        private static int Farthest(IList<GeoPoint> pts, Func<int, double> score)
+        {
+            int best = 0; double bestD = double.NegativeInfinity;
+            for (int i = 0; i < pts.Count; i++)
+            {
+                double d = score(i);
+                if (d > bestD) { bestD = d; best = i; }
+            }
+            return best;
+        }
+
+        private static double MinDistToSeeds(IList<GeoPoint> pts, int i, List<int> seeds)
+        {
+            double m = double.PositiveInfinity;
+            foreach (int s in seeds) { double d = Dist2(pts[i], pts[s]); if (d < m) m = d; }
+            return m;
+        }
+
+        private static double Dist2(GeoPoint a, GeoPoint b)
+        {
+            double dx = a.X - b.X, dy = a.Y - b.Y, dz = a.Z - b.Z;
+            return dx * dx + dy * dy + dz * dz;
+        }
+
+        private static double Range(IList<GeoPoint> pts, Func<GeoPoint, double> sel)
+        {
+            double lo = double.PositiveInfinity, hi = double.NegativeInfinity;
+            foreach (var p in pts) { double v = sel(p); if (v < lo) lo = v; if (v > hi) hi = v; }
+            return hi - lo;
+        }
+    }
+}
