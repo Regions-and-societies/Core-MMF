@@ -811,6 +811,7 @@ namespace RegionsAndSocieties.Patches
             SynapseRegionManager regionManager, WorldObjectsHolder worldObjects, WorldGrid worldGrid)
         {
             if (factionManager == null || regionManager == null || worldObjects == null || worldGrid == null) return;
+            if (!FactionPlacementSettings.splitScatteredFactions) return;   // #57: toggle, default on
 
             // Settlement provinces per faction (only surface settlements count).
             var provincesByFaction = new Dictionary<Faction, List<GeographicProvince>>();
@@ -824,9 +825,10 @@ namespace RegionsAndSocieties.Patches
                 if (!list.Contains(p)) list.Add(p);
             }
 
-            // Snapshot the eligible parents up front — we add factions as we go and must not re-split one.
+            // Snapshot the parents up front — we add factions as we go and must not re-split one. The
+            // per-faction ShouldSplit gate below decides eligibility by kind (pirate / tribe / rough union).
             var parents = factionManager.AllFactions
-                .Where(f => f != null && !f.IsPlayer && !f.def.hidden && f.def.techLevel < TechLevel.Spacer)
+                .Where(f => f != null && !f.IsPlayer && !f.def.hidden)
                 .ToList();
 
             int created = 0;
@@ -837,9 +839,11 @@ namespace RegionsAndSocieties.Patches
 
                 var profile = FactionPlacementSettings.GetProfile(parent.def);
                 int cap = Placement.ClusteringRules.Snap(profile != null ? profile.clusterSize : 0);
+                var kind = Placement.ClusteringRules.ClassifyKind(parent.def.defName, parent.def.label,
+                    (int)parent.def.techLevel, parent.def.permanentEnemy, parent.def.hostileToFactionlessHumanlikes);
 
                 var bodies = BuildFactionBodies(provs);
-                if (!Placement.SubFactionRules.ShouldSplit((int)parent.def.techLevel, cap, bodies.Count)) continue;
+                if (!Placement.SubFactionRules.ShouldSplit(kind, cap, bodies.Count)) continue;
 
                 int k = Placement.SubFactionRules.SectionCount(bodies.Count, Placement.SubFactionRules.MaxSections);
                 if (k <= 1) continue;

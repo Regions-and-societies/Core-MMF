@@ -18,14 +18,16 @@ namespace SubFactionRulesTests
             int pirateCap = ClusteringRules.DefaultClusterSize(FactionKind.Pirate);     // 3
             int otherCap = ClusteringRules.DefaultClusterSize(FactionKind.Other);       // 9 (unbounded)
 
-            Section("who splits: capped AND below spacer tech, two or more bodies");
-            Check("a scattered tribe splits", SubFactionRules.ShouldSplit(neolithic, tribeCap, 3));
-            Check("a scattered rough union splits", SubFactionRules.ShouldSplit(industrial, roughCap, 2));
-            Check("a single-body tribe does not", !SubFactionRules.ShouldSplit(neolithic, tribeCap, 1));
-            Check("pirates (spacer tech) do not, even scattered", !SubFactionRules.ShouldSplit(spacer, pirateCap, 5));
-            Check("the Empire (ultra tech) does not", !SubFactionRules.ShouldSplit(ultra, 3, 4));
-            Check("an unbounded faction does not", !SubFactionRules.ShouldSplit(industrial, otherCap, 4));
-            Check("a low-tech unbounded faction still does not (no finite cap)", !SubFactionRules.ShouldSplit(neolithic, ClusteringRules.Unbounded, 4));
+            Section("who splits: fractious kinds (pirate/tribe/rough union) with two or more bodies");
+            Check("a scattered tribe splits", SubFactionRules.ShouldSplit(FactionKind.Tribe, tribeCap, 3));
+            Check("a scattered rough union splits", SubFactionRules.ShouldSplit(FactionKind.RoughUnion, roughCap, 2));
+            Check("scattered pirates split", SubFactionRules.ShouldSplit(FactionKind.Pirate, pirateCap, 5));
+            Check("a single-body tribe does not", !SubFactionRules.ShouldSplit(FactionKind.Tribe, tribeCap, 1));
+            Check("single-body pirates do not", !SubFactionRules.ShouldSplit(FactionKind.Pirate, pirateCap, 1));
+            Check("the Empire (cohesive polity) does not", !SubFactionRules.ShouldSplit(FactionKind.Empire, 3, 4));
+            Check("an unbounded/other faction does not", !SubFactionRules.ShouldSplit(FactionKind.Other, otherCap, 4));
+            Check("splittable-kind check", SubFactionRules.IsSplittableKind(FactionKind.Pirate) && SubFactionRules.IsSplittableKind(FactionKind.Tribe) && SubFactionRules.IsSplittableKind(FactionKind.RoughUnion));
+            Check("Empire and Other are not splittable kinds", !SubFactionRules.IsSplittableKind(FactionKind.Empire) && !SubFactionRules.IsSplittableKind(FactionKind.Other));
 
             Section("section count: at most 2-3, never more than bodies");
             Check("2 bodies -> 2 sections", SubFactionRules.SectionCount(2, SubFactionRules.MaxSections) == 2);

@@ -128,6 +128,10 @@ namespace RegionsAndSocieties
         /// </summary>
         public static bool mapFrameworkWarningDismissed = false;
 
+        /// <summary>#57: whether worldgen splits a scattered fractious faction (pirates, tribes, rough
+        /// unions) into loosely-related regional kin sub-factions. Default on.</summary>
+        public static bool splitScatteredFactions = true;
+
         public override void ExposeData()
         {
             base.ExposeData();
@@ -144,6 +148,7 @@ namespace RegionsAndSocieties
             Scribe_Values.Look(ref regionPanelUseShift, "regionPanelUseShift", false);
             Scribe_Values.Look(ref maxRegionPanels, "maxRegionPanels", 2);
             Scribe_Values.Look(ref mapFrameworkWarningDismissed, "mapFrameworkWarningDismissed", false);
+            Scribe_Values.Look(ref splitScatteredFactions, "splitScatteredFactions", true);
 
             // 0.7: world-object governance / mod-integration switches.
             Integration.WorldObjectIntegrationSettings.ExposeData();

@@ -11,28 +11,33 @@ namespace RegionsAndSocieties.Placement
     }
 
     /// <summary>
-    /// When a scattered low-tech faction's clusters become separate kin factions (#57). A faction once
-    /// spanned the map; newer factions carved it up, so its far-flung clusters read as a north tribe and a
-    /// south tribe — loosely related, no longer one polity. Only <b>capped</b> factions (#46) <b>below
-    /// Spacer tech</b> split: tribes and rough unions. A high-tech polity (pirates, the Empire, spacer
-    /// civs) holds together across distance. Pure: geometry and gates in, groupings and labels out.
+    /// When a scattered faction's clusters become separate kin factions (#57). A faction once spanned the
+    /// map; newer factions carved it up, so its far-flung clusters read as a north tribe and a south tribe
+    /// — loosely related, no longer one polity. The <b>fractious</b> kinds split: pirates (and wasters),
+    /// tribes, and rough unions. Cohesive polities — the Empire and the spacer/trader civilisations — hold
+    /// together across distance and stay one faction. Pure: geometry and gates in, groupings and labels out.
     /// </summary>
     public static class SubFactionRules
     {
-        /// <summary>Spacer tech ordinal; a faction at or above this never splits.</summary>
-        public const int TechSpacer = 5;
         /// <summary>Most sections one faction may split into (parent included): the owner's "2–3".</summary>
         public const int MaxSections = 3;
         /// <summary>Goodwill set between the kin factions a split produces — friendly, not merged.</summary>
         public const int LooseKinGoodwill = 60;
 
-        /// <summary>A faction splits when it has a finite cluster cap, is below Spacer tech, and its
+        /// <summary>The faction kinds that fracture when scattered: pirates, tribes, rough unions. The
+        /// Empire and the unbounded civilisations stay whole.</summary>
+        public static bool IsSplittableKind(FactionKind kind)
+        {
+            return kind == FactionKind.Pirate || kind == FactionKind.Tribe || kind == FactionKind.RoughUnion;
+        }
+
+        /// <summary>A faction splits when it is a fractious kind, has a finite cluster cap, and its
         /// settlements form two or more separate bodies.</summary>
-        public static bool ShouldSplit(int techLevel, int clusterCap, int bodyCount)
+        public static bool ShouldSplit(FactionKind kind, int clusterCap, int bodyCount)
         {
             return bodyCount >= 2
                 && clusterCap < ClusteringRules.Unbounded
-                && techLevel < TechSpacer;
+                && IsSplittableKind(kind);
         }
 
         /// <summary>How many sections a faction with this many bodies splits into: at least 1, at most
