@@ -1441,6 +1441,90 @@ namespace RegionsAndSocieties.Integration
             return sb.ToString().TrimEnd();
         }
 
+        /// <summary>
+        /// #56: where NPC settlements landed against where they could have, per biome. Each row gives
+        /// the biome's share of settleable land tiles and of settleable provinces (the availability), the
+        /// settlement count and share per tech tier (pre-industrial / industrial / spacer+), and the
+        /// habitability the placement rule assigns that biome at each tier — so "evenly split" is judged
+        /// against what was on offer, and a biome with no settlements can be read as shunned or as absent.
+        /// </summary>
+        public static string SettlementBiomeDistributionReport()
+        {
+            if (!UnityData.IsInMainThread) return "must run on the main thread";
+            if (Find.World == null || Find.WorldGrid == null || Find.WorldObjects == null) return "no world loaded";
+
+            WorldGrid grid = Find.WorldGrid;
+            var mgr = Find.World.GetComponent<SynapseRegionManager>();
+
+            var landTiles = new Dictionary<BiomeDef, int>();
+            int landTotal = 0;
+            for (int t = 0; t < grid.TilesCount; t++)
+            {
+                Tile tile = grid[t];
+                if (tile == null || tile.WaterCovered || tile.hilliness == Hilliness.Impassable) continue;
+                BiomeDef b = tile.PrimaryBiome;
+                if (b == null || b.impassable || b.defName == "SeaIce") continue;
+                landTiles.TryGetValue(b, out int c); landTiles[b] = c + 1;
+                landTotal++;
+            }
+
+            var provinces = new Dictionary<BiomeDef, int>();
+            int provinceTotal = 0;
+            if (mgr?.Provinces != null)
+            {
+                foreach (var p in mgr.Provinces)
+                {
+                    if (p == null || p.provinceType != ProvinceType.Land || p.tiles == null || p.tiles.Count < 20 || p.primaryBiome == null) continue;
+                    provinces.TryGetValue(p.primaryBiome, out int c); provinces[p.primaryBiome] = c + 1;
+                    provinceTotal++;
+                }
+            }
+
+            const int Tiers = 3;   // 0 pre-industrial, 1 industrial, 2 spacer+
+            var settlements = new Dictionary<BiomeDef, int[]>();
+            var tierTotals = new int[Tiers];
+            foreach (var o in Find.WorldObjects.AllWorldObjects)
+            {
+                if (o?.Faction == null || o.Faction.IsPlayer) continue;
+                if (WorldObjectClassifier.Classify(o) != WorldObjectKind.Settlement) continue;
+                if (!o.Tile.Valid || !o.Tile.Layer.IsRootSurface) continue;
+                BiomeDef b = grid[o.Tile]?.PrimaryBiome;
+                if (b == null) continue;
+                int tech = (int)(o.Faction.def?.techLevel ?? TechLevel.Industrial);
+                int tier = tech >= Placement.BiomeHabitabilityRules.TechSpacer ? 2 : tech >= Placement.BiomeHabitabilityRules.TechIndustrial ? 1 : 0;
+                if (!settlements.TryGetValue(b, out int[] counts)) { counts = new int[Tiers]; settlements[b] = counts; }
+                counts[tier]++;
+                tierTotals[tier]++;
+            }
+
+            var biomes = new HashSet<BiomeDef>(landTiles.Keys);
+            foreach (var b in settlements.Keys) biomes.Add(b);
+            var rows = biomes.ToList();
+            rows.Sort((a, b) => { landTiles.TryGetValue(a, out int la); landTiles.TryGetValue(b, out int lb); return lb.CompareTo(la); });
+
+            var sb = new StringBuilder();
+            sb.AppendLine("=== R&S settlement biome distribution (#56) ===");
+            sb.AppendLine($"land tiles {landTotal}, settleable provinces {provinceTotal}, NPC settlements pre-industrial {tierTotals[0]} / industrial {tierTotals[1]} / spacer+ {tierTotals[2]}");
+            sb.AppendLine("biome                     land%  prov%  | pre-ind      industrial   spacer+     | habitability pre/ind/spc");
+            foreach (BiomeDef b in rows)
+            {
+                landTiles.TryGetValue(b, out int lt);
+                provinces.TryGetValue(b, out int pc);
+                settlements.TryGetValue(b, out int[] sc);
+                sc = sc ?? new int[Tiers];
+                var traits = BiomeSafe.Traits(b);
+                string tierCell(int i)
+                {
+                    float share = tierTotals[i] > 0 ? (float)sc[i] / tierTotals[i] : 0f;
+                    return $"{sc[i],3} ({share,4:P0})";
+                }
+                sb.AppendLine($"{b.defName,-25} {(landTotal > 0 ? (float)lt / landTotal : 0f),5:P0}  {(provinceTotal > 0 ? (float)pc / provinceTotal : 0f),5:P0}  | {tierCell(0)}   {tierCell(1)}   {tierCell(2)}  | "
+                    + $"{Placement.BiomeHabitabilityRules.Habitability(traits, 2):0.00}/{Placement.BiomeHabitabilityRules.Habitability(traits, 4):0.00}/{Placement.BiomeHabitabilityRules.Habitability(traits, 5):0.00}"
+                    + $"   (weight {traits.SettlementSelectionWeight:0.00}, move {traits.MovementDifficulty:0.#}, disease {traits.DiseaseMtbDays:0}d)");
+            }
+            return sb.ToString().TrimEnd();
+        }
+
         public static string HoldingsReport()
         {
             if (!UnityData.IsInMainThread) return "must run on the main thread";

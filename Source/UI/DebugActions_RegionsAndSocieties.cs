@@ -449,6 +449,12 @@ namespace RegionsAndSocieties.UI
             Log.Message(RegionDebugReports.FactionDemographicsReport());
         }
 
+        [DebugAction("Regions and Societies", "R&S: settlement biome distribution (#56)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        private static void SettlementBiomeDistributionReport()
+        {
+            Log.Message(RegionDebugReports.SettlementBiomeDistributionReport());
+        }
+
         [DebugAction("Regions and Societies", "R&S: demo cycle falloff model", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void DemoCycleModel()
         {
