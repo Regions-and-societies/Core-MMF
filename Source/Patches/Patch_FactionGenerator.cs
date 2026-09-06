@@ -351,8 +351,16 @@ namespace RegionsAndSocieties.Patches
             // tile-object walks plus dictionary/GC churn — which made large RP2 planets (high planet
             // scale, 100% coverage) crawl through worldgen. Per faction the score is now just a
             // weighted sum over these arrays; only the temperature gate is per-faction.
+            // #56: the land values come from one pure rule (BiomeHabitabilityRules.Features) shared with
+            // the runtime placement path, and each tile remembers its biome so the per-faction pass can
+            // apply that faction's habitability — vanilla's settlement weight × toil × health, scaled by
+            // tech — from a per-biome table instead of re-reading the def per tile.
             var validTileIds = new List<int>();
-            var tileFeatures = new List<TileFeatures>();
+            var tileFeatures = new List<Placement.PlacementTileFeatures>();
+            var tileTemperatures = new List<float>();
+            var tileBiomeIndex = new List<int>();
+            var biomes = new List<BiomeDef>();
+            var biomeIndexOf = new Dictionary<BiomeDef, int>();
             for (int t = 0; t < totalTiles; t++)
             {
                 Tile tileData = worldGrid[t];
@@ -362,32 +370,36 @@ namespace RegionsAndSocieties.Patches
                     continue;
                 }
 
-                float mineralVal = 0.5f;
-                if (tileData.hilliness == Hilliness.SmallHills) mineralVal = 1.0f;
-                else if (tileData.hilliness == Hilliness.LargeHills) mineralVal = 2.0f;
-                else if (tileData.hilliness == Hilliness.Mountainous) mineralVal = 3.0f;
-
-                float nutritionVal = tileData.PrimaryBiome != null ? tileData.PrimaryBiome.plantDensity : 0.5f;
-                float forageVal = tileData.PrimaryBiome != null ? tileData.PrimaryBiome.forageability : 0.5f;
-                float biomassVal = tileData.PrimaryBiome != null ? BiomeSafe.TreeDensity(tileData.PrimaryBiome) : 0.5f;
-                float grazingVal = (tileData.hilliness == Hilliness.Flat) ? nutritionVal * 2f : nutritionVal;
-                float hospVal = nutritionVal * 2f + forageVal;
+                BiomeDef biome = tileData.PrimaryBiome;
+                int biomeIndex = -1;
+                if (biome != null && !biomeIndexOf.TryGetValue(biome, out biomeIndex))
+                {
+                    biomeIndex = biomes.Count;
+                    biomes.Add(biome);
+                    biomeIndexOf[biome] = biomeIndex;
+                }
 
                 validTileIds.Add(t);
-                tileFeatures.Add(new TileFeatures
-                {
-                    Mineral = mineralVal,
-                    Nutrition = nutritionVal,
-                    Forage = forageVal,
-                    Grazing = grazingVal,
-                    Biomass = biomassVal,
-                    Margin = Mathf.Max(0f, 3.0f - hospVal),
-                    Temperature = tileData.temperature,
-                });
+                tileFeatures.Add(Placement.BiomeHabitabilityRules.Features(BiomeSafe.Traits(biome), BiomeSafe.HillClass(tileData.hilliness)));
+                tileTemperatures.Add(tileData.temperature);
+                tileBiomeIndex.Add(biomeIndex);
             }
 
             // One score array reused across factions; -9999 marks unsettleable-for-this-faction.
             float[] tileScores = new float[totalTiles];
+
+            // #56 crowding: how many settleable provinces each biome offers (static) against how many
+            // settlements have landed in it so far (grows as factions place). A biome filling up relative
+            // to its size pushes its remaining candidates down, so nations spread over the next-best land
+            // instead of every one of them stacking into the single richest biome.
+            var availableByBiome = new Dictionary<BiomeDef, int>();
+            var settledByBiome = new Dictionary<BiomeDef, int>();
+            foreach (var ap in allProvinces)
+            {
+                if (ap.provinceType != ProvinceType.Land || ap.tiles == null || ap.tiles.Count < 20 || ap.primaryBiome == null) continue;
+                availableByBiome.TryGetValue(ap.primaryBiome, out int avail);
+                availableByBiome[ap.primaryBiome] = avail + 1;
+            }
 
             foreach (var faction in alternatingFactions)
             {
@@ -400,27 +412,25 @@ namespace RegionsAndSocieties.Patches
                 {
                     tileScores[t] = -9999f;
                 }
+                // #56: this faction's livability per biome — a tribe eats the full toil and disease
+                // penalty of a jungle or bog, an industrial society half, a spacer one a quarter.
+                int techOrdinal = (int)faction.def.techLevel;
+                var weights = new Placement.PlacementWeights(profile.mineralWeight, profile.nutritionWeight, profile.forageWeight, profile.grazingWeight, profile.huntingWeight, profile.marginWeight);
+                var habitabilityByBiome = new float[biomes.Count];
+                for (int bi = 0; bi < biomes.Count; bi++)
+                {
+                    habitabilityByBiome[bi] = Placement.BiomeHabitabilityRules.Habitability(BiomeSafe.Traits(biomes[bi]), techOrdinal);
+                }
+
                 for (int i = 0; i < validTileIds.Count; i++)
                 {
-                    TileFeatures f = tileFeatures[i];
-                    if (!faction.def.allowedArrivalTemperatureRange.Includes(f.Temperature))
+                    if (!faction.def.allowedArrivalTemperatureRange.Includes(tileTemperatures[i]))
                     {
                         continue;
                     }
-
-                    float score = 0f;
-                    score += profile.mineralWeight * f.Mineral;
-                    score += profile.nutritionWeight * f.Nutrition;
-                    score += profile.forageWeight * f.Forage;
-                    score += profile.grazingWeight * f.Grazing;
-                    score += profile.huntingWeight * f.Biomass;
-
-                    if (profile.marginWeight > 0f)
-                    {
-                        score += profile.marginWeight * f.Margin;
-                    }
-
-                    tileScores[validTileIds[i]] = score;
+                    int bi = tileBiomeIndex[i];
+                    float habitability = bi >= 0 ? habitabilityByBiome[bi] : 1f;
+                    tileScores[validTileIds[i]] = Placement.BiomeHabitabilityRules.Score(tileFeatures[i], habitability, weights);
                 }
 
                 Dictionary<GeographicProvince, float> provinceScores = new Dictionary<GeographicProvince, float>();
@@ -517,6 +527,13 @@ namespace RegionsAndSocieties.Patches
                         .Where(p => !occupiedProvinces.Contains(p))
                         .Select(p => {
                             float suitability = provinceScores.ContainsKey(p) ? provinceScores[p] : -9999f;
+                            if (suitability > -9999f && p.primaryBiome != null)
+                            {
+                                // #56: push back on a biome that is already filling up relative to its size.
+                                settledByBiome.TryGetValue(p.primaryBiome, out int settledHere);
+                                availableByBiome.TryGetValue(p.primaryBiome, out int availableHere);
+                                suitability *= Placement.BiomeHabitabilityRules.Crowding(settledHere, availableHere);
+                            }
                             if (suitability > -9999f && tribalIndustrialBases != null)
                             {
                                 suitability += GetTribalBetweennessBonus(p, tribalIndustrialBases, worldGrid);
@@ -616,6 +633,11 @@ namespace RegionsAndSocieties.Patches
                                 }
                             }
                             occupiedProvinces.Add(chosenProvince);
+                            if (chosenProvince.primaryBiome != null)
+                            {
+                                settledByBiome.TryGetValue(chosenProvince.primaryBiome, out int settledHere);
+                                settledByBiome[chosenProvince.primaryBiome] = settledHere + 1;   // #56 crowding
+                            }
                         }
                     }
                 }
@@ -881,17 +903,6 @@ namespace RegionsAndSocieties.Patches
 
         /// <summary>Faction-independent terrain features of one settleable tile, read from the world
         /// grid once per worldgen so the per-faction scoring pass never re-walks tile objects.</summary>
-        private struct TileFeatures
-        {
-            public float Mineral;
-            public float Nutrition;
-            public float Forage;
-            public float Grazing;
-            public float Biomass;
-            public float Margin;       // Mathf.Max(0, 3 - hospitability), the marginal-land preference input
-            public float Temperature;
-        }
-
         /// <summary>Settleable land provinces NPC placement must always leave unclaimed so the player
         /// has somewhere to land.</summary>
         private const int PlayerReserveProvinces = 1;

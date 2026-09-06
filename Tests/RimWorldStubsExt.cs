@@ -94,6 +94,9 @@ namespace Verse
         public float plantDensity;
         public float forageability;
         public float TreeDensity;
+        public float movementDifficulty = 1f;
+        public float diseaseMtbDays = 60f;
+        public float settlementSelectionWeight = 1f;
     }
 
     /// <summary>1.6 turned Tile into a class; only the members the shipping code reads are present.</summary>

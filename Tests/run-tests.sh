@@ -146,6 +146,12 @@ run_suite employment Exe \
     Tests/EmploymentRulesTests.cs \
     $SRC/Demographics/EmploymentRules.cs
 
+# 0.4.0 biome habitability (#56): vanilla settlement weight × toil × health by tech, tile features,
+# the placement score and biome crowding. Pure, no game — one file.
+run_suite biomehabitability Exe \
+    Tests/BiomeHabitabilityRulesTests.cs \
+    $SRC/Placement/BiomeHabitabilityRules.cs
+
 # 0.2.0 territory-shape core (#19): embeddedness, desired-ratio scoring, domain compactness.
 run_suite compactness Exe \
     Tests/CompactnessRulesTests.cs \
