@@ -297,45 +297,59 @@ namespace RegionsAndSocieties.Patches
                 }
             }
 
-            // Sort and interleave NPC Factions: 1 Industrial, then 1 Tribal, etc.
-            var industrials = allNPCFactions
-                .Where(f => f.def.techLevel == TechLevel.Industrial)
-                .OrderBy(f => GetCategoryPriority(f))
-                .ThenBy(f => (playerFaction != null && f.HostileTo(playerFaction)) ? 1 : 0)
-                .ToList();
-
-            var tribals = allNPCFactions
-                .Where(f => f.def.techLevel < TechLevel.Industrial)
-                .OrderBy(f => GetCategoryPriority(f))
-                .ThenBy(f => (playerFaction != null && f.HostileTo(playerFaction)) ? 1 : 0)
-                .ToList();
-
-            var others = allNPCFactions
-                .Where(f => f.def.techLevel > TechLevel.Industrial)
-                .OrderBy(f => GetCategoryPriority(f))
-                .ThenBy(f => (playerFaction != null && f.HostileTo(playerFaction)) ? 1 : 0)
-                .ToList();
+            // Seeding order (#46): the most segmented factions place first — ascending cluster size
+            // (3s, then 5s, 7s, then the unbounded) — so a faction that must scatter can still find
+            // isolated ground before the map fills. Within one cluster stop the old order stands: sort
+            // and interleave NPC factions 1 Industrial, then 1 Tribal, then 1 other.
+            int ClusterOf(Faction f)
+            {
+                var prof = FactionPlacementSettings.GetProfile(f.def);
+                return Placement.ClusteringRules.SeedingKey(prof != null ? prof.clusterSize : 0);
+            }
 
             List<Faction> alternatingFactions = new List<Faction>();
-            int indIndex = 0;
-            int triIndex = 0;
-            int othIndex = 0;
-
-            while (indIndex < industrials.Count || triIndex < tribals.Count || othIndex < others.Count)
+            foreach (var clusterGroup in allNPCFactions.GroupBy(ClusterOf).OrderBy(g => g.Key))
             {
-                if (indIndex < industrials.Count)
+                var industrials = clusterGroup
+                    .Where(f => f.def.techLevel == TechLevel.Industrial)
+                    .OrderBy(f => GetCategoryPriority(f))
+                    .ThenBy(f => (playerFaction != null && f.HostileTo(playerFaction)) ? 1 : 0)
+                    .ToList();
+
+                var tribals = clusterGroup
+                    .Where(f => f.def.techLevel < TechLevel.Industrial)
+                    .OrderBy(f => GetCategoryPriority(f))
+                    .ThenBy(f => (playerFaction != null && f.HostileTo(playerFaction)) ? 1 : 0)
+                    .ToList();
+
+                var others = clusterGroup
+                    .Where(f => f.def.techLevel > TechLevel.Industrial)
+                    .OrderBy(f => GetCategoryPriority(f))
+                    .ThenBy(f => (playerFaction != null && f.HostileTo(playerFaction)) ? 1 : 0)
+                    .ToList();
+
+                int indIndex = 0;
+                int triIndex = 0;
+                int othIndex = 0;
+
+                while (indIndex < industrials.Count || triIndex < tribals.Count || othIndex < others.Count)
                 {
-                    alternatingFactions.Add(industrials[indIndex++]);
-                }
-                if (triIndex < tribals.Count)
-                {
-                    alternatingFactions.Add(tribals[triIndex++]);
-                }
-                if (othIndex < others.Count)
-                {
-                    alternatingFactions.Add(others[othIndex++]);
+                    if (indIndex < industrials.Count)
+                    {
+                        alternatingFactions.Add(industrials[indIndex++]);
+                    }
+                    if (triIndex < tribals.Count)
+                    {
+                        alternatingFactions.Add(tribals[triIndex++]);
+                    }
+                    if (othIndex < others.Count)
+                    {
+                        alternatingFactions.Add(others[othIndex++]);
+                    }
                 }
             }
+            Log.Message("[RegionsAndSocieties] Seeding order (#46, ascending cluster size): "
+                + string.Join(", ", alternatingFactions.Select(f => $"{f.Name} [{Placement.ClusteringRules.Label(ClusterOf(f))}]")));
 
             // #65 perf: a province's barrier-border count (its impassable/water frontier) is static, so
             // compute it once here instead of per candidate per base inside the placement loop below.
@@ -407,6 +421,14 @@ namespace RegionsAndSocieties.Patches
                 if (profile == null) continue;
 
                 int baseCount = factionTargetBases.ContainsKey(faction) ? factionTargetBases[faction] : 5;
+
+                // #46 clustering: this faction's cap on how many territories cluster together, and the
+                // bodies (land-connected sets of its provinces) it has built so far. A candidate that
+                // would push a body over the cap ranks behind every candidate that would not, and is
+                // taken only when nothing else is left.
+                int clusterCap = Placement.ClusteringRules.Snap(profile.clusterSize);
+                var bodies = new Placement.TerritoryBodies();
+                int overflowPicks = 0;
 
                 for (int t = 0; t < totalTiles; t++)
                 {
@@ -539,7 +561,7 @@ namespace RegionsAndSocieties.Patches
                                 suitability += GetTribalBetweennessBonus(p, tribalIndustrialBases, worldGrid);
                             }
 
-                            if (suitability <= -9999f) return new { Province = p, Score = -9999f, BarrierCount = 0, ClaimRaw = -9999, Embeddedness = 0f };
+                            if (suitability <= -9999f) return new { Province = p, Score = -9999f, BarrierCount = 0, ClaimRaw = -9999, Embeddedness = 0f, PlacementClass = 0 };
 
                             int sharedBorders = 0, rivalClaimNeighbours = 0, claimableBorders = 0;
                             if (p.borderShares != null)
@@ -563,8 +585,28 @@ namespace RegionsAndSocieties.Patches
                             int claimRaw = sharedBorders - rivalClaimNeighbours - (rivalClaimsSelf ? 2 : 0);
                             int barrierCount = barrierCountByProvince.TryGetValue(p.id, out var bc) ? bc : 0;
                             float embeddedness = Placement.CompactnessRules.Embeddedness(sharedBorders, claimableBorders);
+                            // #46: the body this province would form (itself + every own body it touches),
+                            // whether it stays within the cap, and — for a NEW body — how far the nearest
+                            // existing body is, so two clusters do not land side by side.
+                            int mergedSize = bodies.MergedSizeIfAdded(p.borderShares != null ? p.borderShares.Keys : null);
+                            bool withinCap = Placement.ClusteringRules.WithinCap(mergedSize, clusterCap);
+                            bool extends = mergedSize > 1;
+                            float nearestBody = -1f;
+                            if (!extends && factionProvinces.Count > 0 && p.tiles != null && p.tiles.Count > 0)
+                            {
+                                nearestBody = float.MaxValue;
+                                foreach (var own in factionProvinces)
+                                {
+                                    if (own.tiles == null || own.tiles.Count == 0) continue;
+                                    float d = worldGrid.ApproxDistanceInTiles(p.tiles[0], own.tiles[0]);
+                                    if (d < nearestBody) nearestBody = d;
+                                }
+                                if (nearestBody == float.MaxValue) nearestBody = -1f;
+                            }
+                            int placementClass = Placement.ClusteringRules.PlacementClass(
+                                withinCap, extends, Placement.ClusteringRules.FarEnoughForNewBody(nearestBody));
 
-                            return new { Province = p, Score = suitability, BarrierCount = barrierCount, ClaimRaw = claimRaw, Embeddedness = embeddedness };
+                            return new { Province = p, Score = suitability, BarrierCount = barrierCount, ClaimRaw = claimRaw, Embeddedness = embeddedness, PlacementClass = placementClass };
                         })
                         .Where(x => x.Score > -9999f);
 
@@ -594,8 +636,12 @@ namespace RegionsAndSocieties.Patches
                         // a first foothold has nothing to square against (and must not hand islands, whose
                         // coastline is all free wall, an unearned full score). Weight 0 = the pure #65 blend.
                         bool hasGround = factionProvinceIds.Count > 0;
+                        // #46: order by placement class first — extend a cluster, else open a well-spaced
+                        // new body, else a crowded new body, else overflow — whatever the land is worth;
+                        // the score decides within a class.
                         chosenProvince = candidatesList
-                            .OrderByDescending(x => {
+                            .OrderBy(x => x.PlacementClass)
+                            .ThenByDescending(x => {
                                 float blended = 0.70f * Norm(x.ClaimRaw, minClaim, maxClaim) + 0.30f * Norm(x.Score, minRes, maxRes);
                                 return hasGround
                                     ? Placement.CompactnessRules.EffectiveScore(blended, x.Embeddedness,
@@ -638,11 +684,16 @@ namespace RegionsAndSocieties.Patches
                                 settledByBiome.TryGetValue(chosenProvince.primaryBiome, out int settledHere);
                                 settledByBiome[chosenProvince.primaryBiome] = settledHere + 1;   // #56 crowding
                             }
+                            // #46: grow the faction's bodies; count the picks where only overflow was left.
+                            var chosenNeighbours = chosenProvince.borderShares != null ? chosenProvince.borderShares.Keys : null;
+                            if (!Placement.ClusteringRules.WithinCap(bodies.MergedSizeIfAdded(chosenNeighbours), clusterCap)) overflowPicks++;
+                            bodies.Add(chosenProvince.id, chosenNeighbours);
                         }
                     }
                 }
 
-                Log.Message($"[RegionsAndSocieties] Placed {factionBases.Count} bases across {factionProvinces.Count} provinces for faction: {faction.Name}");
+                Log.Message($"[RegionsAndSocieties] Placed {factionBases.Count} bases across {factionProvinces.Count} provinces for faction: {faction.Name}"
+                    + $"  (cluster cap {Placement.ClusteringRules.Label(clusterCap)}: {bodies.Count} bodies, largest {bodies.Largest}, overflow picks {overflowPicks})");
             }
 
             // Redistribute NPC faction colors deterministically to ensure high vibrance and distinct visual separation

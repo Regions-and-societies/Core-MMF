@@ -455,6 +455,12 @@ namespace RegionsAndSocieties.UI
             Log.Message(RegionDebugReports.SettlementBiomeDistributionReport());
         }
 
+        [DebugAction("Regions and Societies", "R&S: placement clustering report (#46)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        private static void PlacementClusteringReport()
+        {
+            Log.Message(RegionDebugReports.PlacementClusteringReport());
+        }
+
         [DebugAction("Regions and Societies", "R&S: demo cycle falloff model", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void DemoCycleModel()
         {

@@ -104,7 +104,7 @@ namespace RegionsAndSocieties
             DrawIntegrationPanel(new Rect(0f, 205f, inRect.width - 15f, 178f));
 
             Rect outRect = new Rect(0f, 388f, inRect.width, inRect.height - 443f);
-            Rect viewRect = new Rect(0f, 0f, inRect.width - 25f, activeFactions.Count * 265f);
+            Rect viewRect = new Rect(0f, 0f, inRect.width - 25f, activeFactions.Count * 295f);
 
             Widgets.BeginScrollView(outRect, ref scrollPosition, viewRect);
             float curY = 0f;
@@ -113,7 +113,7 @@ namespace RegionsAndSocieties
             {
                 var profile = FactionPlacementSettings.GetProfile(def);
 
-                Rect boxRect = new Rect(0f, curY, viewRect.width, 255f);
+                Rect boxRect = new Rect(0f, curY, viewRect.width, 285f);
                 Widgets.DrawMenuSection(boxRect);
 
                 Rect titleRect = new Rect(10f, curY + 10f, boxRect.width - 20f, 25f);
@@ -131,6 +131,7 @@ namespace RegionsAndSocieties
                     profile.marginWeight = defaultProfile.marginWeight;
                     profile.baseCountRange = defaultProfile.baseCountRange;
                     profile.placementOrder = defaultProfile.placementOrder;
+                    profile.clusterSize = defaultProfile.clusterSize;
                 }
 
                 // Left column sliders
@@ -156,7 +157,21 @@ namespace RegionsAndSocieties
                 float tempOrder = Widgets.HorizontalSlider(new Rect(orderRect.x + 260f, orderRect.y, orderRect.width - 270f, 18f), (float)profile.placementOrder, 1f, 10f, false, null, null, null, 1f);
                 profile.placementOrder = Mathf.RoundToInt(tempOrder);
 
-                curY += 265f;
+                // #46 cluster size: 1 / 3 / 5 / 7 / 9+ — how many territories may cluster together (the
+                // largest contiguous body). A soft maximum: the faction looks for ground where it cannot
+                // cluster first and fills in against itself only when nothing else is left.
+                Rect clusterRect = new Rect(10f, curY + 245f, boxRect.width - 20f, 24f);
+                int cap = Placement.ClusteringRules.Snap(profile.clusterSize);
+                Widgets.Label(new Rect(clusterRect.x, clusterRect.y, 250f, 24f), $"Cluster size (territories together): {Placement.ClusteringRules.Label(cap)}");
+                TooltipHandler.TipRegion(new Rect(clusterRect.x, clusterRect.y, 250f, 24f),
+                    "The largest contiguous body of territory this faction builds. 1 = every holding stands alone, 9+ = one contiguous nation. " +
+                    "A maximum, not a wall: the faction prefers ground where it cannot cluster, even slightly worse ground, and only fills in against itself when nothing else is left. " +
+                    "Smaller clusters are seeded first so they can find isolated ground. Defaults: pirates and the Empire 3, tribes 5, rough unions 7, everyone else 9+.");
+                Rect clusterSlider = new Rect(clusterRect.x + 260f, clusterRect.y, clusterRect.width - 270f, 18f);
+                float tempCluster = Widgets.HorizontalSlider(clusterSlider, (float)cap, 1f, 9f, false, null, "1", "9+", 2f);
+                profile.clusterSize = Placement.ClusteringRules.Snap(Mathf.RoundToInt(tempCluster));
+
+                curY += 295f;
             }
 
             Widgets.EndScrollView();

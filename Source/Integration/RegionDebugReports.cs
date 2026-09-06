@@ -1525,6 +1525,79 @@ namespace RegionsAndSocieties.Integration
             return sb.ToString().TrimEnd();
         }
 
+        /// <summary>
+        /// #46: how each NPC faction's territory clusters — its cluster cap, how many land-connected
+        /// bodies its provinces form, and the largest — read from the provinces that carry the faction's
+        /// id (set when its settlements were placed). A body larger than the cap means the overflow
+        /// fallback fired (nothing within the cap was left); the worldgen log line per faction says how
+        /// many picks that was.
+        /// </summary>
+        public static string PlacementClusteringReport()
+        {
+            if (!UnityData.IsInMainThread) return "must run on the main thread";
+            if (Find.World == null || Find.FactionManager == null) return "no world loaded";
+            var mgr = Find.World.GetComponent<SynapseRegionManager>();
+            if (mgr?.Provinces == null) return "no provinces";
+
+            // The cap governs where SETTLEMENTS go, so the bodies that matter are the provinces that hold
+            // one of the faction's settlements. Territory (every province carrying the faction's claim id)
+            // spreads around those by the ownership model and is reported alongside for context.
+            var settlementProvinces = new Dictionary<Faction, HashSet<int>>();
+            if (Find.WorldObjects != null)
+            {
+                foreach (var o in Find.WorldObjects.AllWorldObjects)
+                {
+                    if (o?.Faction == null || o.Faction.IsPlayer) continue;
+                    if (WorldObjectClassifier.Classify(o) != WorldObjectKind.Settlement) continue;
+                    var p = mgr.GetProvinceForTile(o.Tile);
+                    if (p == null) continue;
+                    if (!settlementProvinces.TryGetValue(o.Faction, out var set)) { set = new HashSet<int>(); settlementProvinces[o.Faction] = set; }
+                    set.Add(p.id);
+                }
+            }
+            var byId = new Dictionary<int, GeographicProvince>();
+            foreach (var p in mgr.Provinces) if (p != null) byId[p.id] = p;
+
+            var sb = new StringBuilder();
+            sb.AppendLine("=== R&S placement clustering (#46) ===");
+            sb.AppendLine("settlement bodies = land-connected provinces holding the faction's settlements (what the cap governs); territory = provinces carrying its claim");
+            sb.AppendLine("faction                          kind        cap    settlements  bodies  largest  over cap?   | territory provinces  bodies  largest");
+            var rows = new List<(Faction f, int cap, int settlements, int bodies, int largest, int terrProv, int terrBodies, int terrLargest)>();
+            foreach (Faction f in Find.FactionManager.AllFactionsListForReading)
+            {
+                if (f == null || f.IsPlayer || f.def == null || f.def.hidden) continue;
+                var bodies = new Placement.TerritoryBodies();
+                if (settlementProvinces.TryGetValue(f, out var held))
+                {
+                    foreach (int pid in held)
+                    {
+                        byId.TryGetValue(pid, out var p);
+                        bodies.Add(pid, p?.borderShares != null ? p.borderShares.Keys : null);
+                    }
+                }
+                string id = f.GetUniqueLoadID();
+                var territory = new Placement.TerritoryBodies();
+                foreach (var p in mgr.Provinces)
+                {
+                    if (p?.owningFactionIds == null || !p.owningFactionIds.Contains(id)) continue;
+                    territory.Add(p.id, p.borderShares != null ? p.borderShares.Keys : null);
+                }
+                if (bodies.ProvinceCount == 0 && territory.ProvinceCount == 0) continue;
+                var profile = FactionPlacementSettings.GetProfile(f.def);
+                int cap = Placement.ClusteringRules.Snap(profile != null ? profile.clusterSize : 0);
+                rows.Add((f, cap, bodies.ProvinceCount, bodies.Count, bodies.Largest, territory.ProvinceCount, territory.Count, territory.Largest));
+            }
+            rows.Sort((a, b) => a.cap != b.cap ? a.cap.CompareTo(b.cap) : b.settlements.CompareTo(a.settlements));
+            foreach (var r in rows)
+            {
+                var kind = Placement.ClusteringRules.ClassifyKind(r.f.def.defName, r.f.def.label, (int)r.f.def.techLevel, r.f.def.permanentEnemy, r.f.def.hostileToFactionlessHumanlikes);
+                bool over = !Placement.ClusteringRules.WithinCap(r.largest, r.cap);
+                sb.AppendLine($"{r.f.Name,-32} {kind,-11} {Placement.ClusteringRules.Label(r.cap),-6} {r.settlements,11}  {r.bodies,6}  {r.largest,7}  {(over ? "OVER" : "ok"),-10}  | {r.terrProv,19}  {r.terrBodies,6}  {r.terrLargest,7}");
+            }
+            if (rows.Count == 0) sb.AppendLine("  (no faction holds provinces)");
+            return sb.ToString().TrimEnd();
+        }
+
         public static string HoldingsReport()
         {
             if (!UnityData.IsInMainThread) return "must run on the main thread";
