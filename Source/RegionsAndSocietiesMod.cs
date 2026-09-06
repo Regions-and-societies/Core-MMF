@@ -74,6 +74,8 @@ namespace RegionsAndSocieties
 
             l.GapLine();
             l.Label("Regions and Societies features — toggle any off to avoid conflicts with other mods:");
+            l.CheckboxLabeled("Split scattered factions into regional kin", ref FactionPlacementSettings.splitScatteredFactions,
+                "At world generation, a pirate, tribe, or rough-union faction whose settlements are scattered into separate clusters is split into loosely-related regional sub-factions — a north and a south tribe, kin but no longer one polity. The Empire and spacer civilisations stay whole. On by default.");
             l.CheckboxLabeled("World-object integration (master)", ref Integration.WorldObjectIntegrationSettings.masterEnabled,
                 "Master switch for the 0.7+ integration layer. Off means R&T governs only vanilla objects.");
             l.CheckboxLabeled("Settlement tiers & capitals", ref Integration.WorldObjectIntegrationSettings.settlementTiers,

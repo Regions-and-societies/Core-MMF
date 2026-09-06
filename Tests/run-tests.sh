@@ -158,6 +158,12 @@ run_suite clustering Exe \
     Tests/ClusteringRulesTests.cs \
     $SRC/Placement/ClusteringRules.cs
 
+# 0.4.0 sub-faction splitting (#57): the eligibility gate, section count, geographic grouping and
+# direction labels. Pure, no game; needs the clustering rules for the caps.
+run_suite subfaction Exe \
+    Tests/SubFactionRulesTests.cs \
+    $SRC/Placement/SubFactionRules.cs $SRC/Placement/ClusteringRules.cs
+
 # 0.2.0 territory-shape core (#19): embeddedness, desired-ratio scoring, domain compactness.
 run_suite compactness Exe \
     Tests/CompactnessRulesTests.cs \
