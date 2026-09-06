@@ -561,7 +561,7 @@ namespace RegionsAndSocieties.Patches
                                 suitability += GetTribalBetweennessBonus(p, tribalIndustrialBases, worldGrid);
                             }
 
-                            if (suitability <= -9999f) return new { Province = p, Score = -9999f, BarrierCount = 0, ClaimRaw = -9999, Embeddedness = 0f, WithinCap = true };
+                            if (suitability <= -9999f) return new { Province = p, Score = -9999f, BarrierCount = 0, ClaimRaw = -9999, Embeddedness = 0f, PlacementClass = 0 };
 
                             int sharedBorders = 0, rivalClaimNeighbours = 0, claimableBorders = 0;
                             if (p.borderShares != null)
@@ -585,11 +585,28 @@ namespace RegionsAndSocieties.Patches
                             int claimRaw = sharedBorders - rivalClaimNeighbours - (rivalClaimsSelf ? 2 : 0);
                             int barrierCount = barrierCountByProvince.TryGetValue(p.id, out var bc) ? bc : 0;
                             float embeddedness = Placement.CompactnessRules.Embeddedness(sharedBorders, claimableBorders);
-                            // #46: the body this province would form (itself + every own body it touches).
-                            bool withinCap = Placement.ClusteringRules.WithinCap(
-                                bodies.MergedSizeIfAdded(p.borderShares != null ? p.borderShares.Keys : null), clusterCap);
+                            // #46: the body this province would form (itself + every own body it touches),
+                            // whether it stays within the cap, and — for a NEW body — how far the nearest
+                            // existing body is, so two clusters do not land side by side.
+                            int mergedSize = bodies.MergedSizeIfAdded(p.borderShares != null ? p.borderShares.Keys : null);
+                            bool withinCap = Placement.ClusteringRules.WithinCap(mergedSize, clusterCap);
+                            bool extends = mergedSize > 1;
+                            float nearestBody = -1f;
+                            if (!extends && factionProvinces.Count > 0 && p.tiles != null && p.tiles.Count > 0)
+                            {
+                                nearestBody = float.MaxValue;
+                                foreach (var own in factionProvinces)
+                                {
+                                    if (own.tiles == null || own.tiles.Count == 0) continue;
+                                    float d = worldGrid.ApproxDistanceInTiles(p.tiles[0], own.tiles[0]);
+                                    if (d < nearestBody) nearestBody = d;
+                                }
+                                if (nearestBody == float.MaxValue) nearestBody = -1f;
+                            }
+                            int placementClass = Placement.ClusteringRules.PlacementClass(
+                                withinCap, extends, Placement.ClusteringRules.FarEnoughForNewBody(nearestBody));
 
-                            return new { Province = p, Score = suitability, BarrierCount = barrierCount, ClaimRaw = claimRaw, Embeddedness = embeddedness, WithinCap = withinCap };
+                            return new { Province = p, Score = suitability, BarrierCount = barrierCount, ClaimRaw = claimRaw, Embeddedness = embeddedness, PlacementClass = placementClass };
                         })
                         .Where(x => x.Score > -9999f);
 
@@ -619,10 +636,11 @@ namespace RegionsAndSocieties.Patches
                         // a first foothold has nothing to square against (and must not hand islands, whose
                         // coastline is all free wall, an unearned full score). Weight 0 = the pure #65 blend.
                         bool hasGround = factionProvinceIds.Count > 0;
-                        // #46: candidates that keep every body within the cluster cap come first, whatever
-                        // the land is worth; overflow candidates are a last resort.
+                        // #46: order by placement class first — extend a cluster, else open a well-spaced
+                        // new body, else a crowded new body, else overflow — whatever the land is worth;
+                        // the score decides within a class.
                         chosenProvince = candidatesList
-                            .OrderBy(x => Placement.ClusteringRules.CapRank(x.WithinCap))
+                            .OrderBy(x => x.PlacementClass)
                             .ThenByDescending(x => {
                                 float blended = 0.70f * Norm(x.ClaimRaw, minClaim, maxClaim) + 0.30f * Norm(x.Score, minRes, maxRes);
                                 return hasGround

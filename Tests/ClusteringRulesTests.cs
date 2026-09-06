@@ -76,6 +76,29 @@ namespace ClusteringRulesTests
             });
             Check("with no within-cap option the best overflow is taken (fill in)", onlyOverflow[0].name == "b");
 
+            Section("new-body separation and placement class");
+            Check("no bodies yet: first body clears any distance", ClusteringRules.FarEnoughForNewBody(-1f));
+            Check("far new body clears", ClusteringRules.FarEnoughForNewBody(20f) && ClusteringRules.FarEnoughForNewBody(50f));
+            Check("close new body does not clear", !ClusteringRules.FarEnoughForNewBody(5f) && !ClusteringRules.FarEnoughForNewBody(19.9f));
+            Check("exactly the radius clears", ClusteringRules.FarEnoughForNewBody(ClusteringRules.MinNewBodySeparationTiles));
+            // Class: 0 extend, 1 spaced new body, 2 crowded new body, 3 overflow.
+            Check("extend within cap = 0", ClusteringRules.PlacementClass(true, true, false) == 0);
+            Check("spaced new body = 1", ClusteringRules.PlacementClass(true, false, true) == 1);
+            Check("crowded new body = 2", ClusteringRules.PlacementClass(true, false, false) == 2);
+            Check("overflow = 3, whatever else", ClusteringRules.PlacementClass(false, true, true) == 3 && ClusteringRules.PlacementClass(false, false, false) == 3);
+            Check("extend beats a new body even a spaced one", ClusteringRules.PlacementClass(true, true, false) < ClusteringRules.PlacementClass(true, false, true));
+            Check("a spaced new body beats a crowded one", ClusteringRules.PlacementClass(true, false, true) < ClusteringRules.PlacementClass(true, false, false));
+            Check("a crowded new body still beats overflow", ClusteringRules.PlacementClass(true, false, false) < ClusteringRules.PlacementClass(false, false, true));
+            // Two clusters side by side: a crowded new body (class 2) loses to a spaced one (class 1),
+            // so the far candidate wins even if its land scores lower — the reported bug.
+            var byClass = new List<(int cls, float score, string name)>
+            {
+                (ClusteringRules.PlacementClass(true, false, false), 0.95f, "rich-but-crowded"),
+                (ClusteringRules.PlacementClass(true, false, true), 0.40f, "poor-but-spaced"),
+            };
+            byClass.Sort((a, b) => a.cls != b.cls ? a.cls.CompareTo(b.cls) : b.score.CompareTo(a.score));
+            Check("a well-spaced new cluster wins over a richer crowded one", byClass[0].name == "poor-but-spaced");
+
             Section("bodies: connected components under land adjacency, merged through a bridge");
             var bodies = new TerritoryBodies();
             Check("empty: 0 bodies", bodies.Count == 0 && bodies.Largest == 0);

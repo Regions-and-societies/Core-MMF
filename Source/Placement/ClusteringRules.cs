@@ -27,6 +27,12 @@ namespace RegionsAndSocieties.Placement
         public const int Unbounded = 9;
         public static readonly int[] Stops = { 1, 3, 5, 7, Unbounded };
 
+        /// <summary>How far a NEW body must sit from the faction's other bodies, in tiles (#46). Two
+        /// separate clusters landing side by side read as one big cluster and defeat the cap, so opening a
+        /// new body near an existing one is discouraged. A soft rule: taken only when nothing better is
+        /// left.</summary>
+        public const float MinNewBodySeparationTiles = 20f;
+
         // RimWorld's TechLevel ordinals: Undefined 0, Animal 1, Neolithic 2, Medieval 3, Industrial 4, Spacer 5 ...
         public const int TechIndustrial = 4;
 
@@ -100,6 +106,34 @@ namespace RegionsAndSocieties.Placement
 
         /// <summary>Primary sort key for candidates: within-cap ones (0) rank ahead of overflow ones (1).</summary>
         public static int CapRank(bool withinCap) { return withinCap ? 0 : 1; }
+
+        /// <summary>
+        /// The placement class of a candidate, best (lowest) first (#46). Extending an existing under-cap
+        /// body comes first, so clusters build toward their cap. Opening a NEW body is next, but only when
+        /// it is far enough from the faction's other bodies; a new body too close is worse than a spaced
+        /// one, because two clusters side by side defeat the cap. Overflowing a body (exceeding the cap)
+        /// is the last resort. Every class is placeable — the ranking only decides the order.
+        /// <list type="bullet">
+        /// <item>0 — within cap, extends an existing body</item>
+        /// <item>1 — within cap, a new body far enough from the others</item>
+        /// <item>2 — within cap, a new body too close to another</item>
+        /// <item>3 — would overflow a body</item>
+        /// </list>
+        /// </summary>
+        public static int PlacementClass(bool withinCap, bool extendsExistingBody, bool farEnoughForNewBody)
+        {
+            if (!withinCap) return 3;
+            if (extendsExistingBody) return 0;
+            return farEnoughForNewBody ? 1 : 2;
+        }
+
+        /// <summary>Whether a new body at <paramref name="nearestBodyTiles"/> from the faction's closest
+        /// existing body clears the separation radius. A faction with no bodies yet (negative distance)
+        /// always clears it — its first holding can go anywhere.</summary>
+        public static bool FarEnoughForNewBody(float nearestBodyTiles)
+        {
+            return nearestBodyTiles < 0f || nearestBodyTiles >= MinNewBodySeparationTiles;
+        }
 
         /// <summary>Primary seeding key: ascending cluster size, so the most segmented factions place first.</summary>
         public static int SeedingKey(int clusterSize) { return Snap(clusterSize); }

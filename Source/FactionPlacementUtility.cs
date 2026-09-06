@@ -170,10 +170,17 @@ namespace RegionsAndSocieties
                         Placement.CompactnessRules.DefaultDesiredRatio,
                         FactionPlacementSettings.territoryCompactness);
 
-                    bool withinCap = Placement.ClusteringRules.WithinCap(
-                        bodies.MergedSizeIfAdded(p.borderShares != null ? p.borderShares.Keys : null), clusterCap);   // #46
+                    // #46: the body this province would form, whether it stays within the cap, and — for a
+                    // new body — the distance to the nearest existing body (minAllyDist), so a new cluster
+                    // is not opened right next to another.
+                    int mergedSize = bodies.MergedSizeIfAdded(p.borderShares != null ? p.borderShares.Keys : null);
+                    bool withinCap = Placement.ClusteringRules.WithinCap(mergedSize, clusterCap);
+                    bool extends = mergedSize > 1;
+                    float nearestBody = extends || !factionProvinces.Any() ? -1f : minAllyDist;
+                    int placementClass = Placement.ClusteringRules.PlacementClass(
+                        withinCap, extends, Placement.ClusteringRules.FarEnoughForNewBody(nearestBody));
 
-                    return new { Province = p, Score = suitability, Effective = effective, IsAdjacent = isAdjacent, Dist = minAllyDist, WithinCap = withinCap };
+                    return new { Province = p, Score = suitability, Effective = effective, IsAdjacent = isAdjacent, Dist = minAllyDist, PlacementClass = placementClass };
                 })
                 .ToList();
 
@@ -184,7 +191,7 @@ namespace RegionsAndSocieties
             var sorted = candidates.AsEnumerable();
             if (factionProvinces.Any())
             {
-                sorted = sorted.OrderBy(x => Placement.ClusteringRules.CapRank(x.WithinCap))
+                sorted = sorted.OrderBy(x => x.PlacementClass)   // #46: extend, spaced new body, crowded new body, overflow
                                .ThenByDescending(x => x.IsAdjacent ? 1 : 0)
                                .ThenByDescending(x => x.Effective)
                                .ThenBy(x => x.Dist);
