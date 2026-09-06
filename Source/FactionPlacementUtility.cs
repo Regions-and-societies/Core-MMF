@@ -132,6 +132,15 @@ namespace RegionsAndSocieties
                     settledByBiome[ap.primaryBiome] = settled + 1;
                 }
             }
+
+            // #46 clustering: the faction's bodies so far and its cap; a candidate that would overflow a
+            // body ranks behind every candidate that would not.
+            int clusterCap = Placement.ClusteringRules.Snap(profile.clusterSize);
+            var bodies = new Placement.TerritoryBodies();
+            foreach (var held in factionProvinces)
+            {
+                bodies.Add(held.id, held.borderShares != null ? held.borderShares.Keys : null);
+            }
             var candidates = allProvinces
                 .Where(p => !occupiedProvinces.Contains(p) && provinceScores.ContainsKey(p) && !RegionalOwnershipUtility.IsLooseOwnedByRival(p, faction))
                 .Select(p => {
@@ -161,17 +170,22 @@ namespace RegionsAndSocieties
                         Placement.CompactnessRules.DefaultDesiredRatio,
                         FactionPlacementSettings.territoryCompactness);
 
-                    return new { Province = p, Score = suitability, Effective = effective, IsAdjacent = isAdjacent, Dist = minAllyDist };
+                    bool withinCap = Placement.ClusteringRules.WithinCap(
+                        bodies.MergedSizeIfAdded(p.borderShares != null ? p.borderShares.Keys : null), clusterCap);   // #46
+
+                    return new { Province = p, Score = suitability, Effective = effective, IsAdjacent = isAdjacent, Dist = minAllyDist, WithinCap = withinCap };
                 })
                 .ToList();
 
             if (!candidates.Any()) return -1;
 
-            // Sort candidates: adjacent first if we have existing provinces, then the shape-bent score.
+            // Sort candidates: within the cluster cap first (#46), then adjacent first if we have existing
+            // provinces, then the shape-bent score.
             var sorted = candidates.AsEnumerable();
             if (factionProvinces.Any())
             {
-                sorted = sorted.OrderByDescending(x => x.IsAdjacent ? 1 : 0)
+                sorted = sorted.OrderBy(x => Placement.ClusteringRules.CapRank(x.WithinCap))
+                               .ThenByDescending(x => x.IsAdjacent ? 1 : 0)
                                .ThenByDescending(x => x.Effective)
                                .ThenBy(x => x.Dist);
             }

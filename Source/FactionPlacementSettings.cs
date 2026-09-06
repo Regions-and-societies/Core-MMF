@@ -17,6 +17,11 @@ namespace RegionsAndSocieties
         public IntRange baseCountRange = new IntRange(5, 15);
         public int placementOrder = 3;
 
+        /// <summary>#46: how many territories may cluster together — the largest contiguous body this
+        /// faction builds: 1, 3, 5, 7 or 9 (= no limit). 0 = unset, resolved to the faction kind's
+        /// default on first read so a profile saved before 0.4.0 picks up the owner's table.</summary>
+        public int clusterSize = 0;
+
         public FactionPlacementProfile() { }
 
         public FactionPlacementProfile(string defName, float mineral, float nutrition, float forage, float grazing, float hunting, float margin, int minB, int maxB, int order)
@@ -43,6 +48,7 @@ namespace RegionsAndSocieties
             Scribe_Values.Look(ref marginWeight, "marginWeight", 0.0f);
             Scribe_Values.Look(ref baseCountRange, "baseCountRange", new IntRange(5, 15));
             Scribe_Values.Look(ref placementOrder, "placementOrder", 3);
+            Scribe_Values.Look(ref clusterSize, "clusterSize", 0);
         }
     }
 
@@ -166,7 +172,18 @@ namespace RegionsAndSocieties
                 p = GetDefaultProfile(def);
                 profiles[def.defName] = p;
             }
+            // #46: a profile saved before cluster size existed carries 0; resolve it to the kind's default.
+            if (p.clusterSize <= 0) p.clusterSize = DefaultClusterSize(def);
             return p;
+        }
+
+        /// <summary>#46: the owner's default cluster size for a faction — pirates and the Empire 3,
+        /// tribes 5, rough unions 7, everyone else 9 (no limit).</summary>
+        public static int DefaultClusterSize(FactionDef def)
+        {
+            if (def == null) return Placement.ClusteringRules.Unbounded;
+            var kind = Placement.ClusteringRules.ClassifyKind(def.defName, def.label, (int)def.techLevel, def.permanentEnemy, def.hostileToFactionlessHumanlikes);
+            return Placement.ClusteringRules.DefaultClusterSize(kind);
         }
 
         public static FactionPlacementProfile GetDefaultProfile(FactionDef def)
@@ -241,7 +258,9 @@ namespace RegionsAndSocieties
                 maxB = 8;
             }
 
-            return new FactionPlacementProfile(def.defName, mineral, nutrition, forage, grazing, hunting, margin, minB, maxB, order);
+            var profile = new FactionPlacementProfile(def.defName, mineral, nutrition, forage, grazing, hunting, margin, minB, maxB, order);
+            profile.clusterSize = DefaultClusterSize(def);   // #46
+            return profile;
         }
     }
 }
