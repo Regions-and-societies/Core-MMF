@@ -2,6 +2,17 @@
 <!--
   Regions and Societies — demographic influence graph (0.4.0 keystone, TEMPLATE).
 
+  ============================================================================================================
+  TOPOLOGY LOCKED 2026-09-06. The authoritative design is ../DEMOGRAPHIC_MODEL.md — read it first.
+  This file is the INFLUENCE-GRAPH portion (factors + weighted edges), which the loader parses and the reload
+  debug action live-reloads. It is only PART of the locked model: the graph runs PER XENOTYPE COHORT (the region
+  is a population-weighted aggregate), and several pieces are separate C# mechanism modules with their own small
+  Defs rather than plain influence edges — the health-vitals decomposition, wealth as income/cost/assets, the
+  geographic-scale/food carrying capacity, reproduction/inheritance, and the added indicators (contentment,
+  housing, pollution, sanitation, substance use, dependency ratio). See DEMOGRAPHIC_MODEL.md §4–§8 for those.
+  Weights below are first-pass, to calibrate against Design/sim/; the STRUCTURE is fixed.
+  ============================================================================================================
+
   One Def per demographic FACTOR (a node). Each mutable factor lists what STRESSES it from other
   factors (edges), Democracy-3 style: the factor's TARGET level is its seeded baseline plus the weighted
   sum of its inbound influences; its CURRENT level chases the target with hysteresis.
