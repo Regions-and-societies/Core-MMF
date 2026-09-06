@@ -387,21 +387,27 @@ namespace RegionsAndSocieties
                 var _ = Provinces;
             }
 
-            if (Find.TickManager != null && Find.TickManager.TicksGame % DemographicDecayInterval == 0)
+            // #53: the whole Societies tick — demographic stress decay, settlement growth, population
+            // dynamics — runs only when Societies is on. Off, none of it ticks (Regions-only worlds pay
+            // nothing here beyond the province self-heal above).
+            if (RegionsAndSocietiesMod.SocietiesEnabled)
             {
-                Demographics.RegionDemographicsStress.Tick(DemographicDecayInterval);
-            }
+                if (Find.TickManager != null && Find.TickManager.TicksGame % DemographicDecayInterval == 0)
+                {
+                    Demographics.RegionDemographicsStress.Tick(DemographicDecayInterval);
+                }
 
-            if (Find.TickManager != null && Find.TickManager.TicksGame % GrowthTickInterval == 0)
-            {
-                AdvanceSettlementGrowth(GrowthTickInterval);
-            }
+                if (Find.TickManager != null && Find.TickManager.TicksGame % GrowthTickInterval == 0)
+                {
+                    AdvanceSettlementGrowth(GrowthTickInterval);
+                }
 
-            // Population dynamics (#5/#8): every 10 days, AFTER growth, so the write order is grow → accrete
-            // → migrate on the shared delta. Governance-off is handled inside RunPasses.
-            if (Find.TickManager != null && Find.TickManager.TicksGame % Integration.PopulationDynamics.CadenceTicks == 0)
-            {
-                Integration.PopulationDynamics.RunPasses(this, regionPopulationDelta);
+                // Population dynamics (#5/#8): every 10 days, AFTER growth, so the write order is grow →
+                // accrete → migrate on the shared delta. Governance-off is handled inside RunPasses.
+                if (Find.TickManager != null && Find.TickManager.TicksGame % Integration.PopulationDynamics.CadenceTicks == 0)
+                {
+                    Integration.PopulationDynamics.RunPasses(this, regionPopulationDelta);
+                }
             }
 
             if (!pendingCompatibilityNotice) return;

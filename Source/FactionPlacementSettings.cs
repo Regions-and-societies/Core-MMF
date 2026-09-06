@@ -132,6 +132,12 @@ namespace RegionsAndSocieties
         /// unions) into loosely-related regional kin sub-factions. Default on.</summary>
         public static bool splitScatteredFactions = true;
 
+        /// <summary>#53: the master switch for the whole Societies layer — population, demographics and
+        /// economy. Off means Regions only: the partition, territories, borders, placement and their map
+        /// modes still run, but nothing models or draws population/demographics/economy, and none of it
+        /// ticks. Default on. Read everywhere through <see cref="RegionsAndSocietiesMod.SocietiesEnabled"/>.</summary>
+        public static bool societiesEnabled = true;
+
         public override void ExposeData()
         {
             base.ExposeData();
@@ -149,6 +155,7 @@ namespace RegionsAndSocieties
             Scribe_Values.Look(ref maxRegionPanels, "maxRegionPanels", 2);
             Scribe_Values.Look(ref mapFrameworkWarningDismissed, "mapFrameworkWarningDismissed", false);
             Scribe_Values.Look(ref splitScatteredFactions, "splitScatteredFactions", true);
+            Scribe_Values.Look(ref societiesEnabled, "societiesEnabled", true);
 
             // 0.7: world-object governance / mod-integration switches.
             Integration.WorldObjectIntegrationSettings.ExposeData();

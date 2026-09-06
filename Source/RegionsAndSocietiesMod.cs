@@ -14,6 +14,10 @@ namespace RegionsAndSocieties
         public static FactionPlacementSettings Settings;
         private static bool demographicTuningExpanded;
 
+        /// <summary>#53: whether the Societies layer (population, demographics, economy) runs at all.
+        /// The single gate every societies entry point reads; off means Regions only.</summary>
+        public static bool SocietiesEnabled => FactionPlacementSettings.societiesEnabled;
+
         public override string SettingsCategory() => "Regions and Societies";
 
         public override void DoSettingsWindowContents(Rect inRect)
@@ -74,6 +78,8 @@ namespace RegionsAndSocieties
 
             l.GapLine();
             l.Label("Regions and Societies features — toggle any off to avoid conflicts with other mods:");
+            l.CheckboxLabeled("Societies: population, demographics & economy", ref FactionPlacementSettings.societiesEnabled,
+                "The whole Societies layer. Off means Regions only — the partition, territories, borders, placement and their map modes still work, but nothing models or draws population, demographics or economy, and none of it ticks. Turn it off if you only want the map framework, or to save the load-time and tick cost.");
             l.CheckboxLabeled("Split scattered factions into regional kin", ref FactionPlacementSettings.splitScatteredFactions,
                 "At world generation, a pirate, tribe, or rough-union faction whose settlements are scattered into separate clusters is split into loosely-related regional sub-factions — a north and a south tribe, kin but no longer one polity. The Empire and spacer civilisations stay whole. On by default.");
             l.CheckboxLabeled("World-object integration (master)", ref Integration.WorldObjectIntegrationSettings.masterEnabled,
@@ -82,6 +88,10 @@ namespace RegionsAndSocieties
                 "Structural tiers (village → metropolis) from each faction's settlement pyramid, and the capital star marker.");
             l.CheckboxLabeled("Seed outposts at world generation", ref Integration.WorldObjectIntegrationSettings.outpostSeeding,
                 "Place outposts around settlements up to each territory's tier-based allowance during world generation. Needs a compatibility patch that contributes an outpost creator (e.g. the Outposts Expanded patch).");
+            // #53: population caps and demographic tuning belong to the Societies layer; hide them when
+            // it is off so the panel offers only what actually does something.
+            if (FactionPlacementSettings.societiesEnabled)
+            {
             l.CheckboxLabeled("Population caps (model only)", ref Integration.WorldObjectIntegrationSettings.populationCaps,
                 "Model a per-tier population cap that settlements drift toward. Never adds or removes the player's real colonists.");
 
@@ -119,6 +129,7 @@ namespace RegionsAndSocieties
                     genYears, 1f, 30f));
                 Integration.WorldObjectIntegrationSettings.demographicGenerationYears = genYears;
             }
+            }   // #53: end of societies-only settings
 
             l.Gap();
             l.CheckboxLabeled("Draw region borders on the world map",
