@@ -1,4 +1,4 @@
-# Regions & Societies — demographic model (LOCKED design of record, 0.4.0 keystone)
+# Regions & Societies — demographic model (LOCKED design of record, 0.5.0 keystone)
 
 Status: **topology locked 2026-09-06.** This is the canonical spec the C# build follows. It consolidates the
 design iterations and the calibration simulator (`Design/sim/`). Weights here are first-pass, to be calibrated
@@ -180,7 +180,7 @@ Validated in sim over 100 yr: sanguophages fade toward 0 (can't breed true), hyb
   never rewrites colony pawns.
 - **Economy extensibility — `EconomicSectorRegistry`** (mirrors #55 `FactionPlacementDefaults`): CPs register sectors +
   gates; the `EconomicSectorDef` tree is XML-patchable with `MayRequire`. Rimatomics/Rimfeller etc. = thin CPs, not
-  hardcoded. Sector vocabulary + wiring lands in 0.4.0; **pricing/production/consumption flows are 0.5.0** (#7/#31).
+  hardcoded. Sector vocabulary + wiring lands with the model in 0.5.0; **pricing/production/consumption flows + trade are 0.6.0** (#7/#31).
 
 Symmetry: #28 is sim→game (region shapes pawns); `SettlementActor` is game→sim (colony/outposts shape region). Together
 they close the loop; the inbound hook is the single place concrete player-owned state touches the abstract model.
