@@ -880,6 +880,12 @@ namespace RegionsAndSocieties.Patches
 
                     Faction sub = TryGenerateFaction(layer, parent.def);
                     if (sub == null) continue;
+                    // Register the sub-faction the same way the main worldgen loop registers its factions.
+                    // TryGenerateFaction does NOT add to the manager (the caller does), and an unregistered
+                    // faction has no goodwill-situation state — reading its PlayerGoodwill (the Territories
+                    // overlay does) then NREs deep in vanilla's GoodwillSituationManager. Add it BEFORE any
+                    // relation/goodwill work so that state exists.
+                    factionManager.Add(sub);
                     sub.Name = (string.IsNullOrEmpty(labels[s]) ? "" : labels[s] + " ") + baseName;
 
                     // Relations against every existing faction, then friendly kin goodwill with the parent
