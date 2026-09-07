@@ -1,15 +1,17 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
 
 namespace RegionsAndSocieties.Partition
 {
     /// <summary>
-    /// Shore-proportional split of an inland lake between the land regions on its shores (#48). A lake is
-    /// not a border: the polities on its shores share it, so the region seam runs ACROSS the water, not
-    /// around it. Each shore region's share of the lake equals its share of the shoreline — "lake
-    /// dominance = number of bordering tiles" — realised as largest-remainder quotas filled by a
-    /// capacity-bounded flood from each region's shore.
+    /// Split an inland lake between the land regions on its shores (#48). A lake is not a border: the
+    /// polities on its shores share it, so the region seam runs ACROSS the water, not around it. Each lake
+    /// tile is given to the shore region whose coast is NEAREST — a multi-source flood from every shore, so
+    /// the seams fall on the midline between shores and converge on the lake's centre. That reads as clean
+    /// wedges meeting in the middle rather than the interlocking fingers a size-quota'd flood produces.
+    /// Ties (a tile the same distance from two shores) break toward the dominant shore — the one bordering
+    /// the most lake tiles — then the lowest id, so the result is deterministic and the bigger shore keeps
+    /// the centre.
     ///
     /// <para>Pure by design like the rest of the Partition layer: a lake tile set, its internal adjacency,
     /// and the land regions each lake tile borders go in; a tile-to-region assignment comes out. No game
@@ -24,7 +26,8 @@ namespace RegionsAndSocieties.Partition
         public const int LakeMaxTiles = 450;
 
         /// <summary><c>shore_r</c>: how many lake tiles border region <c>r</c> (a lake tile touching two
-        /// regions counts once for each). This is the lake-dominance measure the shares are built from.</summary>
+        /// regions counts once for each). The dominant shore (most bordering tiles) wins the centre on a
+        /// tie.</summary>
         public static Dictionary<int, int> ShoreCounts(IEnumerable<int> lakeTiles, Dictionary<int, List<int>> shoreLabels)
         {
             var counts = new Dictionary<int, int>();
@@ -48,55 +51,11 @@ namespace RegionsAndSocieties.Partition
         }
 
         /// <summary>
-        /// Per-region tile quotas that sum EXACTLY to <paramref name="lakeTileCount"/>, proportional to
-        /// shore count and rounded by largest remainder (ties to the lowest id). Floor-at-1: a region with
-        /// any shore gets at least one tile when the lake is large enough to spare it, the tile taken from
-        /// the dominant region's quota.
-        /// </summary>
-        public static Dictionary<int, int> Quotas(int lakeTileCount, Dictionary<int, int> shoreCounts)
-        {
-            var quota = new Dictionary<int, int>();
-            if (shoreCounts.Count == 0 || lakeTileCount <= 0) return quota;
-            int totalShore = shoreCounts.Values.Sum();
-            if (totalShore <= 0) return quota;
-
-            var remainders = new List<KeyValuePair<int, double>>();
-            int assigned = 0;
-            foreach (var kv in shoreCounts.OrderBy(k => k.Key))
-            {
-                double ideal = (double)lakeTileCount * kv.Value / totalShore;
-                int floor = (int)Math.Floor(ideal);
-                quota[kv.Key] = floor;
-                assigned += floor;
-                remainders.Add(new KeyValuePair<int, double>(kv.Key, ideal - floor));
-            }
-            int left = lakeTileCount - assigned;
-            foreach (var kv in remainders.OrderByDescending(k => k.Value).ThenBy(k => k.Key))
-            {
-                if (left <= 0) break;
-                quota[kv.Key]++;
-                left--;
-            }
-
-            int dom = DominantRegion(shoreCounts);
-            foreach (var kv in shoreCounts.OrderBy(k => k.Key))
-            {
-                if (kv.Value > 0 && quota[kv.Key] == 0 && kv.Key != dom && quota[dom] > 1)
-                {
-                    quota[kv.Key] = 1;
-                    quota[dom]--;
-                }
-            }
-            return quota;
-        }
-
-        /// <summary>
-        /// Split the lake: every tile gets a shore region id. A capacity-bounded multi-source flood expands
-        /// each region one hop-ring at a time from its shore tiles, claiming a tile only while under quota;
-        /// rings are processed in shore-descending, then id order for determinism. Tiles walled off behind
-        /// saturated neighbours (leftovers) flood inward from the assigned boundary, preferring the
-        /// neighbouring region with the most spare quota; anything still stranded goes to the dominant
-        /// region. Returns empty when the lake has no shore at all (the caller then leaves it as water).
+        /// Split the lake: every tile gets a shore region id, taken by the region whose shore reaches it
+        /// first in an uncapped multi-source flood (nearest-shore). Simultaneous arrivals in the same ring
+        /// break by shore dominance, then lowest id, so seams sit on the midline and meet at the centre.
+        /// A tile the flood never reaches (disconnected water) goes to the dominant region. Returns empty
+        /// when the lake has no land shore at all (the caller then leaves it as water).
         /// </summary>
         public static Dictionary<int, int> Split(List<int> lakeTiles,
             Dictionary<int, List<int>> lakeAdjacency, Dictionary<int, List<int>> shoreLabels)
@@ -104,80 +63,54 @@ namespace RegionsAndSocieties.Partition
             var assign = new Dictionary<int, int>();
             var shore = ShoreCounts(lakeTiles, shoreLabels);
             if (shore.Count == 0) return assign;
-
             int dom = DominantRegion(shore);
-            var quota = Quotas(lakeTiles.Count, shore);
-            var remaining = new Dictionary<int, int>(quota);
 
-            var priority = shore.Keys.OrderByDescending(r => shore[r]).ThenBy(r => r).ToList();
-            var prioIndex = new Dictionary<int, int>();
-            for (int i = 0; i < priority.Count; i++) prioIndex[priority[i]] = i;
+            // Rank the shores: dominant (most bordering tiles) first, then lowest id. This is the tie-break
+            // when two shores reach a tile in the same ring — the bigger shore keeps the disputed midline.
+            var rank = new Dictionary<int, int>();
+            var ordered = new List<int>(shore.Keys);
+            ordered.Sort((a, b) => shore[a] != shore[b] ? shore[b].CompareTo(shore[a]) : a.CompareTo(b));
+            for (int i = 0; i < ordered.Count; i++) rank[ordered[i]] = i;
 
-            var frontier = new Dictionary<int, Queue<int>>();
-            foreach (int r in priority) frontier[r] = new Queue<int>();
+            // Seed hop 0: each shore tile is claimed by the best-ranked region it borders.
+            var current = new Dictionary<int, int>();
             foreach (int t in lakeTiles.OrderBy(x => x))
             {
                 if (!shoreLabels.TryGetValue(t, out var regs) || regs == null) continue;
-                var seen = new HashSet<int>();
-                foreach (int r in regs)
-                    if (seen.Add(r) && frontier.ContainsKey(r)) frontier[r].Enqueue(t);
+                int best = -1;
+                foreach (int r in regs) if (best == -1 || Rank(rank, r) < Rank(rank, best)) best = r;
+                if (best != -1) current[t] = best;
             }
 
-            bool progress = true;
-            while (progress)
+            // Ring by ring: assign the whole current ring first (so same-ring neighbours are not re-claimed),
+            // then expand to unassigned neighbours, each contested tile going to its best-ranked claimant.
+            while (current.Count > 0)
             {
-                progress = false;
-                foreach (int r in priority)
-                {
-                    var q = frontier[r];
-                    int ring = q.Count;
-                    var next = new List<int>();
-                    for (int k = 0; k < ring; k++)
-                    {
-                        int t = q.Dequeue();
-                        if (assign.ContainsKey(t)) continue;
-                        if (remaining[r] <= 0) continue;
-                        assign[t] = r; remaining[r]--; progress = true;
-                        if (lakeAdjacency.TryGetValue(t, out var nbs))
-                            foreach (int nb in nbs) if (!assign.ContainsKey(nb)) next.Add(nb);
-                    }
-                    foreach (int nb in next.OrderBy(x => x)) q.Enqueue(nb);
-                }
-            }
+                foreach (var kv in current.OrderBy(k => k.Key))
+                    if (!assign.ContainsKey(kv.Key)) assign[kv.Key] = kv.Value;
 
-            bool changed = true;
-            while (changed)
-            {
-                changed = false;
-                foreach (int t in lakeTiles.OrderBy(x => x))
+                var claims = new Dictionary<int, int>();
+                foreach (var kv in current.OrderBy(k => k.Key))
                 {
-                    if (assign.ContainsKey(t)) continue;
+                    int t = kv.Key, r = kv.Value;
+                    if (assign[t] != r) continue;
                     if (!lakeAdjacency.TryGetValue(t, out var nbs)) continue;
-                    int best = -1;
                     foreach (int nb in nbs)
                     {
-                        if (!assign.TryGetValue(nb, out int r)) continue;
-                        if (best == -1 || Better(r, best, remaining, prioIndex)) best = r;
-                    }
-                    if (best != -1)
-                    {
-                        assign[t] = best;
-                        if (remaining[best] > 0) remaining[best]--;
-                        changed = true;
+                        if (assign.ContainsKey(nb)) continue;
+                        if (!claims.TryGetValue(nb, out int cur) || Rank(rank, r) < Rank(rank, cur)) claims[nb] = r;
                     }
                 }
+                current = claims;
             }
 
             foreach (int t in lakeTiles) if (!assign.ContainsKey(t)) assign[t] = dom;
             return assign;
         }
 
-        private static bool Better(int r, int cur, Dictionary<int, int> remaining, Dictionary<int, int> prio)
+        private static int Rank(Dictionary<int, int> rank, int r)
         {
-            bool rSpare = remaining[r] > 0, cSpare = remaining[cur] > 0;
-            if (rSpare != cSpare) return rSpare;
-            if (remaining[r] != remaining[cur]) return remaining[r] > remaining[cur];
-            return prio[r] < prio[cur];
+            return rank.TryGetValue(r, out int i) ? i : int.MaxValue;
         }
     }
 }

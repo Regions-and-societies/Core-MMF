@@ -1,6 +1,6 @@
-// Behaviour tests for the shore-proportional inland-lake split (#48): shore counts, largest-remainder
-// quotas, and a capacity-bounded flood whose region shares match the quotas exactly. Pure, no game — the
-// BFS runs on a hand-built line/patch adjacency, the same code the hex world drives.
+// Behaviour tests for the nearest-shore inland-lake split (#48): shore counts, dominance, and a clean
+// multi-source flood whose seams meet on the midline (neat wedges, dominant shore keeps the centre).
+// Pure, no game — the BFS runs on a hand-built line adjacency, the same code the hex world drives.
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -25,36 +25,36 @@ namespace LakeSplitRulesTests
             var tie = new Dictionary<int, int> { { 5, 3 }, { 2, 3 } };
             Check("dominance tie -> lowest id", LakeSplitRules.DominantRegion(tie) == 2);
 
-            Section("quotas: largest remainder, sum exact");
-            var q = LakeSplitRules.Quotas(9, new Dictionary<int, int> { { 1, 2 }, { 3, 1 } });
-            Check("9 tiles, shore 2:1 -> 6 and 3", q[1] == 6 && q[3] == 3);
-            Check("quotas sum to the lake size", q.Values.Sum() == 9);
-            var q2 = LakeSplitRules.Quotas(10, new Dictionary<int, int> { { 1, 1 }, { 2, 1 }, { 3, 1 } });
-            Check("10 tiles over 3 equal shores sums to 10", q2.Values.Sum() == 10);
-            Check("10/3 split is 4-3-3 by remainder", q2[1] == 4 && q2[2] == 3 && q2[3] == 3);
-            // floor-at-1: a long lake with a sliver shore still yields the sliver region a tile.
-            var q3 = LakeSplitRules.Quotas(100, new Dictionary<int, int> { { 1, 99 }, { 2, 1 } });
-            Check("sliver shore floored to >=1", q3[2] >= 1 && q3.Values.Sum() == 100);
-
-            Section("split: shares match quotas (no leftovers)");
+            Section("split: neat wedges, seams on the midline");
             // A 12-tile line lake; region 1 seeds tile 0, region 2 tile 6, region 3 tile 11.
             var line12 = Line(12);
             var labels12 = new Dictionary<int, List<int>> {
                 { 0, new List<int> { 1 } }, { 6, new List<int> { 2 } }, { 11, new List<int> { 3 } } };
             var a12 = LakeSplitRules.Split(Enumerable.Range(0, 12).ToList(), line12, labels12);
             Check("every lake tile assigned", a12.Count == 12);
-            Check("even 3-way share -> 4/4/4", Count(a12, 1) == 4 && Count(a12, 2) == 4 && Count(a12, 3) == 4);
-            Check("each region's slice is contiguous on the line", Contiguous(a12));
+            Check("each region's slice is contiguous (no interlocking fingers)", Contiguous(a12));
+            Check("the shore-0 region owns its end", a12[0] == 1);
+            Check("the shore-11 region owns its end", a12[11] == 3);
+            Check("the middle shore owns the middle", a12[6] == 2);
 
-            // Proportional: region 1 borders tiles 0 AND 1 (shore 2), region 3 tile 8 (shore 1).
+            Section("split: dominant shore keeps the centre and the larger share");
+            // Region 1 borders tiles 0 AND 1 (shore 2, dominant); region 3 borders tile 8 (shore 1).
             var line9 = Line(9);
             var labels9 = new Dictionary<int, List<int>> {
                 { 0, new List<int> { 1 } }, { 1, new List<int> { 1 } }, { 8, new List<int> { 3 } } };
             var a9 = LakeSplitRules.Split(Enumerable.Range(0, 9).ToList(), line9, labels9);
-            var q9 = LakeSplitRules.Quotas(9, LakeSplitRules.ShoreCounts(Enumerable.Range(0, 9).ToList(), labels9));
-            Check("proportional shares match the quotas exactly",
-                Count(a9, 1) == q9[1] && Count(a9, 3) == q9[3]);
-            Check("dominant (region 1) got the larger half (6 vs 3)", Count(a9, 1) == 6 && Count(a9, 3) == 3);
+            Check("all 9 tiles assigned, contiguous", a9.Count == 9 && Contiguous(a9));
+            Check("dominant region 1 takes the larger share", Count(a9, 1) > Count(a9, 3));
+            Check("seam sits on the midline (region 1 holds tile 4)", a9[4] == 1 && a9[5] == 3);
+
+            Section("split: a tie splits evenly toward the lower-id shore");
+            // Two equal shores at the ends of an 8-tile line: seam falls in the middle, tie -> lower id.
+            var line8 = Line(8);
+            var labels8 = new Dictionary<int, List<int>> {
+                { 0, new List<int> { 2 } }, { 7, new List<int> { 5 } } };
+            var a8 = LakeSplitRules.Split(Enumerable.Range(0, 8).ToList(), line8, labels8);
+            Check("equal shores split near half", Count(a8, 2) == 4 && Count(a8, 5) == 4);
+            Check("both slices contiguous", Contiguous(a8));
 
             Section("pond wholly inside one region");
             var pond = Line(5);
