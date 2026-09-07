@@ -870,7 +870,7 @@ namespace RegionsAndSocieties.Patches
 
                 string[] labels = Placement.SubFactionRules.SectionLabels(sectionPts);
                 string baseName = parent.Name;
-                if (!string.IsNullOrEmpty(labels[keep])) parent.Name = labels[keep] + " " + baseName;
+                if (!string.IsNullOrEmpty(labels[keep])) parent.Name = Placement.SubFactionRules.ComposeName(labels[keep], baseName);
 
                 var kin = new List<Faction> { parent };
                 for (int s = 0; s < k; s++)
@@ -886,7 +886,7 @@ namespace RegionsAndSocieties.Patches
                     // overlay does) then NREs deep in vanilla's GoodwillSituationManager. Add it BEFORE any
                     // relation/goodwill work so that state exists.
                     factionManager.Add(sub);
-                    sub.Name = (string.IsNullOrEmpty(labels[s]) ? "" : labels[s] + " ") + baseName;
+                    sub.Name = Placement.SubFactionRules.ComposeName(labels[s], baseName);
 
                     // Relations against every existing faction, then friendly kin goodwill with the parent
                     // and any siblings already made — loosely related, not merged, not hostile.
@@ -963,14 +963,18 @@ namespace RegionsAndSocieties.Patches
         {
             try
             {
-                // Both directions must exist before goodwill is affected: two brand-new sibling factions
-                // each only created the relation from their own side, so TryAffectGoodwillWith NREs on the
-                // missing reverse. RelationWith(other, true) creates the record if absent.
-                a.RelationWith(b, true);
-                b.RelationWith(a, true);
-                int current = a.GoodwillWith(b);
-                int delta = Placement.SubFactionRules.LooseKinGoodwill - current;
-                if (delta != 0) a.TryAffectGoodwillWith(b, delta, canSendMessage: false, canSendHostilityLetter: false, reason: null);
+                // Write the kin goodwill straight onto both relation records — the way vanilla seeds its
+                // own initial faction relations during worldgen. TryAffectGoodwillWith recomputes the
+                // player-relative goodwill situations and reads Faction.OfPlayer, which logs "Could not find
+                // player faction." once per call while the world is still generating (the player faction
+                // does not exist yet) — the #59 log spam. baseGoodwill takes no such path; +60 keeps the
+                // pair Neutral (loosely related, not merged, not hostile), the intended relation, and the
+                // player's own goodwill with each kin faction is established later when the player faction is
+                // created. Both directions must exist first (each new faction only made its own side).
+                var relAB = a.RelationWith(b, true);
+                var relBA = b.RelationWith(a, true);
+                relAB.baseGoodwill = Placement.SubFactionRules.LooseKinGoodwill;
+                relBA.baseGoodwill = Placement.SubFactionRules.LooseKinGoodwill;
             }
             catch (Exception ex)
             {

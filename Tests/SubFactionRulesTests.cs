@@ -85,6 +85,15 @@ namespace SubFactionRulesTests
             Check("all labels distinct", l3[0] != l3[1] && l3[1] != l3[2] && l3[0] != l3[2]);
             Check("goodwill constant is friendly kin, not merged", SubFactionRules.LooseKinGoodwill > 0 && SubFactionRules.LooseKinGoodwill < 100);
 
+            Section("name composition: direction slips in after a leading article (#59 polish)");
+            Check("'The Abene Tribe' -> 'The West Abene Tribe'", SubFactionRules.ComposeName("West", "The Abene Tribe") == "The West Abene Tribe");
+            Check("plain base just takes the prefix", SubFactionRules.ComposeName("North", "Toban Union") == "North Toban Union");
+            Check("lowercase article still handled, casing preserved", SubFactionRules.ComposeName("East", "the Blue Newt") == "the East Blue Newt");
+            Check("'A '/'An ' articles handled", SubFactionRules.ComposeName("South", "A Great Clan") == "A South Great Clan");
+            Check("empty label returns the base unchanged", SubFactionRules.ComposeName("", "The Abene Tribe") == "The Abene Tribe");
+            Check("a word merely starting with 'The' is not treated as an article", SubFactionRules.ComposeName("West", "Theran Host") == "West Theran Host");
+            Check("no double space or stray article on a bare 'The'", SubFactionRules.ComposeName("West", "The") == "West The");
+
             Console.WriteLine();
             Console.WriteLine(failures == 0 ? "ALL SUB-FACTION TESTS PASSED" : failures + " SUB-FACTION TEST(S) FAILED");
             return failures == 0 ? 0 : 1;
