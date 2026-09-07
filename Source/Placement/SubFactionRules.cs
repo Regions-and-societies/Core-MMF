@@ -21,6 +21,34 @@ namespace RegionsAndSocieties.Placement
     {
         /// <summary>Most sections one faction may split into (parent included): the owner's "2–3".</summary>
         public const int MaxSections = 3;
+
+        /// <summary>
+        /// Compose a sub-faction's name from a directional <paramref name="label"/> (North/South/East/West/
+        /// Central, possibly empty) and the parent's <paramref name="baseName"/>. A bare prefix reads badly
+        /// when the base already opens with an article — "West The Abene Tribe" — so the direction is slipped
+        /// in AFTER a leading "The"/"A"/"An": "The West Abene Tribe". Any other base just takes the prefix:
+        /// "West Toban Union". An empty label returns the base unchanged. Pure and unit-tested.
+        /// </summary>
+        public static string ComposeName(string label, string baseName)
+        {
+            baseName = baseName ?? string.Empty;
+            if (string.IsNullOrEmpty(label)) return baseName;
+
+            foreach (var article in Articles)
+            {
+                if (baseName.Length > article.Length &&
+                    baseName.StartsWith(article, StringComparison.OrdinalIgnoreCase) &&
+                    char.IsWhiteSpace(baseName[article.Length]))
+                {
+                    string lead = baseName.Substring(0, article.Length);          // preserve original casing
+                    string rest = baseName.Substring(article.Length).TrimStart();
+                    return lead + " " + label + " " + rest;
+                }
+            }
+            return label + " " + baseName;
+        }
+
+        private static readonly string[] Articles = { "The", "A", "An" };
         /// <summary>Goodwill set between the kin factions a split produces — friendly, not merged.</summary>
         public const int LooseKinGoodwill = 60;
 
