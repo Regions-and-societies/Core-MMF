@@ -1587,6 +1587,7 @@ namespace RegionsAndSocieties
                 Log.Message($"[RegionsAndSocieties] SplitDisconnectedRegions: split {splitRegions} region(s) into {newPieces} extra piece(s) to enforce contiguity.");
         }
 
+
         /// <summary>
         /// Small-island handling (#49): absorb lone small islands into the nearest mainland, but group
         /// island clusters into chains first so a &gt;=30-tile archipelago becomes its own region instead of

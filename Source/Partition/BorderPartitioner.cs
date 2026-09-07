@@ -32,17 +32,14 @@ namespace RegionsAndSocieties.Partition
         // selective pass rule replaces the over-firing opposite-sides primitive.
         private const bool EnableNeckDetection = false;
 
-        // #40: split a region across a mountain pass. The contain-subdivide core morphology treats only
-        // claimed water/impassable tiles and biome edges as walls, so a passable Mountainous saddle in a
-        // ridge reads as interior and the region spans it (region 133 / Mount Zocrouño repro). When on,
-        // MarkPassNecks extends the hard walls across the ridge: a high-ground saddle pinched between
-        // impassable peaks (or water) on opposing sides becomes a container border, closing the ridge into
-        // one continuous frontier so the region splits along it. The saddle tiles are then draped back to
-        // the two sides (2c), so the ridge splits between them rather than leaving a hole.
-        //
-        // Selectivity: the flank is a HARD WALL only (impassable / water), and only a genuine notch between
-        // two peaks fires. An earlier attempt counted LargeHills as a flank and over-fired on a fifth of
-        // the land; bridging only between actual peaks fires just in real ridge gaps (#40).
+        // #40: split a region across a mountain ridge. The contain-subdivide core morphology treats only
+        // claimed water/impassable tiles and biome edges as walls, so the passable Mountainous saddles
+        // between a range's impassable peaks read as interior and the region flows through them, spanning
+        // the range (region 133 / Mount Zocrouño / regions 402+309 repro). When on, MarkRidgeBarriers walls
+        // the passable Mountainous tiles that belong to a peaked ridge (a high-ground component containing
+        // an impassable peak), turning the dotted line of peaks into a continuous barrier so the region
+        // splits along it; those tiles drape back to the two sides (2c), no hole. A pure-Mountainous ridge
+        // with no peak is left interior (a region may flow over it), which keeps the rule off lone hills.
         private const bool SplitMountainPasses = true;
 
         /// <summary>
@@ -74,7 +71,7 @@ namespace RegionsAndSocieties.Partition
             }
 
             // Pass-neck detection (gated OFF pending a selective saddle rule; kept for iteration).
-            var isNeck = EnableNeckDetection ? MarkPassNecks(grid, isLand, total) : new bool[total];
+            var isNeck = EnableNeckDetection ? MarkPassNecks(grid, isLand, signals, total) : new bool[total];
 #pragma warning disable 0162 // unreachable while EnableNeckDetection is const false
             if (EnableNeckDetection)
             {
@@ -218,7 +215,10 @@ namespace RegionsAndSocieties.Partition
             bool[] isNeck;
             if (SplitMountainPasses)
             {
-                isNeck = MarkPassNecks(grid, interior, total);
+                var signals = new TileSignal[total];
+                var biomeIds = new Dictionary<BiomeDef, int>();
+                for (int t = 0; t < total; t++) signals[t] = Classify(grid, t, biomeIds);
+                isNeck = MarkRidgeBarriers(grid, interior, signals, total);
                 int neckCount = 0;
                 for (int t = 0; t < total; t++) if (isNeck[t]) neckCount++;
                 Log.Message($"[RegionsAndSocieties] Contain-subdivide: {neckCount} mountain-pass neck tile(s) walled as borders (#40).");
@@ -305,6 +305,15 @@ namespace RegionsAndSocieties.Partition
                     containerOf[n] = cid; containers[cid].Add(n); rq.Enqueue(n);
                 }
             }
+
+            // Phase 2.7 (#40): split any container pinched to a one-tile waist between two substantial lobes
+            // BEFORE it is subdivided — the geometric "narrow pass" cut (e.g. region 383's pass at tile
+            // 15193). Done on the container, so the border falls exactly on the neck and each side then
+            // subdivides on its own, rather than drawing a region and re-cutting it afterward.
+            int containersBeforeNecks = containers.Count;
+            containers = SplitContainersAtNecks(grid, containers, neigh);
+            if (containers.Count != containersBeforeNecks)
+                Log.Message($"[RegionsAndSocieties] Narrow-neck split (#40): {containers.Count - containersBeforeNecks} container(s) added by cutting one-tile passes.");
 
             // Phase 3 (SUBDIVIDE): cut each container into appropriately sized regions. Target size is
             // baseMax × the biome's size weight (temperate ~1×, tundra ~2×, desert ~3×, ice ~10×), so a
@@ -736,6 +745,147 @@ namespace RegionsAndSocieties.Partition
             // Any neck tile still unplaced (ringed only by walls/necks) is left for AbsorbEnclosedGaps.
         }
 
+        /// <summary>A container narrower than twice this can't split into two substantial lobes, and a
+        /// lobe below it is a protrusion, not a real half — so a neck only cuts when BOTH sides clear it.</summary>
+        private const int NarrowNeckMinLobe = 15;
+
+        /// <summary>
+        /// Split each container at a NARROW NECK (#40): a one-tile waist (an articulation tile) whose
+        /// removal separates the container into two substantial lobes. A container pinched to a single tile
+        /// between two bodies — a mountain pass, an isthmus, a land dumbbell — is two places joined by a
+        /// thread, and the thread is the border. Terrain-free: the pinch is in the container's own shape,
+        /// however it arose (impassable peaks squeezing a corridor, a coast, a biome waist). Runs BEFORE the
+        /// subdivision so each side is drawn and subdivided on its own. Both halves are re-examined so a
+        /// multi-waisted container splits fully.
+        /// </summary>
+        private static List<List<int>> SplitContainersAtNecks(WorldGrid grid, List<List<int>> containers, List<PlanetTile> nb)
+        {
+            var floodNb = new List<PlanetTile>();
+            var result = new List<List<int>>();
+            var work = new List<List<int>>(containers);
+            int guard = 0;
+            int wi = 0;
+            for (; wi < work.Count && guard < 20000; wi++)
+            {
+                guard++;
+                var container = work[wi];
+                if (container.Count < 2 * NarrowNeckMinLobe) { result.Add(container); continue; }
+                var members = new HashSet<int>(container);
+
+                int neck = -1;
+                List<int> keep = null, spin = null;
+                foreach (int t in container)
+                {
+                    // A waist tile has in-container neighbours on two sides but is not fully surrounded:
+                    // 2-5 of its 6 neighbours in the container. The flood-test below is the real check.
+                    nb.Clear();
+                    grid.GetTileNeighbors(t, nb);
+                    int same = 0;
+                    for (int i = 0; i < nb.Count; i++) if (members.Contains(nb[i].tileId)) same++;
+                    if (same < 2 || same > 5) continue;
+
+                    var comps = FloodComponentsExcluding(grid, members, t, floodNb);
+                    if (comps.Count < 2) continue;
+                    comps.Sort((a, b) => b.Count.CompareTo(a.Count));
+                    if (comps[1].Count < NarrowNeckMinLobe) continue;
+
+                    neck = t;
+                    keep = comps[0];
+                    spin = new List<int>();
+                    for (int c = 1; c < comps.Count; c++) spin.AddRange(comps[c]);
+                    break;
+                }
+                if (neck < 0) { result.Add(container); continue; }
+
+                keep.Add(neck);           // the neck joins the larger lobe
+                work.Add(keep);           // re-examine both halves for further necks
+                work.Add(spin);
+            }
+            for (; wi < work.Count; wi++) result.Add(work[wi]);   // guard tripped: keep the rest whole
+            return result;
+        }
+
+        /// <summary>Connected components (hex adjacency) of <paramref name="members"/> with <paramref
+        /// name="skip"/> removed. Deterministic (ascending tile ids).</summary>
+        private static List<List<int>> FloodComponentsExcluding(WorldGrid grid, HashSet<int> members, int skip, List<PlanetTile> nb)
+        {
+            var seen = new HashSet<int> { skip };
+            var comps = new List<List<int>>();
+            var stack = new Stack<int>();
+            var ordered = new List<int>(members);
+            ordered.Sort();
+            foreach (int start in ordered)
+            {
+                if (seen.Contains(start)) continue;
+                var comp = new List<int>();
+                stack.Clear(); stack.Push(start); seen.Add(start);
+                while (stack.Count > 0)
+                {
+                    int cur = stack.Pop();
+                    comp.Add(cur);
+                    nb.Clear();
+                    grid.GetTileNeighbors(cur, nb);
+                    for (int i = 0; i < nb.Count; i++)
+                    {
+                        int nid = nb[i].tileId;
+                        if (members.Contains(nid) && !seen.Contains(nid)) { seen.Add(nid); stack.Push(nid); }
+                    }
+                }
+                comps.Add(comp);
+            }
+            return comps;
+        }
+
+        /// <summary>
+        /// Mark the passable Mountainous tiles that belong to a RIDGE WITH PEAKS as container barriers (#40).
+        /// A RimWorld mountain range is impassable peaks interleaved with passable Mountainous saddles, so a
+        /// region flows through the saddle and spans the range even though the peaks are hard walls — the
+        /// border closes only "50% of the way" along the dotted line of peaks. This floods every connected
+        /// component of high ground (Mountainous OR impassable, hex-adjacent); a component that contains at
+        /// least one impassable peak is a real ridge, so its passable Mountainous tiles are walled too,
+        /// turning the dotted line into a continuous barrier — no reach limit, so a long Mountainous gap
+        /// between distant peaks still closes. A component of pure passable Mountainous with NO peak is left
+        /// alone (a rolling mountain-foot a region may still flow over), which is what a lone-hill test must
+        /// do to avoid the over-firing that walling all Mountainous produced. Impassable tiles are already
+        /// their own MountainRange walls, so only the passable (interior) Mountainous tiles are flagged here.
+        /// The flagged tiles act as core-flood borders and are draped back to the two sides (2c), so the
+        /// ridge splits between the basins it divides rather than leaving a hole.
+        /// </summary>
+        private static bool[] MarkRidgeBarriers(WorldGrid grid, bool[] interior, TileSignal[] signals, int total)
+        {
+            var barrier = new bool[total];
+            var seen = new bool[total];
+            var comp = new List<int>();
+            var stack = new Stack<int>();
+            var nb = new List<PlanetTile>();
+            for (int s = 0; s < total; s++)
+            {
+                if (seen[s] || signals[s].HillClass < 3) continue;   // seed only high ground (Mountainous/impassable)
+                comp.Clear();
+                stack.Clear();
+                stack.Push(s); seen[s] = true;
+                bool hasPeak = false;
+                while (stack.Count > 0)
+                {
+                    int cur = stack.Pop();
+                    comp.Add(cur);
+                    if (signals[cur].HillClass >= 4) hasPeak = true;   // an impassable peak anchors the ridge
+                    nb.Clear();
+                    grid.GetTileNeighbors(cur, nb);
+                    for (int i = 0; i < nb.Count; i++)
+                    {
+                        int nid = nb[i].tileId;
+                        if (nid < 0 || nid >= total || seen[nid]) continue;
+                        if (signals[nid].HillClass >= 3) { seen[nid] = true; stack.Push(nid); }
+                    }
+                }
+                if (hasPeak)
+                    foreach (int t in comp)
+                        if (interior[t]) barrier[t] = true;   // passable Mountainous on a peaked ridge = barrier
+            }
+            return barrier;
+        }
+
         // Ridge-pass detection (#40). A RimWorld mountain range is impassable PEAKS interleaved with
         // PASSABLE Mountainous saddles, so a region flows through the saddle and spans the ridge. The rule
         // closes the ridge by EXTENDING the hard walls across those saddles: a high-ground tile that can
@@ -759,7 +909,7 @@ namespace RegionsAndSocieties.Partition
         /// The flank is a hard wall only (not high ground), so open country never fires: only a tile within
         /// <see cref="NeckRadius"/> of peaks/water on genuinely opposing sides is a pass.
         /// </summary>
-        private static bool[] MarkPassNecks(WorldGrid grid, bool[] isLand, int total)
+        private static bool[] MarkPassNecks(WorldGrid grid, bool[] isLand, TileSignal[] signals, int total)
         {
             var isNeck = new bool[total];
             var neighbors = new List<PlanetTile>();
@@ -768,7 +918,9 @@ namespace RegionsAndSocieties.Partition
             var q = new Queue<int>();
             for (int t = 0; t < total; t++)
             {
-                // Any passable land tile can be a saddle — the flank test below keeps it to real passes.
+                // ANY passable land tile can be a saddle — valley floor or ridge alike. The point is simply:
+                // a passable tile flanked by impassable mountains (or water) on opposing sides is a natural
+                // barrier. The flank test below (hard wall only) is what keeps it to real passes.
                 if (!isLand[t]) continue;
 
                 dirs.Clear(); depth.Clear(); q.Clear();
@@ -785,7 +937,7 @@ namespace RegionsAndSocieties.Partition
                     {
                         int nid = n.tileId;
                         if (nid < 0 || nid >= total) continue;   // off-surface / out-of-range neighbour (multi-layer worlds)
-                        bool flankWall = !isLand[nid];   // a hard wall: water or impassable peak (extend it)
+                        bool flankWall = !isLand[nid];   // a HARD WALL only: water or an impassable peak
                         if (flankWall)
                         {
                             // A flanking hard wall reached within the radius: note its bearing.
