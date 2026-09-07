@@ -300,6 +300,9 @@ namespace RegionsAndSocieties.Demographics
             if (!RegionsAndSocietiesMod.SocietiesEnabled) return new RegionDemographics();
             EnsureFresh();
             if (province?.tiles == null || province.tiles.Count == 0) return new RegionDemographics();
+            // #51: a small region kept only via the "enable small regions" option earns no regional
+            // benefits — it is too small to sustain a society, so it reads as empty demographics.
+            if (province.benefitsSuppressed) return new RegionDemographics();
             // Only land has demographics. Skipping water avoids aggregating the (now real, ~50k-tile)
             // ocean province — an O(tiles × settlement sources) walk that would freeze on first read and
             // report a fabricated ocean population/age/wealth (#20).

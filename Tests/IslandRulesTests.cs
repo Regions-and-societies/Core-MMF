@@ -13,9 +13,10 @@ namespace IslandRulesTests
         {
             Section("ShouldJoin: small + land within reach");
             Check("4-tile island 2 hops off a coast -> join", IslandRules.ShouldJoin(4, 2));
-            Check("9-tile island 4 hops off (at the reach) -> join", IslandRules.ShouldJoin(9, 4));
+            Check("9-tile island 8 hops off (at the reach) -> join", IslandRules.ShouldJoin(9, 8));
+            Check("small island 5 hops off (within the wider reach) -> join", IslandRules.ShouldJoin(4, 5));
             Check("10-tile island is not 'small' -> no", !IslandRules.ShouldJoin(10, 1));
-            Check("small island but 5 hops (past reach) -> no", !IslandRules.ShouldJoin(4, 5));
+            Check("small island but 9 hops (past reach) -> no", !IslandRules.ShouldJoin(4, 9));
             Check("small island with no land in reach (-1) -> no", !IslandRules.ShouldJoin(4, -1));
             Check("empty region (0 tiles) -> no", !IslandRules.ShouldJoin(0, 1));
 
@@ -37,7 +38,7 @@ namespace IslandRulesTests
 
             Section("constants");
             Check("small-island cap is 10", IslandRules.SmallIslandMaxTiles == 10);
-            Check("absorb reach is 4 hops", IslandRules.IslandAbsorbHops == 4);
+            Check("absorb reach is 8 hops", IslandRules.IslandAbsorbHops == 8);
             Check("chain cut is 30", IslandRules.IslandChainMinTiles == 30);
 
             Console.WriteLine();

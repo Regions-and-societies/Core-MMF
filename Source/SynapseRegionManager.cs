@@ -979,14 +979,6 @@ namespace RegionsAndSocieties
             // MountainRange. Islands (water neighbours) and genuine enclosed valleys (larger) are left.
             AbsorbMountainSealedSpecks(MountainSpeckMaxTiles);
 
-            // Phase 5b1: share inland lakes across their shore regions (#48). Phase 2.5 floods every water
-            // body — a small inland lake included — into its own water province, so a lake ends up an
-            // unowned wedge and the region border rings it. A lake is not a border: the polities on its
-            // shores share it. SplitInlandLakes hands each below-cap enclosed body's tiles to the shore
-            // regions in proportion to their shoreline, so the seam runs ACROSS the water. This supersedes
-            // the old whole-absorb rule (small ponds fall out of the same rule with a single shore region).
-            SplitInlandLakes();
-
             // Phase 5b2: fold impassable-mountain (and other unclaimed, non-water) pockets that are
             // fully enclosed by a single region INTO that region, so they read as owned terrain rather
             // than holes punched in the map (#3).
@@ -1029,13 +1021,22 @@ namespace RegionsAndSocieties
             // sub-minimum land region into its dominant same-biome passable neighbour.
             AbsorbStrayFragments();
 
-            // Phase 5e: drop what no merge could place (#51). A land region of 1-6 tiles carries no
-            // region benefits and nothing the demographic model can model. After every merge/absorb/split
-            // pass has had its chance, such a speck is one no rule could home (its only neighbours are
-            // water/impassable, or #49 already merged any island within reach of land). Unassign its tiles
-            // (id -> -1, the state impassable holes use), unless it anchors a settlement/outpost -- that
-            // folds into its largest land neighbour instead, never orphaned.
+            // Phase 5e: resolve tiny land regions (#51). A 1-6 tile region carries no region benefits and
+            // nothing the demographic model can model. If it touches a land mass at all it JOINS it (folds
+            // into the largest land neighbour) — a sliver next to real land should be part of that land, not
+            // a standalone region or an unassigned hole, and a settlement on it goes along. Only a genuinely
+            // isolated speck (no land neighbour — a mid-water island #49 could not reach) is dropped to
+            // unassigned, or kept as a benefits-suppressed region when the "enable small regions" option is
+            // on, or kept if it anchors a settlement that would otherwise be orphaned.
             DropTinyRegions();
+
+            // Phase 5f: share inland lakes across their shore regions (#48). Runs LAST, over the FINAL land
+            // regions — after islands have been absorbed (#49) and tiny land regions folded/dropped (#51) —
+            // so a lake's water is handed only to land that is really there. Doing it earlier inflated a
+            // 1-tile island into a many-tile region by giving it a wedge of the lake before #49/#51 could
+            // see it was a speck, which then hid it from the island/tiny rules. Each below-cap enclosed
+            // body's tiles go to the nearest shore region so the seam runs ACROSS the water, not around it.
+            SplitInlandLakes();
 
             // Naming Phase: Contextual Name Resolution
             Log.Message("[RegionsAndSocieties] Running contextual province naming...");
@@ -1128,10 +1129,13 @@ namespace RegionsAndSocieties
                 }
             }
 
+            // #51 option: when on, tiny regions are KEPT as benefits-suppressed regions instead of dropped.
+            bool keepSmall = FactionPlacementSettings.enableSmallRegions;
+
             var byId = provinces.ToDictionary(p => p.id, p => p);
             var neighbors = new List<RimWorld.Planet.PlanetTile>();
             var toRemove = new HashSet<GeographicProvince>();
-            int dropped = 0, droppedTiles = 0, folded = 0;
+            int dropped = 0, droppedTiles = 0, folded = 0, kept = 0;
 
             foreach (var p in provinces)
             {
@@ -1158,7 +1162,7 @@ namespace RegionsAndSocieties
                     }
                 }
 
-                var action = Placement.TinyRegionRules.Resolve(p.tiles.Count, hasHolding, bestLand != null);
+                var action = Placement.TinyRegionRules.Resolve(p.tiles.Count, hasHolding, bestLand != null, keepSmall);
                 if (action == Placement.TinyRegionAction.Fold && bestLand != null)
                 {
                     foreach (int tileId in p.tiles) { bestLand.tiles.Add(tileId); tileToProvinceId[tileId] = bestLand.id; }
@@ -1169,10 +1173,17 @@ namespace RegionsAndSocieties
                     foreach (int tileId in p.tiles) tileToProvinceId[tileId] = -1;
                     toRemove.Add(p); dropped++; droppedTiles += p.tiles.Count;
                 }
+                else
+                {
+                    // Kept: a tiny region survives (option on, or a settlement speck with no fold target).
+                    // It is real and settle-able but too small to sustain a society — no regional benefits.
+                    p.benefitsSuppressed = true; kept++;
+                }
             }
 
             if (toRemove.Count > 0) provinces.RemoveAll(p => toRemove.Contains(p));
-            Log.Message($"[RegionsAndSocieties] DropTinyRegions (#51): dropped {dropped} region(s) ({droppedTiles} tile(s) unassigned), folded {folded} settlement speck(s).");
+            Log.Message($"[RegionsAndSocieties] DropTinyRegions (#51): dropped {dropped} region(s) ({droppedTiles} tile(s) unassigned), "
+                + $"folded {folded} settlement speck(s), kept {kept} benefits-suppressed small region(s) (enableSmallRegions={keepSmall}).");
         }
 
         /// <summary>Largest passable speck (in tiles) folded into a surrounding impassable massif. Above
@@ -1270,7 +1281,10 @@ namespace RegionsAndSocieties
                         {
                             touchesOtherWater = true; break;   // a sea inlet, not an enclosed lake
                         }
-                        if (np.provinceType == ProvinceType.Land)
+                        // A benefits-suppressed speck (a kept isolated tiny region, #51) is NOT a lake shore:
+                        // giving it water would balloon a 1-tile region back into a many-tile one. The water
+                        // goes to the real shore regions instead.
+                        if (np.provinceType == ProvinceType.Land && !np.benefitsSuppressed)
                         {
                             if (labels == null) labels = new List<int>();
                             labels.Add(npid);
@@ -1695,18 +1709,27 @@ namespace RegionsAndSocieties
                     int nid = n.tileId;
                     if (visited.Contains(nid)) continue;
                     visited.Add(nid);
-                    int pid = GetProvinceId(nid);
-                    if (pid != -1 && pid != island.id)
+
+                    // A LAND tile classifies (sibling island to chain, or mainland to absorb into) and stops
+                    // the flood — we never cross land. WATER tiles are flooded across regardless of which
+                    // water province owns them: ocean and lake tiles carry a province id, so testing pid
+                    // here (as the old code did) treated the whole sea as a wall and the search never left
+                    // the island's shore — the bug that made every island "keep separate".
+                    if (!Find.WorldGrid[nid].WaterCovered)
                     {
-                        if (smallIslandIds.Contains(pid)) { if (reachedSet.Add(pid)) reachedIslands.Add(pid); }
-                        else if (landIds.Contains(pid))
+                        int pid = GetProvinceId(nid);
+                        if (pid != -1 && pid != island.id)
                         {
-                            int c; mainlandHits.TryGetValue(pid, out c); mainlandHits[pid] = c + 1;
-                            if (!mainlandFirstHop.ContainsKey(pid)) mainlandFirstHop[pid] = depth;
+                            if (smallIslandIds.Contains(pid)) { if (reachedSet.Add(pid)) reachedIslands.Add(pid); }
+                            else if (landIds.Contains(pid))
+                            {
+                                int c; mainlandHits.TryGetValue(pid, out c); mainlandHits[pid] = c + 1;
+                                if (!mainlandFirstHop.ContainsKey(pid)) mainlandFirstHop[pid] = depth;
+                            }
                         }
-                        continue;   // never expand through land
+                        continue;   // never expand through land or impassable rock
                     }
-                    if (depth < maxHops && Find.WorldGrid[nid].WaterCovered)
+                    if (depth < maxHops)
                         queue.Enqueue(new KeyValuePair<int, int>(nid, depth + 1));
                 }
             }

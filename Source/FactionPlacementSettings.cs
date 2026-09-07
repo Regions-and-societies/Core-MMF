@@ -138,6 +138,13 @@ namespace RegionsAndSocieties
         /// ticks. Default on. Read everywhere through <see cref="RegionsAndSocietiesMod.SocietiesEnabled"/>.</summary>
         public static bool societiesEnabled = true;
 
+        /// <summary>#51: keep tiny land regions (&le; TinyRegionMaxTiles) instead of dropping them. Off
+        /// (default) drops a 1-6 tile region — too small to serve a regional society — so its tiles become
+        /// unassigned. On keeps it as a real, settle-able region that simply earns NO regional benefits
+        /// (marked <see cref="GeographicProvince.benefitsSuppressed"/>): settlements may spawn there, but it
+        /// gets no demographics/economy. A settlement/outpost speck is never orphaned either way.</summary>
+        public static bool enableSmallRegions = false;
+
         public override void ExposeData()
         {
             base.ExposeData();
@@ -156,6 +163,7 @@ namespace RegionsAndSocieties
             Scribe_Values.Look(ref mapFrameworkWarningDismissed, "mapFrameworkWarningDismissed", false);
             Scribe_Values.Look(ref splitScatteredFactions, "splitScatteredFactions", true);
             Scribe_Values.Look(ref societiesEnabled, "societiesEnabled", true);
+            Scribe_Values.Look(ref enableSmallRegions, "enableSmallRegions", false);
 
             // 0.7: world-object governance / mod-integration switches.
             Integration.WorldObjectIntegrationSettings.ExposeData();

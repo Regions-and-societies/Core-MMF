@@ -30,7 +30,7 @@ namespace RegionsAndSocieties.Placement
 
         /// <summary>Reach, in water hops, for both mainland absorption and island-to-island chaining. The
         /// old 2 missed anything past a one-tile channel.</summary>
-        public const int IslandAbsorbHops = 4;
+        public const int IslandAbsorbHops = 8;
 
         /// <summary>A chain whose islands total this many tiles or more becomes its own region rather than
         /// joining the mainland — 30 tiles of archipelago is a place, not a coastal footnote.</summary>

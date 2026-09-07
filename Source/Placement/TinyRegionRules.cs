@@ -34,23 +34,27 @@ namespace RegionsAndSocieties.Placement
 
         /// <summary>
         /// What to do with a land region of <paramref name="tileCount"/> tiles. Above the cap → Keep. At or
-        /// below it: a region holding a settlement/outpost folds into its largest land neighbour when it has
-        /// one, and is otherwise kept (never orphan a holding); a region with no holding is dropped, whether
-        /// or not it has a land neighbour (a small island within reach of land was already merged by #49, so
-        /// one still standing here has no useful home).
+        /// below it, a region that touches a land mass at all → Fold: a sliver next to real land should JOIN
+        /// that land, not stand alone or leave a hole, and a settlement on it goes along. The mod option and
+        /// the drop only decide the fate of a tiny region with NO land neighbour — a genuinely isolated
+        /// speck (a mid-water island #49 could not reach): when <paramref name="keepSmallRegions"/> is on it
+        /// is Kept as a benefits-suppressed region; otherwise it is Kept if it anchors a settlement (never
+        /// orphaned) and Dropped if it is empty. Any tiny region the caller Keeps earns no regional benefits.
         /// </summary>
-        public static TinyRegionAction Resolve(int tileCount, bool hasSettlement, bool hasLandNeighbour)
+        public static TinyRegionAction Resolve(int tileCount, bool hasSettlement, bool hasLandNeighbour, bool keepSmallRegions)
         {
             if (tileCount <= 0 || tileCount > TinyRegionMaxTiles) return TinyRegionAction.Keep;
-            if (hasSettlement) return hasLandNeighbour ? TinyRegionAction.Fold : TinyRegionAction.Keep;
+            if (hasLandNeighbour) return TinyRegionAction.Fold;   // join into the neighbouring land mass
+            if (keepSmallRegions) return TinyRegionAction.Keep;   // isolated speck kept (benefits-suppressed)
+            if (hasSettlement) return TinyRegionAction.Keep;      // never orphan a settlement with nowhere to go
             return TinyRegionAction.Drop;
         }
 
         /// <summary>The acceptance-named predicate: true when the region should become unassigned tiles.
         /// A thin wrapper over <see cref="Resolve"/>.</summary>
-        public static bool ShouldDrop(int tileCount, bool hasSettlement, bool hasLandNeighbour)
+        public static bool ShouldDrop(int tileCount, bool hasSettlement, bool hasLandNeighbour, bool keepSmallRegions)
         {
-            return Resolve(tileCount, hasSettlement, hasLandNeighbour) == TinyRegionAction.Drop;
+            return Resolve(tileCount, hasSettlement, hasLandNeighbour, keepSmallRegions) == TinyRegionAction.Drop;
         }
     }
 }
