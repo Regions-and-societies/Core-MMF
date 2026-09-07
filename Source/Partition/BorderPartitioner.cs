@@ -322,7 +322,15 @@ namespace RegionsAndSocieties.Partition
                 float w = BiomeRegionWeights.Weight(biome);
                 int target = System.Math.Max(1, (int)System.Math.Round(baseMax * w));
                 if (container.Count <= target) { AddRegion(result, regionOf, container); continue; }
-                var cells = BalancedCellsScoped(grid, container, target, owner, cost, set, neigh);
+                // Region shape within a container (#40 follow-up): 0 = balanced Chebyshev-ish cells
+                // (default), 1 = pie slices from the centroid, 2 = relaxed honeycomb (centroidal Voronoi).
+                List<List<int>> cells;
+                switch (FactionPlacementSettings.subdivisionStyle)
+                {
+                    case 1: cells = PieSliceCells(grid, container, target, neigh); break;
+                    case 2: cells = HoneycombCells(grid, container, target, neigh); break;
+                    default: cells = BalancedCellsScoped(grid, container, target, owner, cost, set, neigh); break;
+                }
                 if (cells.Count == 0) { AddRegion(result, regionOf, container); continue; }
                 foreach (var g in cells) AddRegion(result, regionOf, g);
             }
@@ -465,6 +473,181 @@ namespace RegionsAndSocieties.Partition
             }
             foreach (var g in groups) if (g.Count > 0) result.Add(g);
             return result;
+        }
+
+
+        /// <summary>
+        /// Divide a container into k roughly-equal PIE SLICES around its centroid (#40 follow-up): each
+        /// tile is bucketed by its bearing from the centre, so every region is a wedge running centre-to-
+        /// edge and the biome's shape is preserved in each piece (a star keeps its arms distributed across
+        /// the wedges). Non-contiguous buckets — a wedge broken by a concave inlet — are split into their
+        /// connected components so no region is in two places. Best on blobby/star biomes; a long thin
+        /// biome gives lopsided wedges, which is the trade-off the honeycomb style avoids.
+        /// </summary>
+        private static List<List<int>> PieSliceCells(WorldGrid grid, List<int> tiles, int target, List<PlanetTile> nb)
+        {
+            var result = new List<List<int>>();
+            int count = tiles.Count;
+            if (count == 0) return result;
+            int k = System.Math.Max(1, (int)System.Math.Ceiling(count / (double)target));
+            var sorted = new List<int>(tiles); sorted.Sort();
+            if (k <= 1) { result.Add(sorted); return result; }
+
+            UnityEngine.Vector3 c = UnityEngine.Vector3.zero;
+            foreach (int t in sorted) c += grid.GetTileCenter(t);
+            c /= count;
+            UnityEngine.Vector3 up = c.normalized;
+            UnityEngine.Vector3 refA = UnityEngine.Mathf.Abs(UnityEngine.Vector3.Dot(up, UnityEngine.Vector3.up)) > 0.99f
+                ? UnityEngine.Vector3.right : UnityEngine.Vector3.up;
+            UnityEngine.Vector3 east = UnityEngine.Vector3.Cross(up, refA).normalized;
+            UnityEngine.Vector3 north = UnityEngine.Vector3.Cross(east, up).normalized;
+
+            var buckets = new List<int>[k];
+            for (int i = 0; i < k; i++) buckets[i] = new List<int>();
+            foreach (int t in sorted)
+            {
+                UnityEngine.Vector3 d = grid.GetTileCenter(t) - c;
+                float ang = UnityEngine.Mathf.Atan2(UnityEngine.Vector3.Dot(d, north), UnityEngine.Vector3.Dot(d, east)); // -pi..pi
+                int sec = (int)UnityEngine.Mathf.Floor((ang + UnityEngine.Mathf.PI) / (2f * UnityEngine.Mathf.PI) * k);
+                if (sec < 0) sec = 0; else if (sec >= k) sec = k - 1;
+                buckets[sec].Add(t);
+            }
+
+            foreach (var b in buckets)
+                if (b.Count > 0)
+                    foreach (var comp in ConnectedComponents(grid, b, nb)) result.Add(comp);
+            return result;
+        }
+
+        /// <summary>
+        /// Divide a container into k even HONEYCOMB cells (#40 follow-up): a centroidal Voronoi built by
+        /// Lloyd relaxation — spread k seeds by farthest-point, assign every tile to the nearest seed by
+        /// geodesic (hop) distance, move each seed to its cell's centre, repeat a few times. The cells come
+        /// out as rounded, near-equal-area hexagons that tile the biome and follow its silhouette, without
+        /// the ragged edges the capacity-capped balanced fill can leave. Robust on any biome shape.
+        /// </summary>
+        private static List<List<int>> HoneycombCells(WorldGrid grid, List<int> tiles, int target, List<PlanetTile> nb)
+        {
+            var result = new List<List<int>>();
+            int count = tiles.Count;
+            if (count == 0) return result;
+            int k = System.Math.Max(1, (int)System.Math.Ceiling(count / (double)target));
+            var sorted = new List<int>(tiles); sorted.Sort();
+            if (k <= 1) { result.Add(sorted); return result; }
+            var set = new HashSet<int>(sorted);
+
+            // Initial seeds: farthest-point spread (running min-distance, O(count*k)).
+            var dist = new Dictionary<int, float>(count);
+            foreach (int t in sorted) dist[t] = float.PositiveInfinity;
+            var seeds = new List<int> { sorted[0] };
+            int newest = sorted[0];
+            while (seeds.Count < k)
+            {
+                int best = -1; float bestD = -1f;
+                foreach (int t in sorted)
+                {
+                    float dd = grid.ApproxDistanceInTiles(t, newest);
+                    if (dd < dist[t]) dist[t] = dd;
+                    if (dist[t] > bestD) { bestD = dist[t]; best = t; }
+                }
+                if (best < 0 || dist[best] <= 0f) break;
+                seeds.Add(best); newest = best;
+            }
+
+            List<int>[] groups = null;
+            for (int iter = 0; iter < 4; iter++)
+            {
+                groups = VoronoiBySeed(grid, sorted, set, seeds, nb);   // nearest-seed multi-source BFS
+                if (iter == 3) break;
+                // Relax: move each seed to the tile nearest its cell's average position.
+                var moved = new List<int>(seeds.Count);
+                bool changed = false;
+                for (int g = 0; g < groups.Length; g++)
+                {
+                    var cell = groups[g];
+                    if (cell.Count == 0) { moved.Add(seeds[g]); continue; }
+                    UnityEngine.Vector3 cc = UnityEngine.Vector3.zero;
+                    foreach (int t in cell) cc += grid.GetTileCenter(t);
+                    cc /= cell.Count;
+                    int nearest = cell[0]; float nd = float.PositiveInfinity;
+                    foreach (int t in cell)
+                    {
+                        float dd = (grid.GetTileCenter(t) - cc).sqrMagnitude;
+                        if (dd < nd) { nd = dd; nearest = t; }
+                    }
+                    if (nearest != seeds[g]) changed = true;
+                    moved.Add(nearest);
+                }
+                seeds = moved;
+                if (!changed) { groups = VoronoiBySeed(grid, sorted, set, seeds, nb); break; }
+            }
+
+            foreach (var g in groups) if (g.Count > 0) result.Add(g);
+            return result;
+        }
+
+        /// <summary>Assign every tile in <paramref name="sorted"/> to the nearest seed by an uncapped
+        /// simultaneous multi-source BFS (hop distance), so each cell is a contiguous geodesic-Voronoi
+        /// region. Returns one tile list per seed (some may be empty).</summary>
+        private static List<int>[] VoronoiBySeed(WorldGrid grid, List<int> sorted, HashSet<int> set,
+            List<int> seeds, List<PlanetTile> nb)
+        {
+            var owner = new Dictionary<int, int>(sorted.Count);
+            var q = new Queue<int>();
+            for (int s = 0; s < seeds.Count; s++)
+            {
+                if (!owner.ContainsKey(seeds[s])) { owner[seeds[s]] = s; q.Enqueue(seeds[s]); }
+            }
+            while (q.Count > 0)
+            {
+                int cur = q.Dequeue();
+                int o = owner[cur];
+                nb.Clear();
+                grid.GetTileNeighbors(cur, nb);
+                for (int i = 0; i < nb.Count; i++)
+                {
+                    int nid = nb[i].tileId;
+                    if (!set.Contains(nid) || owner.ContainsKey(nid)) continue;
+                    owner[nid] = o; q.Enqueue(nid);
+                }
+            }
+            var groups = new List<int>[seeds.Count];
+            for (int i = 0; i < seeds.Count; i++) groups[i] = new List<int>();
+            foreach (int t in sorted)
+            {
+                int o; if (owner.TryGetValue(t, out o)) groups[o].Add(t); else groups[0].Add(t);
+            }
+            return groups;
+        }
+
+        /// <summary>Hex-connected components of a tile set (deterministic, ascending ids).</summary>
+        private static List<List<int>> ConnectedComponents(WorldGrid grid, List<int> tiles, List<PlanetTile> nb)
+        {
+            var set = new HashSet<int>(tiles);
+            var seen = new HashSet<int>();
+            var comps = new List<List<int>>();
+            var stack = new Stack<int>();
+            var ordered = new List<int>(tiles); ordered.Sort();
+            foreach (int start in ordered)
+            {
+                if (seen.Contains(start)) continue;
+                var comp = new List<int>();
+                stack.Clear(); stack.Push(start); seen.Add(start);
+                while (stack.Count > 0)
+                {
+                    int cur = stack.Pop();
+                    comp.Add(cur);
+                    nb.Clear();
+                    grid.GetTileNeighbors(cur, nb);
+                    for (int i = 0; i < nb.Count; i++)
+                    {
+                        int nid = nb[i].tileId;
+                        if (set.Contains(nid) && !seen.Contains(nid)) { seen.Add(nid); stack.Push(nid); }
+                    }
+                }
+                comps.Add(comp);
+            }
+            return comps;
         }
 
         // Small surcharges (distance-dominant) that let a border SNAP onto a nearby biome / forest edge

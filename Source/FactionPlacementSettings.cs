@@ -145,6 +145,11 @@ namespace RegionsAndSocieties
         /// gets no demographics/economy. A settlement/outpost speck is never orphaned either way.</summary>
         public static bool enableSmallRegions = false;
 
+        /// <summary>#40 follow-up: how a large biome container is cut into regions. 0 = balanced cells
+        /// (current), 1 = pie slices from the centroid, 2 = relaxed honeycomb (centroidal Voronoi). A
+        /// comparison knob for now — flip it and regenerate to see each style.</summary>
+        public static int subdivisionStyle = 0;
+
         public override void ExposeData()
         {
             base.ExposeData();
@@ -164,6 +169,7 @@ namespace RegionsAndSocieties
             Scribe_Values.Look(ref splitScatteredFactions, "splitScatteredFactions", true);
             Scribe_Values.Look(ref societiesEnabled, "societiesEnabled", true);
             Scribe_Values.Look(ref enableSmallRegions, "enableSmallRegions", false);
+            Scribe_Values.Look(ref subdivisionStyle, "subdivisionStyle", 0);
 
             // 0.7: world-object governance / mod-integration switches.
             Integration.WorldObjectIntegrationSettings.ExposeData();
