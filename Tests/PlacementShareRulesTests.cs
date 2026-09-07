@@ -58,6 +58,21 @@ namespace PlacementShareRulesTests
             Check("share 40% -> ~40% of 137 (55) ±1", Math.Abs(f[0] - 55) <= 1);
             Check("acceptance apportionment sums exactly", Sum(f) == 137);
 
+            Section("basic-view size categories map to share weights and back");
+            Check("SmallGroup -> 5", Eq(PlacementShareRules.CategoryToShareWeight(ShareCategory.SmallGroup), 5f));
+            Check("Medium -> 10", Eq(PlacementShareRules.CategoryToShareWeight(ShareCategory.Medium), 10f));
+            Check("Large -> 20", Eq(PlacementShareRules.CategoryToShareWeight(ShareCategory.Large), 20f));
+            Check("Empire -> 40", Eq(PlacementShareRules.CategoryToShareWeight(ShareCategory.Empire), 40f));
+            Check("weight 5 reads SmallGroup", PlacementShareRules.CategoryForShare(5f) == ShareCategory.SmallGroup);
+            Check("weight 10 reads Medium", PlacementShareRules.CategoryForShare(10f) == ShareCategory.Medium);
+            Check("weight 20 reads Large", PlacementShareRules.CategoryForShare(20f) == ShareCategory.Large);
+            Check("weight 40 reads Empire", PlacementShareRules.CategoryForShare(40f) == ShareCategory.Empire);
+            Check("a between-value (7) reads SmallGroup (nearest band)", PlacementShareRules.CategoryForShare(7f) == ShareCategory.SmallGroup);
+            Check("a between-value (16) reads Large", PlacementShareRules.CategoryForShare(16f) == ShareCategory.Large);
+            Check("a huge weight still reads Empire", PlacementShareRules.CategoryForShare(100f) == ShareCategory.Empire);
+            Check("round-trips: category -> weight -> category", PlacementShareRules.CategoryForShare(PlacementShareRules.CategoryToShareWeight(ShareCategory.Large)) == ShareCategory.Large);
+            Check("labels present", PlacementShareRules.CategoryLabel(ShareCategory.SmallGroup) == "Small group" && PlacementShareRules.CategoryLabel(ShareCategory.Empire) == "Empire");
+
             Console.WriteLine();
             Console.WriteLine(failures == 0 ? "ALL PLACEMENT-SHARE TESTS PASSED" : failures + " PLACEMENT-SHARE TEST(S) FAILED");
             return failures == 0 ? 0 : 1;
