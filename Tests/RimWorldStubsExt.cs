@@ -221,6 +221,9 @@ namespace RegionsAndSocieties
 
         public bool StrictTerritorialOwnership = false;
 
+        // #18: the region-lock flag WorldObjectPlacementUtility.BuildWorld reads into each snapshot.
+        public bool EffectiveRegionLock = true;
+
         public int GetProvinceId(int tileId) { return -1; }
         public GeographicProvince GetProvince(int provinceId) { return null; }
         public GeographicProvince GetProvinceForTile(int tileId) { return null; }

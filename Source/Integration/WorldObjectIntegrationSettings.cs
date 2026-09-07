@@ -40,6 +40,14 @@ namespace RegionsAndSocieties.Integration
         public static bool outpostSeeding = true;
 
         /// <summary>
+        /// #18 world maturity: how built-up a freshly generated world starts, 0..1. It scales the
+        /// per-anchor allowance every seeding policy reports, so 1.0 seeds each territory's full holding
+        /// allowance (a ready-to-play, fully-settled world — e.g. a World Domination start) and 0 seeds
+        /// nothing. Applied at world generation only; stamped per-world so a regenerate reproduces it.
+        /// </summary>
+        public static float seedingMaturity = 0.5f;   // Sizing.SeedingMaturityRules.DefaultMaturity
+
+        /// <summary>
         /// Model a per-tier population cap (0.8): a settlement's size drifts toward two-thirds of
         /// <c>territories-for-tier × multiplier × tech-factor</c>. Model-only for the player — never
         /// adds or removes real colonists. Off means population is left to the pre-0.8 estimate.
@@ -101,6 +109,7 @@ namespace RegionsAndSocieties.Integration
             Scribe_Values.Look(ref militaryGovernance, "integration_militaryGovernance", true);
             Scribe_Values.Look(ref settlementTiers, "integration_settlementTiers", true);
             Scribe_Values.Look(ref outpostSeeding, "integration_outpostSeeding", true);
+            Scribe_Values.Look(ref seedingMaturity, "integration_seedingMaturity", 0.5f);
             Scribe_Values.Look(ref populationCaps, "integration_populationCaps", true);
             Scribe_Values.Look(ref populationCapMultiplier, "integration_populationCapMultiplier", DefaultPopulationCapMultiplier);
             Scribe_Values.Look(ref capMultiplierRescaled030, "integration_capMultiplierRescaled030", false);

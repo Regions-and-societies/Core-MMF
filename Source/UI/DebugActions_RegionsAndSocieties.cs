@@ -308,13 +308,13 @@ namespace RegionsAndSocieties.UI
 
             // Prefer a province that has an anchor settlement, so the preview shows the position/faction
             // pattern rather than the terrain-only degrade path.
-            string preview = OutpostSeedingUtility.PreviewArchetypes(province);
+            string preview = HoldingSeedingUtility.PreviewArchetypes(province);
             if (preview.Contains("no anchor") && mgr.Provinces != null)
             {
                 foreach (var p in mgr.Provinces)
                 {
                     if (p == null || p.provinceType != ProvinceType.Land) continue;
-                    string pr = OutpostSeedingUtility.PreviewArchetypes(p);
+                    string pr = HoldingSeedingUtility.PreviewArchetypes(p);
                     if (!pr.Contains("no anchor")) { preview = pr; break; }
                 }
             }

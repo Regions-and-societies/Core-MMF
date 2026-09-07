@@ -727,12 +727,14 @@ namespace RegionsAndSocieties.Patches
             // Refresh the population density cache since new settlements have been placed
             PopulationDensityUtility.MarkCacheDirty();
 
-            // Outpost seeding at worldgen (#18) is deferred to 0.4.0. The seeder evaluates every candidate
-            // tile of every anchored province through the full placement rule chain, and each created
-            // outpost invalidates the placement snapshot and the per-faction ownership walks behind it,
-            // so at 0.3.0's finer partition (2,400+ provinces at 100% coverage) the step ran for tens of
-            // minutes (#38). It comes back once the seeder batches its own snapshot. The utility and its
-            // debug preview stay; nothing calls SeedOutposts during world generation.
+            // Holding seeding at worldgen (#18): seed each anchored province's outposts/camps/military up to
+            // its per-kind allowance × world maturity. The seeder now holds ONE placement snapshot for the
+            // whole pass and appends placed holdings to it, so it no longer pays the per-object ownership
+            // re-walk that deferred this at 0.3.0 (#38). A no-op with no compatibility creator installed
+            // (vanilla), so it costs nothing on a base-game world; gated further by the enable + maturity.
+            HoldingSeedingResult seeding = HoldingSeedingUtility.SeedHoldings();
+            if (seeding.guardReason == null && seeding.placed > 0)
+                Log.Message($"[RegionsAndSocieties] #18: seeded {seeding.placed} holding(s) across {seeding.provincesWithAnchor} anchored province(s).");
 
             // Log the world's reproduction key + region-shape audit at generation, so any "region N is a
             // horrid shape" report can be reproduced exactly (the partition is deterministic from the

@@ -82,7 +82,7 @@ run_suite() {
 # the folder over 0.7.2-0.8 (debug reports, MCP tool registration, the claim hook, the holding
 # creators). Those files need a running game, are stubbed via RimWorldStubsExt, and are held to
 # their real shapes by the type-check below instead.
-INTEGRATION_PURE=$(ls $SRC/Integration/*.cs | grep -v -e RegionDebugReports -e RegionMcpTools -e TerritoryClaimHooks -e PopulationDynamics -e VoeOutpostCreator -e HoldingCreatorRegistry -e IHoldingCreator)
+INTEGRATION_PURE=$(ls $SRC/Integration/*.cs | grep -v -e RegionDebugReports -e RegionMcpTools -e TerritoryClaimHooks -e PopulationDynamics -e VoeOutpostCreator -e HoldingCreatorRegistry -e IHoldingCreator -e ISeedingPolicy -e SeedingPolicyRegistry -e OutpostSeedingPolicy -e DefaultSeedingPolicy)
 
 # Sizing tables are pure EXCEPT the game-coupled glue (SettlementGrowthUtility reads Find / region
 # demographics), which cannot compile against the stubs — the real build covers it, like the other glue.
@@ -101,6 +101,12 @@ run_suite placement Exe \
 run_suite outpostrules Exe \
     Tests/RimWorldStubs.cs Tests/OutpostRulesTests.cs \
     $SRC/Integration/WorldObjectKind.cs $SIZING_PURE
+
+# 0.4.0 world-maturity scaling for holding seeding (#18): base allowance × maturity, zero-only-yields-
+# nothing, slider labels. Pure, no game — needs only the standalone SeedingMaturityRules.
+run_suite seedingmaturity Exe \
+    Tests/SeedingMaturityRulesTests.cs \
+    $SRC/Sizing/SeedingMaturityRules.cs
 
 # 0.3.0 settlement birthrate-growth core (#6): tech-informed rate + logistic step toward the target.
 # Pure, no game — needs only the standalone BirthrateRules.
@@ -256,7 +262,9 @@ run_suite typecheck Library \
     \
     $SRC/Patches/Patch_TileFinder_IsValidTileForNewSettlement.cs \
     $SRC/Compat/MapPreviewCompat.cs \
-    $SRC/Patches/Patch_WorldInspectPane_TileInspectString.cs
+    $SRC/Patches/Patch_WorldInspectPane_TileInspectString.cs \
+    $SRC/Integration/ISeedingPolicy.cs $SRC/Integration/SeedingPolicyRegistry.cs \
+    $SRC/Integration/OutpostSeedingPolicy.cs $SRC/Integration/DefaultSeedingPolicy.cs
 [ "$failures" -eq "$pre_typecheck_failures" ] && echo "  type-check clean"
 
 echo

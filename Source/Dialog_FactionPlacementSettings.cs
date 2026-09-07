@@ -149,8 +149,8 @@ namespace RegionsAndSocieties
                 // Box is tall enough for the "Detected:" status line at the bottom (title + master +
                 // four 24px rows + the status row need ~178px); outRect starts below it so the label
                 // can't spill onto the Faction Geography scroll panel (#47).
-                DrawIntegrationPanel(new Rect(0f, 205f, inRect.width - 15f, 178f));
-                DrawAdvancedCards(inRect, 388f, totalShareWeight, placedTotal);
+                DrawIntegrationPanel(new Rect(0f, 205f, inRect.width - 15f, 250f));
+                DrawAdvancedCards(inRect, 460f, totalShareWeight, placedTotal);
             }
             else
             {
@@ -385,6 +385,52 @@ namespace RegionsAndSocieties
                     "Whether newly generated worlds enforce Regions & Territories' placement rules. " +
                     "Worlds already in progress keep whatever mode they were adopted under; load a save to change that world's setting.");
             }
+
+            // Row 3b — region lock (#18). World-scoped like strict ownership, editable mid-game; the rest of
+            // the ownership rules stay whichever way strict ownership is set.
+            y += 24f;
+            string lockTip = "On: a faction (and holding seeding) is refused a settlement/outpost in a region a rival holds exclusively (≥71%).\n\n" +
+                "Off: that hard refusal stands down — factions may build into a rival's owned region — while buffers, spacing, supply range and footholds still apply.\n\n" +
+                "Safe to change mid-game; it takes effect on the next placement check.";
+            if (manager != null)
+            {
+                bool locked = manager.RegionLock;
+                bool wasLocked = locked;
+                Rect lockRect = new Rect(box.x + 10f, y, box.width - 20f, 22f);
+                Widgets.CheckboxLabeled(lockRect, "Enforce region locks (this world)", ref locked, !on);
+                TooltipHandler.TipRegion(lockRect, lockTip);
+                if (locked != wasLocked) manager.RegionLock = locked;
+            }
+            else
+            {
+                Rect lockDefRect = new Rect(box.x + 10f, y, box.width - 20f, 22f);
+                Widgets.CheckboxLabeled(lockDefRect, "Enforce region locks (new worlds)",
+                    ref FactionPlacementSettings.regionLockDefault, !on);
+                TooltipHandler.TipRegion(lockDefRect, lockTip);
+            }
+
+            // Row 3c/3d — holding seeding (#18): whether newly generated worlds seed holdings, and how
+            // built-up they start. Applied at world generation, so these govern NEW worlds (a loaded world
+            // already seeded at its stamped maturity).
+            y += 24f;
+            Rect seedRect = new Rect(box.x + 10f, y, box.width - 20f, 22f);
+            Widgets.CheckboxLabeled(seedRect, "Seed holdings at world generation",
+                ref Integration.WorldObjectIntegrationSettings.outpostSeeding, !on);
+            TooltipHandler.TipRegion(seedRect,
+                "On: newly generated worlds pre-place outposts (and other compatibility-mod holdings) around settlements, up to each territory's allowance × maturity. " +
+                "Requires a compatibility mod that builds them; a base-game world places nothing either way.");
+
+            y += 24f;
+            bool seedOn = on && Integration.WorldObjectIntegrationSettings.outpostSeeding;
+            Rect matLabelRect = new Rect(box.x + 10f, y, 220f, 22f);
+            GUI.color = seedOn ? Color.white : new Color(1f, 1f, 1f, 0.4f);
+            Widgets.Label(matLabelRect, $"World maturity: {Sizing.SeedingMaturityRules.Label(Integration.WorldObjectIntegrationSettings.seedingMaturity)}");
+            GUI.color = Color.white;
+            Rect matSliderRect = new Rect(box.x + 235f, y + 2f, box.width - 255f, 18f);
+            float tempMat = Widgets.HorizontalSlider(matSliderRect, Integration.WorldObjectIntegrationSettings.seedingMaturity, 0f, 1f, false, null, "Off", "Full", 0.05f);
+            if (seedOn) Integration.WorldObjectIntegrationSettings.seedingMaturity = tempMat;
+            TooltipHandler.TipRegion(new Rect(box.x + 10f, y, box.width - 20f, 22f),
+                "How built-up a new world starts: Off seeds nothing, Full seeds each territory's whole holding allowance — a ready-to-play, fully-settled world (e.g. a World Domination start). Stamped per world so a regenerate reproduces it.");
 
             // Row 4 — diagnostics.
             y += 24f;

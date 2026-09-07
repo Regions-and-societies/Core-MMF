@@ -200,6 +200,14 @@ namespace RegionsAndSocieties
         private int worldTargetRegionSize = -1;
         private int worldEnableSmallRegionsRaw = -1;   // -1 unset, 0 false, 1 true
 
+        // #18 holding-seeding inputs. Maturity + the enable are worldgen inputs, stamped when seeding first
+        // runs (ResolveSeedingInputs) so a regenerate reproduces the same buildout — mirrors the partition
+        // stamps above. The region lock is different: a live, mid-game-toggleable governance flag (like
+        // StrictTerritorialOwnership), unset meaning "follow the settings default" rather than "unstamped".
+        private int worldSeedingMaturityRaw = -1;   // -1 unset, else round(maturity*1000)
+        private int worldHoldingSeedingRaw = -1;    // -1 unset, 0 off, 1 on
+        private int regionLockRaw = -1;             // -1 unset (use setting default), 0 off, 1 on
+
         /// <summary>Target tiles per region this world was cut with (stamped value, else the live setting).
         /// The subdivision aims for this (×biome weight); the merge floor is half of it.</summary>
         public int EffectiveTargetRegionSize
@@ -218,6 +226,50 @@ namespace RegionsAndSocieties
         public bool EffectiveEnableSmallRegions
         {
             get { return worldEnableSmallRegionsRaw >= 0 ? worldEnableSmallRegionsRaw == 1 : FactionPlacementSettings.enableSmallRegions; }
+        }
+
+        /// <summary>#18 world maturity this world seeded at (stamped value, else the live setting).</summary>
+        public float EffectiveSeedingMaturity
+        {
+            get { return worldSeedingMaturityRaw >= 0 ? worldSeedingMaturityRaw / 1000f : Integration.WorldObjectIntegrationSettings.seedingMaturity; }
+        }
+
+        /// <summary>#18 whether this world seeds holdings at generation (stamped value, else the live setting).</summary>
+        public bool EffectiveHoldingSeedingEnabled
+        {
+            get { return worldHoldingSeedingRaw >= 0 ? worldHoldingSeedingRaw == 1 : Integration.WorldObjectIntegrationSettings.OutpostSeedingActive; }
+        }
+
+        /// <summary>Stamp the seeding inputs (maturity + enable) from the live settings the first time
+        /// seeding runs on this world, so a regenerate reproduces the same buildout even if the settings
+        /// later change — the reproducibility guarantee the partition inputs already carry.</summary>
+        public void ResolveSeedingInputs()
+        {
+            if (worldSeedingMaturityRaw < 0)
+            {
+                int raw = (int)System.Math.Round(Integration.WorldObjectIntegrationSettings.seedingMaturity * 1000f);
+                worldSeedingMaturityRaw = raw < 0 ? 0 : (raw > 1000 ? 1000 : raw);
+            }
+            if (worldHoldingSeedingRaw < 0)
+                worldHoldingSeedingRaw = Integration.WorldObjectIntegrationSettings.OutpostSeedingActive ? 1 : 0;
+        }
+
+        /// <summary>
+        /// #18 region lock: whether placement refuses a holding in a region a rival holds exclusively (the
+        /// hard territory refusal in <see cref="Placement.PlacementEvaluator"/>). The rest of the ownership
+        /// rules — buffer, separation, supply range, foothold — are unaffected. Toggleable mid-game, like
+        /// <see cref="StrictTerritorialOwnership"/>; unset follows <see cref="FactionPlacementSettings.regionLockDefault"/>.
+        /// </summary>
+        public bool RegionLock
+        {
+            get { return EffectiveRegionLock; }
+            set { regionLockRaw = value ? 1 : 0; }
+        }
+
+        /// <summary>The region-lock flag in force for this world — the per-world choice, else the default.</summary>
+        public bool EffectiveRegionLock
+        {
+            get { return regionLockRaw >= 0 ? regionLockRaw == 1 : FactionPlacementSettings.regionLockDefault; }
         }
 
         /// <summary>
@@ -584,6 +636,12 @@ namespace RegionsAndSocieties
             // accessors, exactly as it did before the stamp existed.
             Scribe_Values.Look(ref worldTargetRegionSize, "worldTargetRegionSize", -1);
             Scribe_Values.Look(ref worldEnableSmallRegionsRaw, "worldEnableSmallRegions", -1);
+
+            // #18 holding-seeding inputs (maturity + enable, stamped for regenerate reproducibility) and the
+            // mid-game region-lock flag. -1 = unset; the Effective* accessors fall back to the live settings.
+            Scribe_Values.Look(ref worldSeedingMaturityRaw, "worldSeedingMaturity", -1);
+            Scribe_Values.Look(ref worldHoldingSeedingRaw, "worldHoldingSeeding", -1);
+            Scribe_Values.Look(ref regionLockRaw, "regionLock", -1);
 
             Scribe_Collections.Look(ref provinces, "provinces", LookMode.Deep);
             if (provinces == null)
