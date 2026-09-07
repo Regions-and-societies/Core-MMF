@@ -28,9 +28,23 @@ namespace RegionsAndSocieties.Partition
         private const float WoodedTreeDensity = 0.25f;
         private const float ThickTreeDensity = 0.6f;
 
-        // Master switch for the pass-neck feature (#20). Off until a selective pass rule replaces the
-        // over-firing opposite-sides primitive.
+        // Master switch for the pass-neck feature in the (unused) border-first fill (#20). Off until a
+        // selective pass rule replaces the over-firing opposite-sides primitive.
         private const bool EnableNeckDetection = false;
+
+        // #40: split a region across a mountain pass. The contain-subdivide core morphology treats only
+        // claimed water/impassable tiles and biome edges as walls, so a low pass between two PASSABLE
+        // Mountainous ridges reads as interior and the region spans it (region 133 repro). When on,
+        // MarkPassNecks flags the low saddle tiles pinched between high ground (Mountainous+) on opposing
+        // sides and they act as container borders, so the range reads as one continuous frontier.
+        //
+        // GATED OFF: the opposite-sides primitive over-fires — a low valley tile in any mountainous belt
+        // has Mountainous tiles on two sides within a few hops, so ~12-22k tiles (a fifth of the land) get
+        // flagged, over-segmenting mountain country rather than cutting only the passes that actually
+        // divide two lowland basins. Wiring + the MarkPassNecks bounds-guard fix are kept; enabling this
+        // needs a selective bottleneck test (a neck must be a genuine cut between two open basins), not the
+        // raw opposite-bearing heuristic. Track under #40.
+        private const bool SplitMountainPasses = false;
 
         /// <summary>
         /// Partition the unclaimed land of the world into province tile-groups. Water, ocean and lake
@@ -198,6 +212,26 @@ namespace RegionsAndSocieties.Partition
                 interior[t] = true;
             }
 
+            // Pass-neck detection (#40): flag the low saddle tiles that sit in a mountain pass — pinched
+            // between high ground (LargeHills+) or hard walls on OPPOSING sides — so the core morphology
+            // below treats them as container borders. Without this a low pass between two passable
+            // Mountainous ridges is plain interior and the region spans it (region 133).
+            bool[] isNeck;
+            if (SplitMountainPasses)
+            {
+                var signals = new TileSignal[total];
+                var biomeIds = new Dictionary<BiomeDef, int>();
+                for (int t = 0; t < total; t++) signals[t] = Classify(grid, t, biomeIds);
+                isNeck = MarkPassNecks(grid, interior, signals, total);
+                int neckCount = 0;
+                for (int t = 0; t < total; t++) if (isNeck[t]) neckCount++;
+                Log.Message($"[RegionsAndSocieties] Contain-subdivide: {neckCount} mountain-pass neck tile(s) walled as borders (#40).");
+            }
+            else
+            {
+                isNeck = new bool[total];
+            }
+
             // Phase 2 (CONTAIN): flood the interior into containers bounded by biome edges AND natural
             // barriers, with mountain passes treated as boundaries. Done in three morphological steps:
             var neigh = new List<PlanetTile>();
@@ -212,6 +246,7 @@ namespace RegionsAndSocieties.Partition
             for (int t = 0; t < total; t++)
             {
                 if (!interior[t]) continue;
+                if (isNeck[t]) { core[t] = false; continue; }   // #40: a pass saddle is a border, never a core
                 bool isCore = true;
                 BiomeDef tb = biomeOf[t];
                 grid.GetTileNeighbors(t, neigh);
@@ -219,6 +254,7 @@ namespace RegionsAndSocieties.Partition
                 {
                     int n = neigh[i].tileId;
                     if (n < 0 || n >= total || tileToProvinceId[n] >= 0) { isCore = false; break; }   // touches a wall
+                    if (isNeck[n]) { isCore = false; break; }                                         // #40: touches a pass-neck border
                     if (interior[n] && biomeOf[n] != tb) { isCore = false; break; }                    // touches a biome edge
                 }
                 core[t] = isCore;
@@ -606,7 +642,10 @@ namespace RegionsAndSocieties.Partition
         // pass is a low saddle between high ground, not between impassable peaks.
         private const int NeckRadius = 3;
         private const float NeckOppositeDot = -0.25f;
-        private const int NeckWallHillClass = 2;   // LargeHills and above flank a pass
+        private const int NeckWallHillClass = 3;   // Mountainous+ flank a pass — LargeHills (2) is common
+                                                   // enough that it over-fired (a third of the land), so a
+                                                   // real pass is a low saddle between MOUNTAINS or impassable
+                                                   // peaks, not between big hills (#40).
         private const int NeckLowHillClass = 1;    // only Flat / SmallHills tiles can BE a saddle
 
         /// <summary>
@@ -643,6 +682,7 @@ namespace RegionsAndSocieties.Partition
                     foreach (var n in neighbors)
                     {
                         int nid = n.tileId;
+                        if (nid < 0 || nid >= total) continue;   // off-surface / out-of-range neighbour (multi-layer worlds)
                         bool flankWall = !isLand[nid] || signals[nid].HillClass >= NeckWallHillClass;
                         if (flankWall)
                         {
