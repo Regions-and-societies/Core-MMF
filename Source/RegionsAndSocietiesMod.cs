@@ -82,6 +82,8 @@ namespace RegionsAndSocieties
                 "The whole Societies layer. Off means Regions only — the partition, territories, borders, placement and their map modes still work, but nothing models or draws population, demographics or economy, and none of it ticks. Turn it off if you only want the map framework, or to save the load-time and tick cost.");
             l.CheckboxLabeled("Split scattered factions into regional kin", ref FactionPlacementSettings.splitScatteredFactions,
                 "At world generation, a pirate, tribe, or rough-union faction whose settlements are scattered into separate clusters is split into loosely-related regional sub-factions — a north and a south tribe, kin but no longer one polity. The Empire and spacer civilisations stay whole. On by default.");
+            l.CheckboxLabeled("Enable small regions (< 7 tiles)", ref FactionPlacementSettings.enableSmallRegions,
+                "Keep tiny 1-6 tile regions on the map instead of dropping them at world generation. They are real, settle-able regions, but too small to sustain a regional society — so they earn no regional benefits (no demographics or economy). Off by default: such slivers are dropped and their tiles left unassigned.");
             l.CheckboxLabeled("World-object integration (master)", ref Integration.WorldObjectIntegrationSettings.masterEnabled,
                 "Master switch for the 0.7+ integration layer. Off means R&T governs only vanilla objects.");
             l.CheckboxLabeled("Settlement tiers & capitals", ref Integration.WorldObjectIntegrationSettings.settlementTiers,

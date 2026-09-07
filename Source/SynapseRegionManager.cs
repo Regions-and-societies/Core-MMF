@@ -809,8 +809,8 @@ namespace RegionsAndSocieties
             // left as a black hole. NOTE: RimWorld's Ocean biome is itself flagged impassable, so this
             // must NOT filter on biome.impassable (that skipped the entire ocean and left it unclaimed,
             // #20) — WaterCovered alone selects water. Impassable LAND (mountain peaks) is a different
-            // case and is left for AbsorbEnclosedGaps below. Small inland lakes claimed here are folded
-            // back into their surrounding land by AbsorbInlandLakes; the big ocean bodies stay as
+            // case and is left for AbsorbEnclosedGaps below. Enclosed inland lakes claimed here are
+            // shared across their shore regions by SplitInlandLakes (#48); the big ocean bodies stay as
             // provinces.
             {
                 var waterNbrs = new List<RimWorld.Planet.PlanetTile>();
@@ -979,12 +979,6 @@ namespace RegionsAndSocieties
             // MountainRange. Islands (water neighbours) and genuine enclosed valleys (larger) are left.
             AbsorbMountainSealedSpecks(MountainSpeckMaxTiles);
 
-            // Phase 5b1: dissolve small inland lakes into the surrounding land (#20). Phase 2.5 floods
-            // every barren water body — including a small inland lake — into its own water province; a
-            // lake ringed entirely by land reads better as part of that land region than as a stranded
-            // pond province, so fold it into its dominant land neighbour.
-            AbsorbInlandLakes();
-
             // Phase 5b2: fold impassable-mountain (and other unclaimed, non-water) pockets that are
             // fully enclosed by a single region INTO that region, so they read as owned terrain rather
             // than holes punched in the map (#3).
@@ -1005,6 +999,13 @@ namespace RegionsAndSocieties
             // edges without touching feature borders (water/impassable neighbours never vote).
             SmoothRegionBoundaries(8);
 
+            // Phase 5c.05: small-island handling (#49). Absorb lone small islands (<10 tiles, water-
+            // surrounded, land within 4 hops) into the nearest mainland, but group island clusters into
+            // chains first: a chain totalling >=30 tiles becomes its own archipelago region instead of
+            // being scattered onto whatever coast each speck is nearest. Runs before the contiguity split,
+            // which then exempts water-surrounded island components from being spun back off (#49).
+            ResolveSmallIslands();
+
             // Phase 5c.1: enforce contiguity. A merge/absorb pass can leave a region as two DETACHED land
             // masses — a component sharing no hex edge with the rest of its region (separated by water or
             // another region). A region is by definition one connected landmass, so split any region with
@@ -1019,6 +1020,23 @@ namespace RegionsAndSocieties
             // desert sliver against the main desert) that the earlier merge never got to see. Fold any
             // sub-minimum land region into its dominant same-biome passable neighbour.
             AbsorbStrayFragments();
+
+            // Phase 5e: resolve tiny land regions (#51). A 1-6 tile region carries no region benefits and
+            // nothing the demographic model can model. If it touches a land mass at all it JOINS it (folds
+            // into the largest land neighbour) — a sliver next to real land should be part of that land, not
+            // a standalone region or an unassigned hole, and a settlement on it goes along. Only a genuinely
+            // isolated speck (no land neighbour — a mid-water island #49 could not reach) is dropped to
+            // unassigned, or kept as a benefits-suppressed region when the "enable small regions" option is
+            // on, or kept if it anchors a settlement that would otherwise be orphaned.
+            DropTinyRegions();
+
+            // Phase 5f: share inland lakes across their shore regions (#48). Runs LAST, over the FINAL land
+            // regions — after islands have been absorbed (#49) and tiny land regions folded/dropped (#51) —
+            // so a lake's water is handed only to land that is really there. Doing it earlier inflated a
+            // 1-tile island into a many-tile region by giving it a wedge of the lake before #49/#51 could
+            // see it was a speck, which then hid it from the island/tiny rules. Each below-cap enclosed
+            // body's tiles go to the nearest shore region so the seam runs ACROSS the water, not around it.
+            SplitInlandLakes();
 
             // Naming Phase: Contextual Name Resolution
             Log.Message("[RegionsAndSocieties] Running contextual province naming...");
@@ -1087,6 +1105,87 @@ namespace RegionsAndSocieties
             Log.Message($"[RegionsAndSocieties] AbsorbStrayFragments: folded {folded} stray same-biome fragment(s).");
         }
 
+        /// <summary>
+        /// Terminal pass (#51): remove every land region no merge could place — 1-6 tiles, too small to
+        /// carry region benefits or feed the demographic model. Runs LAST (after merge/split/absorb), so it
+        /// only touches specks that survived every consolidation rule. Each dropped speck's tiles are
+        /// unassigned (tileToProvinceId = -1, the impassable-hole state downstream already tolerates). A
+        /// speck that anchors a settlement/outpost is never orphaned: it folds into its largest land
+        /// neighbour of any biome (barrier check relaxed), or is kept when it has no land neighbour at all.
+        /// The decision itself is the pure <see cref="Placement.TinyRegionRules"/>.
+        /// </summary>
+        private void DropTinyRegions()
+        {
+            if (provinces == null || tileToProvinceId == null || Find.WorldGrid == null) return;
+
+            // Tiles carrying a permanent holding (settlement/outpost/military) — never orphaned by a drop.
+            var holdingTiles = new HashSet<int>();
+            if (Find.WorldObjects != null)
+            {
+                foreach (var obj in Find.WorldObjects.AllWorldObjects)
+                {
+                    if (obj != null && Integration.WorldObjectClassifier.IsPermanentHolding(obj))
+                        holdingTiles.Add(obj.Tile.tileId);
+                }
+            }
+
+            // #51 option: when on, tiny regions are KEPT as benefits-suppressed regions instead of dropped.
+            bool keepSmall = FactionPlacementSettings.enableSmallRegions;
+
+            var byId = provinces.ToDictionary(p => p.id, p => p);
+            var neighbors = new List<RimWorld.Planet.PlanetTile>();
+            var toRemove = new HashSet<GeographicProvince>();
+            int dropped = 0, droppedTiles = 0, folded = 0, kept = 0;
+
+            foreach (var p in provinces)
+            {
+                if (p.provinceType != ProvinceType.Land || p.tiles == null || p.tiles.Count == 0) continue;
+                if (p.tiles.Count > Placement.TinyRegionRules.TinyRegionMaxTiles) continue;
+
+                bool hasHolding = false;
+                foreach (int t in p.tiles) { if (holdingTiles.Contains(t)) { hasHolding = true; break; } }
+
+                // Largest land neighbour of ANY biome; barrier check relaxed, so a crag reachable only
+                // across a rock/water seam still counts as a fold target for a settlement speck.
+                GeographicProvince bestLand = null; int bestSize = -1;
+                var seen = new HashSet<int>();
+                foreach (int t in p.tiles)
+                {
+                    neighbors.Clear();
+                    Find.WorldGrid.GetTileNeighbors(t, neighbors);
+                    foreach (var n in neighbors)
+                    {
+                        int np = GetProvinceId(n.tileId);
+                        if (np == p.id || np == -1 || !seen.Add(np)) continue;
+                        if (!byId.TryGetValue(np, out var nprov) || nprov.provinceType != ProvinceType.Land || toRemove.Contains(nprov)) continue;
+                        if (nprov.tiles.Count > bestSize) { bestSize = nprov.tiles.Count; bestLand = nprov; }
+                    }
+                }
+
+                var action = Placement.TinyRegionRules.Resolve(p.tiles.Count, hasHolding, bestLand != null, keepSmall);
+                if (action == Placement.TinyRegionAction.Fold && bestLand != null)
+                {
+                    foreach (int tileId in p.tiles) { bestLand.tiles.Add(tileId); tileToProvinceId[tileId] = bestLand.id; }
+                    toRemove.Add(p); folded++;
+                }
+                else if (action == Placement.TinyRegionAction.Drop)
+                {
+                    foreach (int tileId in p.tiles) tileToProvinceId[tileId] = -1;
+                    toRemove.Add(p); dropped++; droppedTiles += p.tiles.Count;
+                }
+                else
+                {
+                    // Kept: a tiny region survives (option on, or a settlement speck with no fold target).
+                    // It is real and settle-able but too small to sustain a society — no regional benefits.
+                    p.benefitsSuppressed = true; kept++;
+                }
+            }
+
+            if (toRemove.Count > 0) provinces.RemoveAll(p => toRemove.Contains(p));
+            Log.Message($"[RegionsAndSocieties] DropTinyRegions (#51): dropped {dropped} region(s) ({droppedTiles} tile(s) unassigned), "
+                + $"folded {folded} settlement speck(s), kept {kept} benefits-suppressed small region(s) (enableSmallRegions={keepSmall}).");
+        }
+
         /// <summary>Largest passable speck (in tiles) folded into a surrounding impassable massif. Above
         /// this a fully mountain-sealed pocket is treated as a genuine enclosed valley and kept.</summary>
         private const int MountainSpeckMaxTiles = 15;
@@ -1134,66 +1233,89 @@ namespace RegionsAndSocieties
             if (toRemove.Count > 0) provinces.RemoveAll(p => toRemove.Contains(p));
             Log.Message($"[RegionsAndSocieties] AbsorbMountainSealedSpecks: folded {toRemove.Count} speck(s) into surrounding mountains.");
         }
-
-        /// <summary>Largest inland lake (in tiles) still folded into its surrounding land (#20). Bigger
-        /// water bodies stay their own provinces.</summary>
-        private const int InlandLakeMaxTiles = 40;
-
         /// <summary>
-        /// Dissolve small inland lakes into their dominant land neighbour (#20). A water province that is
-        /// small and touches no other water province is a pond ringed by land; its tiles read better as
-        /// part of that land region. Larger lakes and any water touching the sea are left alone.
+        /// Share every enclosed inland lake across the land regions on its shores (#48). Phase 2.5 floods
+        /// each water body into its own Ocean province; a lake ringed by land then reads as an unowned
+        /// wedge with the region border drawn around it. A real inland lake is shared by the polities on
+        /// its shores, so its tiles are handed to those regions in proportion to their shoreline (lake
+        /// dominance = number of bordering tiles) and the border runs across the water instead. An inland
+        /// body larger than <see cref="Partition.LakeSplitRules.LakeMaxTiles"/> stays Ocean — an inland sea
+        /// is a genuine barrier; a body touching another water province is a sea inlet, not a lake. The
+        /// proportional cut is the pure <see cref="Partition.LakeSplitRules"/>; this pass only gathers the
+        /// lake's adjacency and shore labels and applies the result. Replaces the old whole-absorb rule — a
+        /// pond wholly inside one region is just a lake with a single shore region and splits the same way.
         /// </summary>
-        private void AbsorbInlandLakes()
+        private void SplitInlandLakes()
         {
             if (provinces == null || tileToProvinceId == null || Find.WorldGrid == null) return;
 
             var byId = provinces.ToDictionary(p => p.id, p => p);
             var neighbors = new List<RimWorld.Planet.PlanetTile>();
             var toRemove = new List<GeographicProvince>();
-            int absorbed = 0;
+            int splitLakes = 0, movedTiles = 0;
 
-            foreach (var lake in provinces)
+            foreach (var lake in provinces.ToList())
             {
                 if (lake.provinceType != ProvinceType.Ocean || lake.tiles == null) continue;
-                if (lake.tiles.Count == 0 || lake.tiles.Count > InlandLakeMaxTiles) continue;
+                if (lake.tiles.Count == 0 || lake.tiles.Count > Partition.LakeSplitRules.LakeMaxTiles) continue;
 
-                // Tally land neighbours by shared edges; bail if it touches any other water province
-                // (then it is a sea inlet, not an enclosed pond).
-                var landEdges = new Dictionary<int, int>();
-                bool touchesWater = false;
+                var lakeSet = new HashSet<int>(lake.tiles);
+                var lakeAdj = new Dictionary<int, List<int>>();
+                var shoreLabels = new Dictionary<int, List<int>>();
+                bool touchesOtherWater = false;
+
                 foreach (int t in lake.tiles)
                 {
                     neighbors.Clear();
                     Find.WorldGrid.GetTileNeighbors(t, neighbors);
+                    List<int> adj = null;
+                    List<int> labels = null;
                     foreach (var n in neighbors)
                     {
-                        int npid = GetProvinceId(n.tileId);
+                        int nid = n.tileId;
+                        if (lakeSet.Contains(nid)) { if (adj == null) adj = new List<int>(); adj.Add(nid); continue; }
+                        int npid = GetProvinceId(nid);
                         if (npid < 0 || npid == lake.id) continue;
                         if (!byId.TryGetValue(npid, out var np)) continue;
-                        if (np.provinceType == ProvinceType.Ocean) { touchesWater = true; break; }
-                        if (np.provinceType == ProvinceType.Land)
+                        if (np.provinceType == ProvinceType.Ocean || np.provinceType == ProvinceType.Lake)
                         {
-                            int c; landEdges.TryGetValue(npid, out c); landEdges[npid] = c + 1;
+                            touchesOtherWater = true; break;   // a sea inlet, not an enclosed lake
+                        }
+                        // A benefits-suppressed speck (a kept isolated tiny region, #51) is NOT a lake shore:
+                        // giving it water would balloon a 1-tile region back into a many-tile one. The water
+                        // goes to the real shore regions instead.
+                        if (np.provinceType == ProvinceType.Land && !np.benefitsSuppressed)
+                        {
+                            if (labels == null) labels = new List<int>();
+                            labels.Add(npid);
                         }
                     }
-                    if (touchesWater) break;
+                    if (touchesOtherWater) break;
+                    if (adj != null) lakeAdj[t] = adj;
+                    if (labels != null) shoreLabels[t] = labels;
                 }
-                if (touchesWater || landEdges.Count == 0) continue;
 
-                int bestId = -1, bestEdges = -1;
-                foreach (var kv in landEdges)
-                    if (kv.Value > bestEdges || (kv.Value == bestEdges && kv.Key < bestId)) { bestEdges = kv.Value; bestId = kv.Key; }
-                if (bestId < 0 || !byId.TryGetValue(bestId, out var host)) continue;
+                if (touchesOtherWater) continue;
+                if (shoreLabels.Count == 0) continue;   // no land shore at all — leave it as water
 
-                foreach (int t in lake.tiles) { host.tiles.Add(t); tileToProvinceId[t] = host.id; }
+                var assign = Partition.LakeSplitRules.Split(lake.tiles, lakeAdj, shoreLabels);
+                if (assign.Count == 0) continue;
+
+                foreach (var kv in assign)
+                {
+                    if (!byId.TryGetValue(kv.Value, out var host)) continue;
+                    host.tiles.Add(kv.Key);
+                    tileToProvinceId[kv.Key] = host.id;
+                    movedTiles++;
+                }
                 toRemove.Add(lake);
-                absorbed += lake.tiles.Count;
+                splitLakes++;
             }
 
             foreach (var p in toRemove) provinces.Remove(p);
-            if (absorbed > 0)
-                Log.Message($"[RegionsAndSocieties] Absorbed {toRemove.Count} inland lake(s) ({absorbed} tiles) into surrounding land.");
+            if (splitLakes > 0)
+                Log.Message($"[RegionsAndSocieties] SplitInlandLakes (#48): split {splitLakes} inland lake(s), "
+                    + $"{movedTiles} water tile(s) shared among their shore regions.");
         }
 
         /// <summary>
@@ -1349,6 +1471,10 @@ namespace RegionsAndSocieties
             var neighbors = new List<RimWorld.Planet.PlanetTile>();
             var toAdd = new List<GeographicProvince>();
             int splitRegions = 0, newPieces = 0;
+            // Land province ids, so a component's boundary can be tested for an adjacent land region:
+            // a small component touching only water/impassable/feature tiles is a true island (#49).
+            var landIds = new HashSet<int>();
+            foreach (var lp in provinces) if (lp.provinceType == ProvinceType.Land) landIds.Add(lp.id);
 
             foreach (var p in provinces)
             {
@@ -1380,27 +1506,245 @@ namespace RegionsAndSocieties
 
                 if (components.Count <= 1) continue;
 
-                // Largest component keeps p's identity; the rest spin off into their own regions.
+                // Largest component keeps p's identity. A smaller component that is a true small island —
+                // fewer than SmallIslandMaxTiles tiles, touching no OTHER land region (only water /
+                // impassable / feature tiles) — is legitimately part of its host (either #49 absorbed it or
+                // it is a natural coastal islet of the same region), so it STAYS attached rather than being
+                // spun back off. A component cut off by another LAND region is still split, as before (#49).
                 components.Sort((a, b) => b.Count.CompareTo(a.Count));
-                p.tiles = components[0];
-                p.primaryBiome = GetPrimaryBiome(p.tiles);
+                var keep = new List<int>(components[0]);
+                bool splitAny = false;
                 for (int c = 1; c < components.Count; c++)
                 {
+                    var comp = components[c];
+                    if (comp.Count < Placement.IslandRules.SmallIslandMaxTiles
+                        && IsWaterSurroundedComponent(comp, members, landIds, neighbors))
+                    {
+                        keep.AddRange(comp);   // true island fragment: keep it in the host region
+                        continue;
+                    }
                     var np = new GeographicProvince(nextId++);
-                    np.tiles = components[c];
+                    np.tiles = comp;
                     np.provinceType = ProvinceType.Land;
-                    np.primaryBiome = GetPrimaryBiome(components[c]);
+                    np.primaryBiome = GetPrimaryBiome(comp);
                     np.name = GenerateProvinceName(np.id, np.primaryBiome, np.provinceType);
-                    foreach (int t in components[c]) tileToProvinceId[t] = np.id;
+                    foreach (int t in comp) tileToProvinceId[t] = np.id;
                     toAdd.Add(np);
                     newPieces++;
+                    splitAny = true;
                 }
-                splitRegions++;
+                p.tiles = keep;
+                p.primaryBiome = GetPrimaryBiome(p.tiles);
+                if (splitAny) splitRegions++;
             }
 
             provinces.AddRange(toAdd);
             if (splitRegions > 0)
                 Log.Message($"[RegionsAndSocieties] SplitDisconnectedRegions: split {splitRegions} region(s) into {newPieces} extra piece(s) to enforce contiguity.");
+        }
+
+        /// <summary>
+        /// Small-island handling (#49): absorb lone small islands into the nearest mainland, but group
+        /// island clusters into chains first so a &gt;=30-tile archipelago becomes its own region instead of
+        /// being scattered onto whatever coast each speck is nearest. A "small island" is a Land region
+        /// under <see cref="Placement.IslandRules.SmallIslandMaxTiles"/> tiles that touches no other land
+        /// region (water / impassable / feature tiles only). Runs before SplitDisconnectedRegions, whose
+        /// island exemption then keeps the absorbed/chained pieces attached. Size and chain decisions are
+        /// the pure <see cref="Placement.IslandRules"/>.
+        /// </summary>
+        private void ResolveSmallIslands()
+        {
+            if (provinces == null || tileToProvinceId == null || Find.WorldGrid == null) return;
+
+            var byId = provinces.ToDictionary(p => p.id, p => p);
+            var landIds = new HashSet<int>();
+            foreach (var lp in provinces) if (lp.provinceType == ProvinceType.Land) landIds.Add(lp.id);
+            var neighbors = new List<RimWorld.Planet.PlanetTile>();
+
+            // 1. Small water-surrounded island provinces.
+            var islands = new List<GeographicProvince>();
+            var smallIslandIds = new HashSet<int>();
+            foreach (var p in provinces)
+            {
+                if (p.provinceType != ProvinceType.Land || p.tiles == null || p.tiles.Count == 0) continue;
+                if (p.tiles.Count >= Placement.IslandRules.SmallIslandMaxTiles) continue;
+                if (!IsWaterSurroundedComponent(p.tiles, new HashSet<int>(p.tiles), landIds, neighbors)) continue;
+                islands.Add(p); smallIslandIds.Add(p.id);
+            }
+            if (islands.Count == 0) return;
+
+            // 2. Per island: reachable sibling islands (to chain, union-find) and nearest mainland (absorb).
+            var parent = new Dictionary<int, int>();
+            foreach (var isl in islands) parent[isl.id] = isl.id;
+            var nearestMainland = new Dictionary<int, int>();
+            var nearestHops = new Dictionary<int, int>();
+            foreach (var isl in islands)
+            {
+                IslandReachBFS(isl, smallIslandIds, landIds, neighbors,
+                    out var reachedIslands, out int mainlandPid, out int mainlandHops);
+                foreach (int oid in reachedIslands) UnionIslands(parent, isl.id, oid);
+                nearestMainland[isl.id] = mainlandPid;
+                nearestHops[isl.id] = mainlandHops;
+            }
+
+            // 3. Group into chains, resolve each by total size.
+            var chains = new Dictionary<int, List<GeographicProvince>>();
+            foreach (var isl in islands)
+            {
+                int r = FindIslandRoot(parent, isl.id);
+                if (!chains.TryGetValue(r, out var list)) { list = new List<GeographicProvince>(); chains[r] = list; }
+                list.Add(isl);
+            }
+
+            var toRemove = new HashSet<GeographicProvince>();
+            int joined = 0, chainRegions = 0, kept = 0;
+            foreach (var kv in chains)
+            {
+                var members = kv.Value;
+                int chainTiles = 0; foreach (var m in members) chainTiles += m.tiles.Count;
+                int chainHops = -1;
+                foreach (var m in members) { int h = nearestHops[m.id]; if (h >= 0 && (chainHops < 0 || h < chainHops)) chainHops = h; }
+
+                var res = Placement.IslandRules.ResolveChain(chainTiles, chainHops);
+                if (res == Placement.IslandChainResolution.FormChainRegion)
+                {
+                    // Merge the chain's islands into their lowest-id member: one archipelago region whose
+                    // water-separated parts SplitDisconnectedRegions leaves attached (the island exemption).
+                    members.Sort((a, b) => a.id.CompareTo(b.id));
+                    var host = members[0];
+                    for (int i = 1; i < members.Count; i++)
+                    {
+                        foreach (int t in members[i].tiles) { host.tiles.Add(t); tileToProvinceId[t] = host.id; }
+                        toRemove.Add(members[i]);
+                    }
+                    host.primaryBiome = GetPrimaryBiome(host.tiles);
+                    host.name = GenerateProvinceName(host.id, host.primaryBiome, host.provinceType);
+                    chainRegions++;
+                }
+                else if (res == Placement.IslandChainResolution.JoinMainland)
+                {
+                    foreach (var m in members)
+                    {
+                        int target = nearestMainland[m.id];
+                        if (target != -1 && byId.TryGetValue(target, out var host) && !toRemove.Contains(host))
+                        {
+                            foreach (int t in m.tiles) { host.tiles.Add(t); tileToProvinceId[t] = host.id; }
+                            host.primaryBiome = GetPrimaryBiome(host.tiles);
+                            toRemove.Add(m); joined++;
+                        }
+                        else kept++;   // reach evaporated (target already consumed) — leave it standing
+                    }
+                }
+                else kept += members.Count;   // KeepSeparate: no mainland in reach, chain too small
+            }
+
+            if (toRemove.Count > 0) provinces.RemoveAll(p => toRemove.Contains(p));
+            Log.Message($"[RegionsAndSocieties] ResolveSmallIslands (#49): {joined} island(s) joined mainland, "
+                + $"{chainRegions} island-chain region(s) formed, {kept} kept separate (of {islands.Count} small island(s)).");
+        }
+
+        private static int FindIslandRoot(Dictionary<int, int> parent, int x)
+        {
+            while (parent[x] != x) { parent[x] = parent[parent[x]]; x = parent[x]; }
+            return x;
+        }
+
+        private static void UnionIslands(Dictionary<int, int> parent, int a, int b)
+        {
+            int ra = FindIslandRoot(parent, a), rb = FindIslandRoot(parent, b);
+            if (ra != rb) parent[ra] = rb;
+        }
+
+        /// <summary>True when no tile of <paramref name="comp"/> touches a DIFFERENT land region — the
+        /// component borders only water, impassable rock, or non-Land feature provinces. <paramref
+        /// name="members"/> is the full tile set the component belongs to (its own region); those tiles
+        /// never count as an outside land neighbour.</summary>
+        private bool IsWaterSurroundedComponent(List<int> comp, HashSet<int> members, HashSet<int> landIds,
+            List<RimWorld.Planet.PlanetTile> neighbors)
+        {
+            foreach (int t in comp)
+            {
+                neighbors.Clear();
+                Find.WorldGrid.GetTileNeighbors(t, neighbors);
+                foreach (var n in neighbors)
+                {
+                    int nid = n.tileId;
+                    if (members.Contains(nid)) continue;
+                    int np = GetProvinceId(nid);
+                    if (np != -1 && landIds.Contains(np)) return false;   // adjacent to another land region
+                }
+            }
+            return true;
+        }
+
+        /// <summary>BFS over water from an island's tiles out to <see
+        /// cref="Placement.IslandRules.IslandAbsorbHops"/> hops. Collects the ids of other small islands
+        /// reached (to chain) and picks the nearest mainland land region (to absorb into), tie-broken by
+        /// most shore tiles facing the island, then lowest id. A negative <paramref name="mainlandHops"/>
+        /// means no mainland is in reach.</summary>
+        private void IslandReachBFS(GeographicProvince island, HashSet<int> smallIslandIds, HashSet<int> landIds,
+            List<RimWorld.Planet.PlanetTile> neighbors,
+            out List<int> reachedIslands, out int mainlandPid, out int mainlandHops)
+        {
+            reachedIslands = new List<int>();
+            mainlandPid = -1; mainlandHops = -1;
+
+            var reachedSet = new HashSet<int>();
+            var mainlandHits = new Dictionary<int, int>();
+            var mainlandFirstHop = new Dictionary<int, int>();
+
+            var queue = new Queue<KeyValuePair<int, int>>();
+            var visited = new HashSet<int>();
+            foreach (int t in island.tiles) { queue.Enqueue(new KeyValuePair<int, int>(t, 0)); visited.Add(t); }
+
+            int maxHops = Placement.IslandRules.IslandAbsorbHops;
+            while (queue.Count > 0)
+            {
+                var cur = queue.Dequeue();
+                int tile = cur.Key, depth = cur.Value;
+                neighbors.Clear();
+                Find.WorldGrid.GetTileNeighbors(tile, neighbors);
+                foreach (var n in neighbors)
+                {
+                    int nid = n.tileId;
+                    if (visited.Contains(nid)) continue;
+                    visited.Add(nid);
+
+                    // A LAND tile classifies (sibling island to chain, or mainland to absorb into) and stops
+                    // the flood — we never cross land. WATER tiles are flooded across regardless of which
+                    // water province owns them: ocean and lake tiles carry a province id, so testing pid
+                    // here (as the old code did) treated the whole sea as a wall and the search never left
+                    // the island's shore — the bug that made every island "keep separate".
+                    if (!Find.WorldGrid[nid].WaterCovered)
+                    {
+                        int pid = GetProvinceId(nid);
+                        if (pid != -1 && pid != island.id)
+                        {
+                            if (smallIslandIds.Contains(pid)) { if (reachedSet.Add(pid)) reachedIslands.Add(pid); }
+                            else if (landIds.Contains(pid))
+                            {
+                                int c; mainlandHits.TryGetValue(pid, out c); mainlandHits[pid] = c + 1;
+                                if (!mainlandFirstHop.ContainsKey(pid)) mainlandFirstHop[pid] = depth;
+                            }
+                        }
+                        continue;   // never expand through land or impassable rock
+                    }
+                    if (depth < maxHops)
+                        queue.Enqueue(new KeyValuePair<int, int>(nid, depth + 1));
+                }
+            }
+
+            foreach (var kv in mainlandHits)
+            {
+                int pid = kv.Key, hits = kv.Value, hop = mainlandFirstHop[pid];
+                if (mainlandPid == -1
+                    || hop < mainlandHops
+                    || (hop == mainlandHops && (hits > mainlandHits[mainlandPid]
+                        || (hits == mainlandHits[mainlandPid] && pid < mainlandPid))))
+                {
+                    mainlandPid = pid; mainlandHops = hop;
+                }
+            }
         }
 
         /// <summary>
@@ -1531,39 +1875,11 @@ namespace RegionsAndSocieties
         {
             Log.Message($"[RegionsAndSocieties] MergeTinyDomains started. Initial region count: {provinces.Count}");
             List<RimWorld.Planet.PlanetTile> neighbors = new List<RimWorld.Planet.PlanetTile>();
-            // Cache province types
-            var provinceTypeMap = provinces.ToDictionary(p => p.id, p => p.provinceType);
 
-            // Pass 0: Small Island Absorption (islands < 5 tiles, closest landmass < 3 tiles away)
-            List<GeographicProvince> islandsToRemove = new List<GeographicProvince>();
-            var initialProvinceMap = provinces.ToDictionary(p => p.id, p => p);
+            // Small-island absorption/chaining moved to its own pass (#49), ResolveSmallIslands, run
+            // just before SplitDisconnectedRegions, whose island exemption then preserves it. The old
+            // Pass 0 (islands < 5 tiles, 2 water hops) was silently undone by that split and is retired.
             int totalMerged = 0;
-
-            foreach (var p in provinces)
-            {
-                if (p.provinceType == ProvinceType.Land && p.tiles.Count > 0 && p.tiles.Count < 5)
-                {
-                    int targetPid = FindClosestLandProvinceWithinDistance(p, 2, provinceTypeMap);
-                    if (targetPid != -1 && initialProvinceMap.TryGetValue(targetPid, out var targetProv))
-                    {
-                        // Per-merge logging removed: a full world has thousands of tiny islands, and one
-                        // Log.Message each stalled worldgen and ballooned memory until it crashed. The
-                        // one-line summary at the end of MergeTinyDomains reports the total instead.
-                        foreach (int tileId in p.tiles)
-                        {
-                            targetProv.tiles.Add(tileId);
-                            tileToProvinceId[tileId] = targetProv.id;
-                        }
-                        islandsToRemove.Add(p);
-                        totalMerged++;
-                    }
-                }
-            }
-
-            foreach (var p in islandsToRemove)
-            {
-                provinces.Remove(p);
-            }
 
             int pass = 0;
             while (pass < 10) // Safety limit of 10 passes
@@ -1805,54 +2121,6 @@ namespace RegionsAndSocieties
                 else if (t.hilliness == Hilliness.Mountainous) total += 1.5f;
             }
             return total / p.tiles.Count;
-        }
-
-        private int FindClosestLandProvinceWithinDistance(GeographicProvince island, int maxDistance, Dictionary<int, ProvinceType> provinceTypeMap)
-        {
-            Queue<KeyValuePair<int, int>> queue = new Queue<KeyValuePair<int, int>>();
-            HashSet<int> visited = new HashSet<int>();
-
-            foreach (int t in island.tiles)
-            {
-                queue.Enqueue(new KeyValuePair<int, int>(t, 0));
-                visited.Add(t);
-            }
-
-            List<RimWorld.Planet.PlanetTile> neighbors = new List<RimWorld.Planet.PlanetTile>();
-
-            while (queue.Count > 0)
-            {
-                var currentKvp = queue.Dequeue();
-                int currentTile = currentKvp.Key;
-                int currentDepth = currentKvp.Value;
-
-                if (currentDepth > maxDistance) continue;
-
-                neighbors.Clear();
-                Find.WorldGrid.GetTileNeighbors(currentTile, neighbors);
-                foreach (var n in neighbors)
-                {
-                    int nid = n.tileId;
-                    if (visited.Contains(nid)) continue;
-                    visited.Add(nid);
-
-                    int pid = tileToProvinceId[nid];
-                    if (pid != -1 && pid != island.id)
-                    {
-                        if (provinceTypeMap.TryGetValue(pid, out var type) && type == ProvinceType.Land)
-                        {
-                            return pid;
-                        }
-                    }
-
-                    if (Find.WorldGrid[nid].WaterCovered && currentDepth < maxDistance)
-                    {
-                        queue.Enqueue(new KeyValuePair<int, int>(nid, currentDepth + 1));
-                    }
-                }
-            }
-
-            return -1;
         }
 
         private void ResolveContextualNames()

@@ -35,6 +35,12 @@ namespace RegionsAndSocieties
         public RegionalOwnershipData ownershipData;
         public ProvinceType provinceType = ProvinceType.Land;
 
+        // A small region (<= TinyRegionMaxTiles) kept alive only because the "enable small regions" option
+        // is on (#51). It is a real region — drawn, settle-able — but thematically too small to sustain a
+        // regional society, so it earns NO regional benefits: demographics, economy and the like skip it.
+        // Default false; set at worldgen by DropTinyRegions when the option keeps it instead of dropping it.
+        public bool benefitsSuppressed;
+
         // --- Topology aggregate (#48) -------------------------------------------
         // Derived purely from tile membership, so it is deliberately never scribed:
         // SynapseRegionManager.BuildProvinceTopology fills it once (at generation, and lazily after
@@ -227,6 +233,7 @@ namespace RegionsAndSocieties
 
             Scribe_Values.Look(ref initializedEconomics, "initializedEconomics", false);
             Scribe_Values.Look(ref provinceType, "provinceType", ProvinceType.Land);
+            Scribe_Values.Look(ref benefitsSuppressed, "benefitsSuppressed", false);
             Scribe_Values.Look(ref _totalDwellings, "totalDwellings", 0);
             Scribe_Values.Look(ref _currentPopulation, "currentPopulation", 0);
 
@@ -273,6 +280,7 @@ namespace RegionsAndSocieties
             // Open water and impassable mountains have no economy; skip so neither is walked (and the
             // ocean doesn't report a nonsense "richest province on the planet" from ~50k tiles × 500) (#20).
             if (provinceType == ProvinceType.Ocean || provinceType == ProvinceType.MountainRange) return;
+            if (benefitsSuppressed) return;   // #51: a kept tiny region earns no economy (no regional benefits)
             if (!RegionsAndSocietiesMod.SocietiesEnabled) return;   // #53: Economy is a Societies feature
 
             float totalPlantDensity = 0f;

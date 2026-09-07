@@ -152,6 +152,18 @@ run_suite biomehabitability Exe \
     Tests/BiomeHabitabilityRulesTests.cs \
     $SRC/Placement/BiomeHabitabilityRules.cs
 
+# 0.4.0 drop-tiny-regions terminal rule (#51): the 6-tile cap, the settlement never-orphan guard,
+# and the drop-anyway rule for a holdingless speck. Pure, no game.
+run_suite tinyregion Exe \
+    Tests/TinyRegionRulesTests.cs \
+    $SRC/Placement/TinyRegionRules.cs
+
+# 0.4.0 small-island handling (#49): the join threshold and the 30-tile archipelago chain cut.
+# Pure, no game.
+run_suite island Exe \
+    Tests/IslandRulesTests.cs \
+    $SRC/Placement/IslandRules.cs
+
 # 0.4.0 territory clustering (#46): the 1/3/5/7/9+ cap, faction-kind defaults, within-cap-first
 # ranking, body tracking with merges, ascending seeding key. Pure, no game.
 run_suite clustering Exe \
@@ -174,6 +186,12 @@ run_suite compactness Exe \
 run_suite border Exe \
     Tests/BorderRulesTests.cs \
     $SRC/Partition/BorderRules.cs
+
+# 0.4.0 shore-proportional inland-lake split (#48): shore counts, largest-remainder quotas, and
+# the capacity-bounded flood whose region shares match the quotas. Pure, no game.
+run_suite lakesplit Exe \
+    Tests/LakeSplitRulesTests.cs \
+    $SRC/Partition/LakeSplitRules.cs
 
 # 0.3.0 sprawl spread: a settlement's people over its own tile and the tiles its terrain-aware sprawl
 # reaches, in proportion to the sprawl weights, total conserved. Pure, no game.
