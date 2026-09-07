@@ -60,6 +60,11 @@ namespace RegionsAndSocieties.Integration
                 new { type = "object", properties = new { } },
                 (Func<string, string>)(_ => Safe(RegionDebugReports.HoldingsReport)));
 
+            TryRegister(register, "rt_placement_share_report",
+                "R&T placement shares (#47): per faction, its share weight, normalised %, estimated territory count (largest-remainder apportionment) and actual settlements placed — the headless check that share 40% receives ~40% of provinces (+/-1).",
+                new { type = "object", properties = new { } },
+                (Func<string, string>)(_ => Safe(RegionDebugReports.PlacementShareReport)));
+
             TryRegister(register, "rt_placement_probe",
                 "R&T player placement (#61): whether the player may settle a tile. Args: {} = sample one province per rival ownership tier; {\"tileId\":N} = probe one tile.",
                 new { type = "object", properties = new { tileId = new { type = "integer" } } },

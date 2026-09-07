@@ -225,15 +225,17 @@ namespace RegionsAndSocieties.Patches
             int totalHostileTarget = 0;
             int totalNonHostileTarget = 0;
 
-            float mapSizeMult = coverage / 0.05f;
-            float landRatio = (float)landTilesCount / totalTiles;
-            float landRatioMult = landRatio / 0.05f;
-
+            // #47: the relative distribution is now the per-faction SHARE weight, not a random draw. Each
+            // faction's stored share (a "%" the player edits; shares need not sum to 100) seeds its raw
+            // target; the threat cap and the density-driven global normalisation below scale the whole set
+            // to the number of territories the map actually allows, so the shares set only the split.
             foreach (var faction in allNPCFactions)
             {
-                float rngVal = GetFactionRng(faction);
-                int baseCount = Mathf.RoundToInt((mapSizeMult * landRatioMult * rngVal) / 6f);
-                baseCount = Mathf.Clamp(baseCount, 1, 40);
+                var shareProfile = FactionPlacementSettings.GetProfile(faction.def);
+                float shareWeight = (shareProfile != null && shareProfile.placementShare > 0f)
+                    ? shareProfile.placementShare
+                    : FactionPlacementSettings.DefaultShare(faction.def);
+                int baseCount = Mathf.Max(1, Mathf.RoundToInt(shareWeight));
 
                 factionTargetBases[faction] = baseCount;
 
@@ -1238,23 +1240,6 @@ namespace RegionsAndSocieties.Patches
                 }
             }
             return barrierCount;
-        }
-
-        private static float GetFactionRng(Faction faction)
-        {
-            if (faction.def.defName.ToLower().Contains("pirate") || faction.def.label.ToLower().Contains("pirate"))
-            {
-                return UnityEngine.Random.Range(1f, 3f);
-            }
-            if (faction.def.techLevel == TechLevel.Industrial)
-            {
-                return UnityEngine.Random.Range(1f, 5f);
-            }
-            if (faction.def.techLevel >= TechLevel.Spacer)
-            {
-                return UnityEngine.Random.Range(1f, 2f);
-            }
-            return UnityEngine.Random.Range(1f, 2f); // Tribal / default
         }
 
         /// <summary>The placed NPC bases that belong to Industrial factions, keyed by faction, for the

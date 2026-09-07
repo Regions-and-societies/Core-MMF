@@ -1630,6 +1630,68 @@ namespace RegionsAndSocieties.Integration
             return sb.ToString().TrimEnd();
         }
 
+        /// <summary>
+        /// #47: the placement-share acceptance report — per faction, its share weight, the normalised %,
+        /// the estimated territory count (largest-remainder apportionment of the placed total, the same
+        /// arithmetic the settings dialog shows), and the actual number of settlements it received. A share
+        /// of 40% should line up with ≈ 40% of the placed provinces (±1), which this makes checkable
+        /// headlessly after worldgen.
+        /// </summary>
+        public static string PlacementShareReport()
+        {
+            if (!UnityData.IsInMainThread) return "must run on the main thread";
+            if (Find.World == null || Find.FactionManager == null) return "no world loaded";
+            var mgr = Find.World.GetComponent<SynapseRegionManager>();
+            if (mgr?.Provinces == null) return "no provinces";
+
+            // Actual settlements per faction (the placed result the shares were meant to distribute).
+            var actualByFaction = new Dictionary<Faction, int>();
+            if (Find.WorldObjects != null)
+            {
+                foreach (var o in Find.WorldObjects.AllWorldObjects)
+                {
+                    if (o?.Faction == null || o.Faction.IsPlayer) continue;
+                    if (WorldObjectClassifier.Classify(o) != WorldObjectKind.Settlement) continue;
+                    actualByFaction.TryGetValue(o.Faction, out int n);
+                    actualByFaction[o.Faction] = n + 1;
+                }
+            }
+
+            var factions = Find.FactionManager.AllFactionsListForReading
+                .Where(f => f != null && !f.IsPlayer && f.def != null && !f.def.hidden)
+                .ToList();
+
+            var weights = new List<float>();
+            float totalWeight = 0f;
+            foreach (var f in factions)
+            {
+                var prof = FactionPlacementSettings.GetProfile(f.def);
+                float w = prof != null && prof.placementShare > 0f ? prof.placementShare : FactionPlacementSettings.DefaultShare(f.def);
+                weights.Add(w);
+                totalWeight += w;
+            }
+
+            int landRegions = mgr.Provinces.Count(p => p != null && p.provinceType == ProvinceType.Land && p.tiles != null && p.tiles.Count > 0);
+            int placedTotal = Placement.PlacementShareRules.PlacedTotal(landRegions, FactionPlacementSettings.claimedLandAreaPercent);
+            int[] estimates = Placement.PlacementShareRules.Apportion(weights, placedTotal);
+            int actualTotal = actualByFaction.Values.Sum();
+
+            var sb = new StringBuilder();
+            sb.AppendLine("=== R&S placement share report (#47) ===");
+            sb.AppendLine($"land regions={landRegions}, claimed land area={UnityEngine.Mathf.RoundToInt(FactionPlacementSettings.claimedLandAreaPercent * 100f)}%, territories placed (est)={placedTotal}, actual settlements={actualTotal}");
+            sb.AppendLine("faction                          share%   norm%    est    actual   delta");
+            for (int i = 0; i < factions.Count; i++)
+            {
+                var f = factions[i];
+                float normPct = Placement.PlacementShareRules.NormalizedFraction(weights[i], totalWeight) * 100f;
+                actualByFaction.TryGetValue(f, out int actual);
+                int est = estimates[i];
+                sb.AppendLine($"{f.Name,-32} {UnityEngine.Mathf.RoundToInt(weights[i]),5}   {normPct,5:0.0}   {est,4}   {actual,6}   {actual - est,5}");
+            }
+            if (factions.Count == 0) sb.AppendLine("  (no NPC factions)");
+            return sb.ToString().TrimEnd();
+        }
+
         public static string HoldingsReport()
         {
             if (!UnityData.IsInMainThread) return "must run on the main thread";

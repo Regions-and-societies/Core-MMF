@@ -14,6 +14,16 @@ namespace RegionsAndSocieties
         public float grazingWeight = 1.0f;
         public float huntingWeight = 1.0f;
         public float marginWeight = 0.0f;
+
+        /// <summary>#47: the faction's share of the placed territories, a raw weight shown to the player as
+        /// a "%". Shares across factions need not sum to 100 — worldgen normalises by their sum, so a share
+        /// is a relative weight, not a hard quota. 0 = unset: resolved on first read to the migrated old
+        /// range midpoint (existing saves) or the neutral default (new profiles).</summary>
+        public float placementShare = 0f;
+
+        /// <summary>Legacy Settlement Range (#47 removed it from the UI). Kept only so an old save's value
+        /// can be read and converted to <see cref="placementShare"/> on load; it is no longer written back
+        /// or consumed at worldgen.</summary>
         public IntRange baseCountRange = new IntRange(5, 15);
         public int placementOrder = 3;
 
@@ -46,7 +56,17 @@ namespace RegionsAndSocieties
             Scribe_Values.Look(ref grazingWeight, "grazingWeight", 1.0f);
             Scribe_Values.Look(ref huntingWeight, "huntingWeight", 1.0f);
             Scribe_Values.Look(ref marginWeight, "marginWeight", 0.0f);
-            Scribe_Values.Look(ref baseCountRange, "baseCountRange", new IntRange(5, 15));
+            Scribe_Values.Look(ref placementShare, "placementShare", 0f);
+            // #47: still READ the legacy range so an old save can be migrated, but never WRITE it — new
+            // saves carry the share only. On load, if the save predates the share, convert the range midpoint.
+            if (Scribe.mode != LoadSaveMode.Saving)
+            {
+                Scribe_Values.Look(ref baseCountRange, "baseCountRange", new IntRange(5, 15));
+                if (Scribe.mode == LoadSaveMode.LoadingVars && placementShare <= 0f)
+                {
+                    placementShare = Placement.PlacementShareRules.MigrateRangeToShareWeight(baseCountRange.min, baseCountRange.max);
+                }
+            }
             Scribe_Values.Look(ref placementOrder, "placementOrder", 3);
             Scribe_Values.Look(ref clusterSize, "clusterSize", 0);
         }
@@ -150,6 +170,12 @@ namespace RegionsAndSocieties
         /// gets no demographics/economy. A settlement/outpost speck is never orphaned either way.</summary>
         public static bool enableSmallRegions = false;
 
+        /// <summary>#47: which view the Geographic Placement Settings dialog opens in. Basic (default, false)
+        /// shows one compact row per faction — share % and a live "≈ N regions" estimate — and fits the
+        /// active faction list without scrolling. Advanced (true) is the full per-faction card: resource
+        /// weights, placement order, clustering, and the same share row. Persisted so the choice sticks.</summary>
+        public static bool placementUiAdvanced = false;
+
         public override void ExposeData()
         {
             base.ExposeData();
@@ -168,6 +194,7 @@ namespace RegionsAndSocieties
             Scribe_Values.Look(ref splitScatteredFactions, "splitScatteredFactions", true);
             Scribe_Values.Look(ref societiesEnabled, "societiesEnabled", true);
             Scribe_Values.Look(ref enableSmallRegions, "enableSmallRegions", false);
+            Scribe_Values.Look(ref placementUiAdvanced, "placementUiAdvanced", false);
 
             // 0.7: world-object governance / mod-integration switches.
             Integration.WorldObjectIntegrationSettings.ExposeData();
@@ -198,7 +225,19 @@ namespace RegionsAndSocieties
             }
             // #46: a profile saved before cluster size existed carries 0; resolve it to the kind's default.
             if (p.clusterSize <= 0) p.clusterSize = DefaultClusterSize(def);
+            // #47: a profile with no share yet (fresh, or from a save whose range midpoint was 0) gets the
+            // kind's default share so the faction always has a slice.
+            if (p.placementShare <= 0f) p.placementShare = DefaultShare(def);
             return p;
+        }
+
+        /// <summary>#47: the default placement share for a faction — the midpoint of the Settlement Range
+        /// the old default profile would have carried, so the out-of-the-box distribution matches what
+        /// players saw before shares existed (civil ~10, hostile ~5.5).</summary>
+        public static float DefaultShare(FactionDef def)
+        {
+            var d = GetDefaultProfile(def);
+            return Placement.PlacementShareRules.MigrateRangeToShareWeight(d.baseCountRange.min, d.baseCountRange.max);
         }
 
         /// <summary>#46: the owner's default cluster size for a faction — pirates and the Empire 3,
@@ -284,6 +323,7 @@ namespace RegionsAndSocieties
 
             var profile = new FactionPlacementProfile(def.defName, mineral, nutrition, forage, grazing, hunting, margin, minB, maxB, order);
             profile.clusterSize = DefaultClusterSize(def);   // #46
+            profile.placementShare = Placement.PlacementShareRules.MigrateRangeToShareWeight(minB, maxB);   // #47
             return profile;
         }
     }
