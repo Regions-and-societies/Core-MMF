@@ -33,18 +33,17 @@ namespace RegionsAndSocieties.Partition
         private const bool EnableNeckDetection = false;
 
         // #40: split a region across a mountain pass. The contain-subdivide core morphology treats only
-        // claimed water/impassable tiles and biome edges as walls, so a low pass between two PASSABLE
-        // Mountainous ridges reads as interior and the region spans it (region 133 repro). When on,
-        // MarkPassNecks flags the low saddle tiles pinched between high ground (Mountainous+) on opposing
-        // sides and they act as container borders, so the range reads as one continuous frontier.
+        // claimed water/impassable tiles and biome edges as walls, so a passable Mountainous saddle in a
+        // ridge reads as interior and the region spans it (region 133 / Mount Zocrouño repro). When on,
+        // MarkPassNecks extends the hard walls across the ridge: a high-ground saddle pinched between
+        // impassable peaks (or water) on opposing sides becomes a container border, closing the ridge into
+        // one continuous frontier so the region splits along it. The saddle tiles are then draped back to
+        // the two sides (2c), so the ridge splits between them rather than leaving a hole.
         //
-        // GATED OFF: the opposite-sides primitive over-fires — a low valley tile in any mountainous belt
-        // has Mountainous tiles on two sides within a few hops, so ~12-22k tiles (a fifth of the land) get
-        // flagged, over-segmenting mountain country rather than cutting only the passes that actually
-        // divide two lowland basins. Wiring + the MarkPassNecks bounds-guard fix are kept; enabling this
-        // needs a selective bottleneck test (a neck must be a genuine cut between two open basins), not the
-        // raw opposite-bearing heuristic. Track under #40.
-        private const bool SplitMountainPasses = false;
+        // Selectivity: the flank is a HARD WALL only (impassable / water), and only a genuine notch between
+        // two peaks fires. An earlier attempt counted LargeHills as a flank and over-fired on a fifth of
+        // the land; bridging only between actual peaks fires just in real ridge gaps (#40).
+        private const bool SplitMountainPasses = true;
 
         /// <summary>
         /// Partition the unclaimed land of the world into province tile-groups. Water, ocean and lake
@@ -75,7 +74,7 @@ namespace RegionsAndSocieties.Partition
             }
 
             // Pass-neck detection (gated OFF pending a selective saddle rule; kept for iteration).
-            var isNeck = EnableNeckDetection ? MarkPassNecks(grid, isLand, signals, total) : new bool[total];
+            var isNeck = EnableNeckDetection ? MarkPassNecks(grid, isLand, total) : new bool[total];
 #pragma warning disable 0162 // unreachable while EnableNeckDetection is const false
             if (EnableNeckDetection)
             {
@@ -219,10 +218,7 @@ namespace RegionsAndSocieties.Partition
             bool[] isNeck;
             if (SplitMountainPasses)
             {
-                var signals = new TileSignal[total];
-                var biomeIds = new Dictionary<BiomeDef, int>();
-                for (int t = 0; t < total; t++) signals[t] = Classify(grid, t, biomeIds);
-                isNeck = MarkPassNecks(grid, interior, signals, total);
+                isNeck = MarkPassNecks(grid, interior, total);
                 int neckCount = 0;
                 for (int t = 0; t < total; t++) if (isNeck[t]) neckCount++;
                 Log.Message($"[RegionsAndSocieties] Contain-subdivide: {neckCount} mountain-pass neck tile(s) walled as borders (#40).");
@@ -634,30 +630,30 @@ namespace RegionsAndSocieties.Partition
             // Any neck tile still unplaced (ringed only by walls/necks) is left for AbsorbEnclosedGaps.
         }
 
-        // Pass-neck detection. K=3 tiles matches the agreed "within two or three tiles of the next
-        // border"; the dot cutoff means the two flanking walls point more than ~105 degrees apart, i.e.
-        // they pinch the tile from genuinely opposing sides rather than lying on a single flank. A tile
-        // counts as a flanking "wall" if it is a hard border (water / impassable) OR high ground
-        // (LargeHills+) — because a RimWorld mountain range is mostly PASSABLE Mountainous tiles, so a
-        // pass is a low saddle between high ground, not between impassable peaks.
+        // Ridge-pass detection (#40). A RimWorld mountain range is impassable PEAKS interleaved with
+        // PASSABLE Mountainous saddles, so a region flows through the saddle and spans the ridge. The rule
+        // closes the ridge by EXTENDING the hard walls across those saddles: a high-ground tile that can
+        // reach IMPASSABLE / water on genuinely opposing sides, travelling only over other high ground
+        // within K tiles, is a ridge saddle and becomes part of the barrier. K=3 keeps it to a narrow gap;
+        // the dot cutoff means the two flanks point >~105 degrees apart (opposing, not one flank).
+        //
+        // The flank is a HARD WALL only (water / impassable) — NOT LargeHills. An earlier version counted
+        // LargeHills as a flank and fired on a fifth of the land, because any low tile in hilly country has
+        // big hills on two sides; bridging only between actual peaks fires just in real ridge gaps.
         private const int NeckRadius = 3;
         private const float NeckOppositeDot = -0.25f;
-        private const int NeckWallHillClass = 3;   // Mountainous+ flank a pass — LargeHills (2) is common
-                                                   // enough that it over-fired (a third of the land), so a
-                                                   // real pass is a low saddle between MOUNTAINS or impassable
-                                                   // peaks, not between big hills (#40).
-        private const int NeckLowHillClass = 1;    // only Flat / SmallHills tiles can BE a saddle
 
         /// <summary>
-        /// Flag low saddle tiles pinched between high ground / hard walls on opposite sides — mountain
-        /// passes and isthmuses (#20). Only a low tile (Flat/SmallHills) is a candidate; a bounded BFS
-        /// (depth <see cref="NeckRadius"/>, travelling only over other low land) collects the bearings
-        /// to any flanking wall — water, impassable, or high ground — it reaches, and if two bearings
-        /// oppose each other the tile sits in a neck and becomes an extension of the border. High ground
-        /// on only one flank (a foothill where a plain meets a range) is never flagged, so a region
-        /// still flows up into the mountains; a plateau interior is excluded because it is not low.
+        /// Flag the saddle tiles that sit in a narrow pass — a passable corridor pinched between impassable
+        /// peaks (or water) on opposite sides — so the caller can extend the hard walls across them and the
+        /// ridge reads as one continuous barrier (#40). Any passable land tile is a candidate; a bounded BFS
+        /// (depth <see cref="NeckRadius"/>, travelling over passable land) collects the bearings to any HARD
+        /// WALL (water / impassable) it reaches, and if two bearings oppose the tile sits in a notch between
+        /// two walls and closes — whether the notch is a high saddle or a LOW pass, as long as it is narrow.
+        /// The flank is a hard wall only (not high ground), so open country never fires: only a tile within
+        /// <see cref="NeckRadius"/> of peaks/water on genuinely opposing sides is a pass.
         /// </summary>
-        private static bool[] MarkPassNecks(WorldGrid grid, bool[] isLand, TileSignal[] signals, int total)
+        private static bool[] MarkPassNecks(WorldGrid grid, bool[] isLand, int total)
         {
             var isNeck = new bool[total];
             var neighbors = new List<PlanetTile>();
@@ -666,8 +662,8 @@ namespace RegionsAndSocieties.Partition
             var q = new Queue<int>();
             for (int t = 0; t < total; t++)
             {
-                // Only a low, passable land tile can be a saddle.
-                if (!isLand[t] || signals[t].HillClass > NeckLowHillClass) continue;
+                // Any passable land tile can be a saddle — the flank test below keeps it to real passes.
+                if (!isLand[t]) continue;
 
                 dirs.Clear(); depth.Clear(); q.Clear();
                 q.Enqueue(t); depth[t] = 0;
@@ -683,10 +679,10 @@ namespace RegionsAndSocieties.Partition
                     {
                         int nid = n.tileId;
                         if (nid < 0 || nid >= total) continue;   // off-surface / out-of-range neighbour (multi-layer worlds)
-                        bool flankWall = !isLand[nid] || signals[nid].HillClass >= NeckWallHillClass;
+                        bool flankWall = !isLand[nid];   // a hard wall: water or impassable peak (extend it)
                         if (flankWall)
                         {
-                            // A flanking wall reached within the radius: note its bearing.
+                            // A flanking hard wall reached within the radius: note its bearing.
                             UnityEngine.Vector3 dir = grid.GetTileCenter(nid) - ct;
                             if (dir.sqrMagnitude < 1e-6f) continue;
                             dir = dir.normalized;
@@ -696,7 +692,7 @@ namespace RegionsAndSocieties.Partition
                         }
                         else if (d < NeckRadius && !depth.ContainsKey(nid))
                         {
-                            // Traverse only low land while measuring the saddle's width.
+                            // Travel the notch over passable land, measuring its width to the flanks.
                             depth[nid] = d + 1;
                             q.Enqueue(nid);
                         }
