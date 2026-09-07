@@ -179,7 +179,7 @@ namespace RegionsAndSocieties.Integration
 
         private static string SummaryJson(List<GeographicProvince> provinces)
         {
-            int cap = FactionPlacementSettings.maxRegionSize;
+            int cap = FactionPlacementSettings.targetRegionSize;
             var land = provinces.Where(p => p.provinceType == ProvinceType.Land).ToList();
 
             int minT = land.Count > 0 ? land.Min(p => p.tiles.Count) : 0;
@@ -195,7 +195,7 @@ namespace RegionsAndSocieties.Integration
             sb.Append('{');
             sb.Append("\"regionCount\":").Append(provinces.Count).Append(',');
             sb.Append("\"landRegionCount\":").Append(land.Count).Append(',');
-            sb.Append("\"maxRegionSize\":").Append(cap).Append(',');
+            sb.Append("\"targetRegionSize\":").Append(cap).Append(',');
             sb.Append("\"sizeTiles\":{\"min\":").Append(minT).Append(",\"max\":").Append(maxT)
               .Append(",\"avg\":").Append(avgT.ToString("0.0")).Append("},");
             sb.Append("\"fertileRegionsOverCap\":").Append(oversized.Count).Append(',');

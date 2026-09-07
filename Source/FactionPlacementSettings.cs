@@ -55,8 +55,13 @@ namespace RegionsAndSocieties
     public class FactionPlacementSettings : ModSettings
     {
         public static Dictionary<string, FactionPlacementProfile> profiles = new Dictionary<string, FactionPlacementProfile>();
-        public static int minRegionSize = 75;
-        public static int maxRegionSize = 150;
+
+        /// <summary>Target tiles per region — the size the subdivision aims for. Sparse biomes scale UP
+        /// automatically (a biome-size weight multiplies this: temperate ~1x, tundra ~2x, desert ~3x, ice
+        /// ~10x), so a barren stretch makes fewer, larger regions from the same target. The merge floor
+        /// (regions smaller than half the target are merged away) is derived from this, so it is the one
+        /// region-size knob. Replaces the old separate min/max sliders.</summary>
+        public static int targetRegionSize = 150;
 
         /// <summary>The world-partition algorithm applied to NEWLY generated worlds, by
         /// <see cref="Partition.IRegionPartitioner.AlgorithmId"/>. An existing save keeps the algorithm it
@@ -148,8 +153,7 @@ namespace RegionsAndSocieties
         public override void ExposeData()
         {
             base.ExposeData();
-            Scribe_Values.Look(ref minRegionSize, "minRegionSize", 75);
-            Scribe_Values.Look(ref maxRegionSize, "maxRegionSize", 150);
+            Scribe_Values.Look(ref targetRegionSize, "targetRegionSize", 150);
             Scribe_Values.Look(ref maxThreatPercent, "maxThreatPercent", 0.50f);
             Scribe_Values.Look(ref devQuicktestCoverage, "devQuicktestCoverage", 0f);
             Scribe_Values.Look(ref devQuicktestSeed, "devQuicktestSeed", "");

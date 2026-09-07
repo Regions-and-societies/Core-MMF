@@ -193,24 +193,25 @@ namespace RegionsAndSocieties
         // The partition inputs this world was generated with, stamped at first generation and scribed
         // beside regionAlgorithmId, so a regenerate (or a seed reproduction) rebuilds the SAME map even
         // if the mod settings have since changed — the reproducibility guarantee regionAlgorithmId
-        // already gives, extended to the size band and the small-region option. -1 = unset (pre-stamp
-        // save, or a fresh world before its first generation stamps them). The other partition knobs
-        // (lake cap, island reach, tiny cap, chain size, ridge class) are compile-time constants, so
+        // already gives, extended to the target region size and the small-region option. -1 = unset
+        // (pre-stamp save, or a fresh world before its first generation stamps it). The other partition
+        // knobs (lake cap, island reach, tiny cap, chain size, ridge class) are compile-time constants, so
         // they are pinned by WorldGenVersion rather than needing a per-world stamp.
-        private int worldMinRegionSize = -1;
-        private int worldMaxRegionSize = -1;
+        private int worldTargetRegionSize = -1;
         private int worldEnableSmallRegionsRaw = -1;   // -1 unset, 0 false, 1 true
 
-        /// <summary>Min region-size band this world was cut with (stamped value, else the live setting).</summary>
-        public int EffectiveMinRegionSize
+        /// <summary>Target tiles per region this world was cut with (stamped value, else the live setting).
+        /// The subdivision aims for this (×biome weight); the merge floor is half of it.</summary>
+        public int EffectiveTargetRegionSize
         {
-            get { return worldMinRegionSize > 0 ? worldMinRegionSize : FactionPlacementSettings.minRegionSize; }
+            get { return worldTargetRegionSize > 0 ? worldTargetRegionSize : FactionPlacementSettings.targetRegionSize; }
         }
 
-        /// <summary>Max region-size band this world was cut with (stamped value, else the live setting).</summary>
-        public int EffectiveMaxRegionSize
+        /// <summary>Regions smaller than this are merged away — half the target, the one derived floor that
+        /// the old separate "min size" slider used to set.</summary>
+        public int EffectiveMergeFloor
         {
-            get { return worldMaxRegionSize > 0 ? worldMaxRegionSize : FactionPlacementSettings.maxRegionSize; }
+            get { return System.Math.Max(1, EffectiveTargetRegionSize / 2); }
         }
 
         /// <summary>Whether this world was cut keeping small regions (stamped value, else the live setting).</summary>
@@ -581,8 +582,7 @@ namespace RegionsAndSocieties
             // option, so a regenerate reproduces the same map even after the mod settings change. -1 for a
             // save predating the stamp; such a world falls back to the live setting via the Effective*
             // accessors, exactly as it did before the stamp existed.
-            Scribe_Values.Look(ref worldMinRegionSize, "worldMinRegionSize", -1);
-            Scribe_Values.Look(ref worldMaxRegionSize, "worldMaxRegionSize", -1);
+            Scribe_Values.Look(ref worldTargetRegionSize, "worldTargetRegionSize", -1);
             Scribe_Values.Look(ref worldEnableSmallRegionsRaw, "worldEnableSmallRegions", -1);
 
             Scribe_Collections.Look(ref provinces, "provinces", LookMode.Deep);
@@ -838,12 +838,11 @@ namespace RegionsAndSocieties
 
             // Stamp the partition inputs on first generation; a regenerate of an already-stamped world
             // reuses them so it reproduces faithfully (mirrors regionAlgorithmId, resolved just below).
-            if (worldMinRegionSize <= 0) worldMinRegionSize = FactionPlacementSettings.minRegionSize;
-            if (worldMaxRegionSize <= 0) worldMaxRegionSize = FactionPlacementSettings.maxRegionSize;
+            if (worldTargetRegionSize <= 0) worldTargetRegionSize = FactionPlacementSettings.targetRegionSize;
             if (worldEnableSmallRegionsRaw < 0) worldEnableSmallRegionsRaw = FactionPlacementSettings.enableSmallRegions ? 1 : 0;
 
-            int baseMin = EffectiveMinRegionSize;
-            int baseMax = EffectiveMaxRegionSize;
+            int baseMax = EffectiveTargetRegionSize;
+            int baseMin = EffectiveMergeFloor;
 
             int minWithFeatures = baseMin - 5;
             int minNoFeatures = baseMin + 5;
@@ -1035,7 +1034,7 @@ namespace RegionsAndSocieties
             // halves are not immediately re-absorbed. The viability floor is deliberately below the
             // merge minimum so a moderately-sized ribbon still splits — a pair of small blobs reads
             // far better than one long snake.
-            SplitElongatedProvinces(EffectiveMinRegionSize * 2 / 3);
+            SplitElongatedProvinces(EffectiveMergeFloor * 2 / 3);
 
             // Phase 5c: erode pendant tails and single-tile protrusions (#20). Border-first cells
             // follow natural features, but the watershed clips and feature-edge zigzags still leave
@@ -1104,7 +1103,7 @@ namespace RegionsAndSocieties
         private void AbsorbStrayFragments()
         {
             if (provinces == null || tileToProvinceId == null || Find.WorldGrid == null) return;
-            int minR = EffectiveMinRegionSize;
+            int minR = EffectiveMergeFloor;
             var neighbors = new List<RimWorld.Planet.PlanetTile>();
             int folded = 0;
             bool changed = true; int guard = 0;
@@ -2016,7 +2015,7 @@ namespace RegionsAndSocieties
                                 if (dominantLand == null && neighborProv.provinceType == ProvinceType.Land)
                                     dominantLand = neighborProv;
 
-                                if (UsableTileCount(neighborProv) + pUsable <= EffectiveMaxRegionSize + 50)
+                                if (UsableTileCount(neighborProv) + pUsable <= EffectiveTargetRegionSize + 50)
                                 {
                                     bestNeighbor = neighborProv;
                                     break;
@@ -2031,7 +2030,7 @@ namespace RegionsAndSocieties
                         // regions are natural here. Bounded to genuinely small provinces (< the target
                         // minimum) so a medium region is never chained into a runaway monster.
                         if (bestNeighbor == null && dominantLand != null &&
-                            p.tiles.Count < EffectiveMinRegionSize)
+                            p.tiles.Count < EffectiveMergeFloor)
                         {
                             bestNeighbor = dominantLand;
                         }
@@ -2055,7 +2054,7 @@ namespace RegionsAndSocieties
                     // into its largest passable land neighbour of ANY biome. A few mixed tiles at the margin
                     // read far better than a 1-3 tile region of its own; bounded to very small p so normal
                     // regions stay biome-pure.
-                    if (!toRemove.Contains(p) && p.tiles.Count < EffectiveMinRegionSize / 3)
+                    if (!toRemove.Contains(p) && p.tiles.Count < EffectiveMergeFloor / 3)
                     {
                         GeographicProvince bestAny = null; int bestAnySize = -1;
                         var seenN = new HashSet<int>();
@@ -2119,7 +2118,7 @@ namespace RegionsAndSocieties
                 {
                     if (p.provinceType != ProvinceType.Land || toRemove.Contains(p)) continue;
                     if (p.tiles == null || p.tiles.Count == 0) continue;
-                    if (p.tiles.Count >= EffectiveMaxRegionSize) continue;   // never swallow a big region
+                    if (p.tiles.Count >= EffectiveTargetRegionSize) continue;   // never swallow a big region
 
                     int encloser = -2;   // -2 = none seen yet; -1 = more than one distinct land neighbour
                     foreach (int tile in p.tiles)

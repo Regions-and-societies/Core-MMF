@@ -48,7 +48,8 @@ namespace RegionsAndSocieties
             int totalTiles = Mathf.RoundToInt(100000f * coverage);
             int landTiles = Mathf.RoundToInt(totalTiles * 0.38f); // ~38% of tiles are land on average
 
-            float avgSize = (FactionPlacementSettings.minRegionSize + FactionPlacementSettings.maxRegionSize) / 2f;
+            // Average region ~0.75× the target (the subdivision produces cells from ~0.5 to 1.0× target).
+            float avgSize = FactionPlacementSettings.targetRegionSize * 0.75f;
             int estIdeal = Mathf.RoundToInt(landTiles / avgSize);
 
             // Due to biome fragmentation, the actual count is ~1.4x to 2.0x of the ideal
@@ -65,21 +66,22 @@ namespace RegionsAndSocieties
             Rect globalTitleRect = new Rect(10f, 44f, 300f, 22f);
             Widgets.Label(globalTitleRect, "<b>Global Map Region Parameters</b>");
 
-            // Left Column (Min size)
+            // Left Column: one Target size knob (the merge floor derives as half of it).
             float colWidth = (globalBoxRect.width - 30f) / 2f;
-            Rect minLabelRect = new Rect(10f, 68f, 150f, 22f);
-            Widgets.Label(minLabelRect, $"Min Size: {FactionPlacementSettings.minRegionSize} tiles");
-            Rect minSliderRect = new Rect(165f, 70f, colWidth - 170f, 18f);
-            float tempMin = Widgets.HorizontalSlider(minSliderRect, FactionPlacementSettings.minRegionSize, 20f, 150f, false, null, null, null, 1f);
-            FactionPlacementSettings.minRegionSize = Mathf.RoundToInt(tempMin);
+            Rect targetLabelRect = new Rect(10f, 68f, 135f, 22f);
+            Widgets.Label(targetLabelRect, $"Target size: {FactionPlacementSettings.targetRegionSize}");
+            Rect targetSliderRect = new Rect(150f, 70f, colWidth - 155f, 18f);
+            float tempTarget = Widgets.HorizontalSlider(targetSliderRect, FactionPlacementSettings.targetRegionSize, 50f, 400f, false, null, null, null, 1f);
+            FactionPlacementSettings.targetRegionSize = Mathf.RoundToInt(tempTarget);
 
-            // Right Column (Max size)
+            // Right Column: what the target means — sparse biomes scale up on their own.
             float rightColStart = 10f + colWidth + 10f;
-            Rect maxLabelRect = new Rect(rightColStart, 68f, 150f, 22f);
-            Widgets.Label(maxLabelRect, $"Max Size: {FactionPlacementSettings.maxRegionSize} tiles");
-            Rect maxSliderRect = new Rect(rightColStart + 165f, 70f, colWidth - 170f, 18f);
-            float tempMax = Widgets.HorizontalSlider(maxSliderRect, FactionPlacementSettings.maxRegionSize, 50f, 400f, false, null, null, null, 1f);
-            FactionPlacementSettings.maxRegionSize = Mathf.RoundToInt(tempMax);
+            Rect noteRect = new Rect(rightColStart, 64f, colWidth, 34f);
+            GUI.color = new Color(0.7f, 0.7f, 0.7f);
+            Text.Font = GameFont.Tiny;
+            Widgets.Label(noteRect, "tiles per region. Sparse biomes (desert, tundra, ice) scale up automatically to fewer, larger regions.");
+            Text.Font = GameFont.Small;
+            GUI.color = Color.white;
 
             // Second Row (Max Threat / Max Occupancy)
             Rect threatLabelRect = new Rect(10f, 98f, 150f, 22f);
