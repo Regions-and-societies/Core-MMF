@@ -1225,7 +1225,7 @@ namespace RegionsAndSocieties.Integration
         {
             if (!UnityData.IsInMainThread) return "must run on the main thread";
             if (Find.World == null) return "no world loaded";
-            return OutpostSeedingUtility.SeedOutposts().ToReport().TrimEnd();
+            return HoldingSeedingUtility.SeedHoldings().ToReport().TrimEnd();
         }
 
         /// <summary>

@@ -177,6 +177,10 @@ namespace RegionsAndSocieties
             // outpost-seeding pass. Registered here so the seeding postfix can stay mod-agnostic.
             Integration.HoldingCreatorRegistry.Initialize();
 
+            // #18: the sizing-side counterpart — per-kind seeding policies (how many holdings to seed and
+            // where). Core registers the Outpost policy; a CP mod adds its own from its Mod constructor.
+            Integration.SeedingPolicyRegistry.Initialize();
+
             // 0.3.0: the pluggable world-partition algorithms. Core registers its two built-ins; expansion
             // mods add their own IRegionPartitioner from their Mod constructor and it appears in the
             // world-partition dropdown in settings.

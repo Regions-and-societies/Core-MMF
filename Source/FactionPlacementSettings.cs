@@ -127,6 +127,14 @@ namespace RegionsAndSocieties
         public static bool strictTerritorialOwnershipDefault = true;
 
         /// <summary>
+        /// #18 default for the per-world <b>region lock</b> — whether placement refuses a holding in a
+        /// region a rival holds exclusively (the hard territory refusal). On by default. A world with no
+        /// explicit choice follows this; the flag itself lives on the world (SynapseRegionManager) and is
+        /// toggleable mid-game, so changing this default never rewrites a world that already decided.
+        /// </summary>
+        public static bool regionLockDefault = true;
+
+        /// <summary>
         /// Show the derivation breakdowns in region tooltips (ownership now; economics and produced
         /// goods later) so the numbers can be inspected without Development mode. Off by default (#54).
         /// </summary>
@@ -187,6 +195,7 @@ namespace RegionsAndSocieties
             Scribe_Values.Look(ref territoryCompactness, "territoryCompactness", 0.6f);
             Scribe_Values.Look(ref partitionAlgorithmId, "partitionAlgorithmId", Partition.RegionPartitionerRegistry.DefaultAlgorithmId);
             Scribe_Values.Look(ref strictTerritorialOwnershipDefault, "strictTerritorialOwnershipDefault", true);
+            Scribe_Values.Look(ref regionLockDefault, "regionLockDefault", true);
             Scribe_Values.Look(ref showCalculationBreakdowns, "showCalculationBreakdowns", false);
             Scribe_Values.Look(ref regionPanelUseShift, "regionPanelUseShift", false);
             Scribe_Values.Look(ref maxRegionPanels, "maxRegionPanels", 2);
