@@ -202,7 +202,12 @@ namespace RegionsAndSocieties
 
             List<FactionPlacementProfile> list = profiles.Values.ToList();
             Scribe_Collections.Look(ref list, "profiles", LookMode.Deep);
-            if (Scribe.mode == LoadSaveMode.PostLoadInit && list != null)
+            // Rebuild the dict from the loaded list during LoadingVars — a Deep list is fully populated by
+            // the time Look returns. RimWorld does not reliably re-invoke a mod-settings object's ExposeData
+            // in the PostLoadInit pass, so gating the rebuild on PostLoadInit alone silently discarded every
+            // saved profile and left GetProfile to lazily rebuild defaults (which is why saved placementShare
+            // never took effect, #47). PostLoadInit is kept as a belt-and-braces second chance.
+            if ((Scribe.mode == LoadSaveMode.LoadingVars || Scribe.mode == LoadSaveMode.PostLoadInit) && list != null)
             {
                 profiles.Clear();
                 foreach (var p in list)
