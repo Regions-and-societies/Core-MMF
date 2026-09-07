@@ -144,6 +144,17 @@ namespace RegionsAndSocieties
                 : $"Expected regions: <color=green>{estLo}–{estHi}</color>";
             Widgets.Label(estRect, landPart + "  |  " + countPart + $"  |  Territories placed: <color=orange>{placedTotal}</color>");
 
+            // Faction splitting (#57): fills what used to be empty space at the bottom of the box, and puts
+            // the "why is one tribe now a north and a south tribe" control where the region numbers are.
+            Rect splitRect = new Rect(10f, 162f, globalBoxRect.width - 20f, 24f);
+            Widgets.CheckboxLabeled(splitRect, "Split scattered factions into regional kin (N/S/E/W)",
+                ref FactionPlacementSettings.splitScatteredFactions);
+            TooltipHandler.TipRegion(splitRect,
+                "At world generation a scattered low-tech faction — a pirate band, tribe, or rough union whose settlements " +
+                "fall into separate clusters — is split into loosely-related regional kin factions, grouped by direction " +
+                "(north/south, or west/east/central). The Empire and spacer civilisations stay whole. Bigger, more " +
+                "fragmented low-tech factions split into more pieces. On by default.");
+
             if (advanced)
             {
                 // Box is tall enough for the "Detected:" status line at the bottom (title + master +
@@ -176,8 +187,8 @@ namespace RegionsAndSocieties
             Rect headerRect = new Rect(0f, top, inRect.width - 15f, 22f);
             GUI.color = new Color(0.75f, 0.75f, 0.75f);
             Widgets.Label(headerRect,
-                $"Share of placed territories — shares need not add to 100%; worldgen normalises by the total " +
-                $"(<color=cyan>{Mathf.RoundToInt(totalShareWeight)}</color>).");
+                $"How much of the map each faction gets — pick a size; worldgen shares the territories out by these " +
+                $"(total weight <color=cyan>{Mathf.RoundToInt(totalShareWeight)}</color>). Switch to Advanced for exact % and per-faction tuning.");
             GUI.color = Color.white;
 
             float rowH = 34f;
@@ -194,21 +205,26 @@ namespace RegionsAndSocieties
                 Widgets.DrawMenuSection(rowRect);
 
                 // Name (left).
-                Rect nameRect = new Rect(rowRect.x + 8f, rowRect.y + 3f, 230f, 24f);
+                Rect nameRect = new Rect(rowRect.x + 8f, rowRect.y + 3f, 178f, 24f);
                 Widgets.Label(nameRect, $"<b>{def.LabelCap}</b>");
 
-                // Share slider (middle).
-                float sliderX = nameRect.xMax + 8f;
-                float sliderW = 200f;
-                Rect shareLabelRect = new Rect(sliderX, rowRect.y + 3f, 70f, 24f);
-                Widgets.Label(shareLabelRect, $"Share: {Mathf.RoundToInt(profile.placementShare)}%");
-                Rect shareSliderRect = new Rect(sliderX + 72f, rowRect.y + 6f, sliderW, 18f);
-                float tempShare = Widgets.HorizontalSlider(shareSliderRect, profile.placementShare, 0f, 100f, false, null, null, null, 1f);
-                profile.placementShare = tempShare;
+                // Size category picker (middle): Small group / Medium / Large / Empire, presetting the share
+                // weight. The exact % stays in the advanced view for fine control.
+                var current = Placement.PlacementShareRules.CategoryForShare(profile.placementShare);
+                float pickX = nameRect.xMax + 6f;
+                float btnW = 88f;
+                foreach (Placement.ShareCategory cat in System.Enum.GetValues(typeof(Placement.ShareCategory)))
+                {
+                    Rect btn = new Rect(pickX, rowRect.y + 3f, btnW - 3f, 24f);
+                    if (cat == current) Widgets.DrawHighlightSelected(btn);
+                    if (Widgets.ButtonText(btn, Placement.PlacementShareRules.CategoryLabel(cat)))
+                        profile.placementShare = Placement.PlacementShareRules.CategoryToShareWeight(cat);
+                    pickX += btnW;
+                }
 
                 // Estimate (right).
                 int est = Placement.PlacementShareRules.EstimatedFactionCount(profile.placementShare, totalShareWeight, placedTotal);
-                Rect estCellRect = new Rect(shareSliderRect.xMax + 12f, rowRect.y + 3f, 130f, 24f);
+                Rect estCellRect = new Rect(pickX + 8f, rowRect.y + 3f, 110f, 24f);
                 Widgets.Label(estCellRect, $"≈ <color=green>{est}</color> regions");
 
                 // Reset (far right).
@@ -230,7 +246,7 @@ namespace RegionsAndSocieties
         private void DrawAdvancedCards(Rect inRect, float top, float totalShareWeight, int placedTotal)
         {
             Rect outRect = new Rect(0f, top, inRect.width, inRect.height - top - 55f);
-            Rect viewRect = new Rect(0f, 0f, inRect.width - 25f, activeFactions.Count * 295f);
+            Rect viewRect = new Rect(0f, 0f, inRect.width - 25f, activeFactions.Count * 265f);
 
             Widgets.BeginScrollView(outRect, ref scrollPosition, viewRect);
             float curY = 0f;
@@ -239,7 +255,7 @@ namespace RegionsAndSocieties
             {
                 var profile = FactionPlacementSettings.GetProfile(def);
 
-                Rect boxRect = new Rect(0f, curY, viewRect.width, 285f);
+                Rect boxRect = new Rect(0f, curY, viewRect.width, 255f);
                 Widgets.DrawMenuSection(boxRect);
 
                 Rect titleRect = new Rect(10f, curY + 10f, boxRect.width - 20f, 25f);
@@ -285,16 +301,13 @@ namespace RegionsAndSocieties
                 float tempShare = Widgets.HorizontalSlider(new Rect(shareRect.x + 310f, shareRect.y, shareRect.width - 320f, 18f), profile.placementShare, 0f, 100f, false, null, "0%", "100%", 1f);
                 profile.placementShare = tempShare;
 
-                // Placement Order
-                Rect orderRect = new Rect(10f, curY + 215f, boxRect.width - 20f, 24f);
-                Widgets.Label(new Rect(orderRect.x, orderRect.y, 250f, 24f), $"Placement Turn Order (Priority): {profile.placementOrder}");
-                float tempOrder = Widgets.HorizontalSlider(new Rect(orderRect.x + 260f, orderRect.y, orderRect.width - 270f, 18f), (float)profile.placementOrder, 1f, 10f, false, null, null, null, 1f);
-                profile.placementOrder = Mathf.RoundToInt(tempOrder);
+                // Placement Turn Order is hidden by request — the stored value still tie-breaks seeding order
+                // at worldgen, but it is an implementation detail, not a knob most players want.
 
                 // #46 cluster size: 1 / 3 / 5 / 7 / 9+ — how many territories may cluster together (the
                 // largest contiguous body). A soft maximum: the faction looks for ground where it cannot
                 // cluster first and fills in against itself only when nothing else is left.
-                Rect clusterRect = new Rect(10f, curY + 245f, boxRect.width - 20f, 24f);
+                Rect clusterRect = new Rect(10f, curY + 215f, boxRect.width - 20f, 24f);
                 int cap = Placement.ClusteringRules.Snap(profile.clusterSize);
                 Widgets.Label(new Rect(clusterRect.x, clusterRect.y, 250f, 24f), $"Cluster size (territories together): {Placement.ClusteringRules.Label(cap)}");
                 TooltipHandler.TipRegion(new Rect(clusterRect.x, clusterRect.y, 250f, 24f),
@@ -305,7 +318,7 @@ namespace RegionsAndSocieties
                 float tempCluster = Widgets.HorizontalSlider(clusterSlider, (float)cap, 1f, 9f, false, null, "1", "9+", 2f);
                 profile.clusterSize = Placement.ClusteringRules.Snap(Mathf.RoundToInt(tempCluster));
 
-                curY += 295f;
+                curY += 265f;
             }
 
             Widgets.EndScrollView();

@@ -4,6 +4,13 @@ using System.Collections.Generic;
 namespace RegionsAndSocieties.Placement
 {
     /// <summary>
+    /// The basic-view size categories a player picks per faction instead of a raw percentage: a small
+    /// group, a medium presence, a large one, or an empire. Each maps to a share weight; the advanced view
+    /// still exposes the exact weight for fine control.
+    /// </summary>
+    public enum ShareCategory { SmallGroup, Medium, Large, Empire }
+
+    /// <summary>
     /// The share model behind the simplified placement settings (#47): each faction stores a raw
     /// <em>share weight</em> (shown to the player as a "%"), the weights need not sum to 100, and worldgen
     /// normalises across the active factions to distribute the placed territories. A share is a weight,
@@ -17,6 +24,48 @@ namespace RegionsAndSocieties.Placement
         /// middle weight so an untouched faction sits at "one equal slice" until the player moves it — the
         /// same magnitude the old default Settlement Range midpoint (5..15) produced.</summary>
         public const float DefaultShareWeight = 10f;
+
+        /// <summary>Share weights for the four basic-view size categories. A small group takes a light
+        /// slice, an empire the heaviest; the four span the range a player would otherwise dial in by hand.</summary>
+        public const float SmallGroupShare = 5f;
+        public const float MediumShare = 10f;
+        public const float LargeShare = 20f;
+        public const float EmpireShare = 40f;
+
+        /// <summary>The share weight for a basic-view size category.</summary>
+        public static float CategoryToShareWeight(ShareCategory category)
+        {
+            switch (category)
+            {
+                case ShareCategory.SmallGroup: return SmallGroupShare;
+                case ShareCategory.Large: return LargeShare;
+                case ShareCategory.Empire: return EmpireShare;
+                default: return MediumShare;
+            }
+        }
+
+        /// <summary>The category a raw share weight reads as, by nearest band — so the basic picker can show
+        /// which size an advanced-tuned (or migrated) weight falls into. Midpoints between the category
+        /// weights are the boundaries: &lt;7.5 small, &lt;15 medium, &lt;30 large, else empire.</summary>
+        public static ShareCategory CategoryForShare(float shareWeight)
+        {
+            if (shareWeight < (SmallGroupShare + MediumShare) / 2f) return ShareCategory.SmallGroup;
+            if (shareWeight < (MediumShare + LargeShare) / 2f) return ShareCategory.Medium;
+            if (shareWeight < (LargeShare + EmpireShare) / 2f) return ShareCategory.Large;
+            return ShareCategory.Empire;
+        }
+
+        /// <summary>A short player-facing label for a size category.</summary>
+        public static string CategoryLabel(ShareCategory category)
+        {
+            switch (category)
+            {
+                case ShareCategory.SmallGroup: return "Small group";
+                case ShareCategory.Large: return "Large";
+                case ShareCategory.Empire: return "Empire";
+                default: return "Medium";
+            }
+        }
 
         /// <summary>Convert an old <c>baseCountRange</c> (min..max) to a share weight: the midpoint. Relative
         /// proportions between faction kinds are preserved (a hostile 3..8 → 5.5 stays smaller than a
