@@ -1020,6 +1020,14 @@ namespace RegionsAndSocieties
             // sub-minimum land region into its dominant same-biome passable neighbour.
             AbsorbStrayFragments();
 
+            // Phase 5e: drop what no merge could place (#51). A land region of 1-6 tiles carries no
+            // region benefits and nothing the demographic model can model. After every merge/absorb/split
+            // pass has had its chance, such a speck is one no rule could home (its only neighbours are
+            // water/impassable, or #49 already merged any island within reach of land). Unassign its tiles
+            // (id -> -1, the state impassable holes use), unless it anchors a settlement/outpost -- that
+            // folds into its largest land neighbour instead, never orphaned.
+            DropTinyRegions();
+
             // Naming Phase: Contextual Name Resolution
             Log.Message("[RegionsAndSocieties] Running contextual province naming...");
             ResolveContextualNames();
@@ -1085,6 +1093,77 @@ namespace RegionsAndSocieties
                 if (toRemove.Count > 0) provinces.RemoveAll(p => toRemove.Contains(p));
             }
             Log.Message($"[RegionsAndSocieties] AbsorbStrayFragments: folded {folded} stray same-biome fragment(s).");
+        }
+
+        /// <summary>
+        /// Terminal pass (#51): remove every land region no merge could place — 1-6 tiles, too small to
+        /// carry region benefits or feed the demographic model. Runs LAST (after merge/split/absorb), so it
+        /// only touches specks that survived every consolidation rule. Each dropped speck's tiles are
+        /// unassigned (tileToProvinceId = -1, the impassable-hole state downstream already tolerates). A
+        /// speck that anchors a settlement/outpost is never orphaned: it folds into its largest land
+        /// neighbour of any biome (barrier check relaxed), or is kept when it has no land neighbour at all.
+        /// The decision itself is the pure <see cref="Placement.TinyRegionRules"/>.
+        /// </summary>
+        private void DropTinyRegions()
+        {
+            if (provinces == null || tileToProvinceId == null || Find.WorldGrid == null) return;
+
+            // Tiles carrying a permanent holding (settlement/outpost/military) — never orphaned by a drop.
+            var holdingTiles = new HashSet<int>();
+            if (Find.WorldObjects != null)
+            {
+                foreach (var obj in Find.WorldObjects.AllWorldObjects)
+                {
+                    if (obj != null && Integration.WorldObjectClassifier.IsPermanentHolding(obj))
+                        holdingTiles.Add(obj.Tile.tileId);
+                }
+            }
+
+            var byId = provinces.ToDictionary(p => p.id, p => p);
+            var neighbors = new List<RimWorld.Planet.PlanetTile>();
+            var toRemove = new HashSet<GeographicProvince>();
+            int dropped = 0, droppedTiles = 0, folded = 0;
+
+            foreach (var p in provinces)
+            {
+                if (p.provinceType != ProvinceType.Land || p.tiles == null || p.tiles.Count == 0) continue;
+                if (p.tiles.Count > Placement.TinyRegionRules.TinyRegionMaxTiles) continue;
+
+                bool hasHolding = false;
+                foreach (int t in p.tiles) { if (holdingTiles.Contains(t)) { hasHolding = true; break; } }
+
+                // Largest land neighbour of ANY biome; barrier check relaxed, so a crag reachable only
+                // across a rock/water seam still counts as a fold target for a settlement speck.
+                GeographicProvince bestLand = null; int bestSize = -1;
+                var seen = new HashSet<int>();
+                foreach (int t in p.tiles)
+                {
+                    neighbors.Clear();
+                    Find.WorldGrid.GetTileNeighbors(t, neighbors);
+                    foreach (var n in neighbors)
+                    {
+                        int np = GetProvinceId(n.tileId);
+                        if (np == p.id || np == -1 || !seen.Add(np)) continue;
+                        if (!byId.TryGetValue(np, out var nprov) || nprov.provinceType != ProvinceType.Land || toRemove.Contains(nprov)) continue;
+                        if (nprov.tiles.Count > bestSize) { bestSize = nprov.tiles.Count; bestLand = nprov; }
+                    }
+                }
+
+                var action = Placement.TinyRegionRules.Resolve(p.tiles.Count, hasHolding, bestLand != null);
+                if (action == Placement.TinyRegionAction.Fold && bestLand != null)
+                {
+                    foreach (int tileId in p.tiles) { bestLand.tiles.Add(tileId); tileToProvinceId[tileId] = bestLand.id; }
+                    toRemove.Add(p); folded++;
+                }
+                else if (action == Placement.TinyRegionAction.Drop)
+                {
+                    foreach (int tileId in p.tiles) tileToProvinceId[tileId] = -1;
+                    toRemove.Add(p); dropped++; droppedTiles += p.tiles.Count;
+                }
+            }
+
+            if (toRemove.Count > 0) provinces.RemoveAll(p => toRemove.Contains(p));
+            Log.Message($"[RegionsAndSocieties] DropTinyRegions (#51): dropped {dropped} region(s) ({droppedTiles} tile(s) unassigned), folded {folded} settlement speck(s).");
         }
 
         /// <summary>Largest passable speck (in tiles) folded into a surrounding impassable massif. Above

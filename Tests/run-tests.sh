@@ -152,6 +152,12 @@ run_suite biomehabitability Exe \
     Tests/BiomeHabitabilityRulesTests.cs \
     $SRC/Placement/BiomeHabitabilityRules.cs
 
+# 0.4.0 drop-tiny-regions terminal rule (#51): the 6-tile cap, the settlement never-orphan guard,
+# and the drop-anyway rule for a holdingless speck. Pure, no game.
+run_suite tinyregion Exe \
+    Tests/TinyRegionRulesTests.cs \
+    $SRC/Placement/TinyRegionRules.cs
+
 # 0.4.0 territory clustering (#46): the 1/3/5/7/9+ cap, faction-kind defaults, within-cap-first
 # ranking, body tracking with merges, ascending seeding key. Pure, no game.
 run_suite clustering Exe \

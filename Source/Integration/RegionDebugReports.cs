@@ -714,6 +714,7 @@ namespace RegionsAndSocieties.Integration
             sb.AppendLine("=== R&T border-first partition audit (#20) ===");
             sb.AppendLine($"coverage: {assignedLand}/{usableLand} usable land tiles assigned"
                 + (usableLand > 0 ? $" ({100.0 * assignedLand / usableLand:0.0}%)" : ""));
+            sb.AppendLine($"unassigned usable land tiles (dropped/holes, #51)={usableLand - assignedLand}");
 
             if (landSizes.Count == 0)
             {
