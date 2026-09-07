@@ -716,6 +716,37 @@ namespace RegionsAndSocieties.Integration
                 + (usableLand > 0 ? $" ({100.0 * assignedLand / usableLand:0.0}%)" : ""));
             sb.AppendLine($"unassigned usable land tiles (dropped/holes, #51)={usableLand - assignedLand}");
 
+            // Water-body summary (#48): after SplitInlandLakes, no enclosed body below the cap should
+            // survive — an inland lake that touches no other water is shared out across its shores, only
+            // an above-cap inland sea (or a body open to the ocean) stays a water province.
+            int oceanProvs = 0, lakeProvs = 0, inlandBelowCap = 0;
+            foreach (var p in mgr.Provinces)
+            {
+                if (p.tiles == null || p.tiles.Count == 0) continue;
+                if (p.provinceType == ProvinceType.Ocean) oceanProvs++;
+                else if (p.provinceType == ProvinceType.Lake) lakeProvs++;
+                else continue;
+
+                if (p.tiles.Count > Partition.LakeSplitRules.LakeMaxTiles) continue;
+                bool touchesOtherWater = false;
+                foreach (int t in p.tiles)
+                {
+                    neighbors.Clear();
+                    grid.GetTileNeighbors(t, neighbors);
+                    foreach (var n in neighbors)
+                    {
+                        int npid = mgr.GetProvinceId(n.tileId);
+                        if (npid < 0 || npid == p.id) continue;
+                        var np = mgr.Provinces.FirstOrDefault(x => x.id == npid);
+                        if (np != null && (np.provinceType == ProvinceType.Ocean || np.provinceType == ProvinceType.Lake))
+                        { touchesOtherWater = true; break; }
+                    }
+                    if (touchesOtherWater) break;
+                }
+                if (!touchesOtherWater) inlandBelowCap++;
+            }
+            sb.AppendLine($"water provinces: ocean={oceanProvs} lake={lakeProvs}; enclosed below cap (#48 target 0)={inlandBelowCap}");
+
             if (landSizes.Count == 0)
             {
                 sb.Append("no land provinces");

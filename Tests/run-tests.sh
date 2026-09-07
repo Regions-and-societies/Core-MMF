@@ -187,6 +187,12 @@ run_suite border Exe \
     Tests/BorderRulesTests.cs \
     $SRC/Partition/BorderRules.cs
 
+# 0.4.0 shore-proportional inland-lake split (#48): shore counts, largest-remainder quotas, and
+# the capacity-bounded flood whose region shares match the quotas. Pure, no game.
+run_suite lakesplit Exe \
+    Tests/LakeSplitRulesTests.cs \
+    $SRC/Partition/LakeSplitRules.cs
+
 # 0.3.0 sprawl spread: a settlement's people over its own tile and the tiles its terrain-aware sprawl
 # reaches, in proportion to the sprawl weights, total conserved. Pure, no game.
 run_suite sprawl Exe \

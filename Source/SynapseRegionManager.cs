@@ -809,8 +809,8 @@ namespace RegionsAndSocieties
             // left as a black hole. NOTE: RimWorld's Ocean biome is itself flagged impassable, so this
             // must NOT filter on biome.impassable (that skipped the entire ocean and left it unclaimed,
             // #20) — WaterCovered alone selects water. Impassable LAND (mountain peaks) is a different
-            // case and is left for AbsorbEnclosedGaps below. Small inland lakes claimed here are folded
-            // back into their surrounding land by AbsorbInlandLakes; the big ocean bodies stay as
+            // case and is left for AbsorbEnclosedGaps below. Enclosed inland lakes claimed here are
+            // shared across their shore regions by SplitInlandLakes (#48); the big ocean bodies stay as
             // provinces.
             {
                 var waterNbrs = new List<RimWorld.Planet.PlanetTile>();
@@ -979,11 +979,13 @@ namespace RegionsAndSocieties
             // MountainRange. Islands (water neighbours) and genuine enclosed valleys (larger) are left.
             AbsorbMountainSealedSpecks(MountainSpeckMaxTiles);
 
-            // Phase 5b1: dissolve small inland lakes into the surrounding land (#20). Phase 2.5 floods
-            // every barren water body — including a small inland lake — into its own water province; a
-            // lake ringed entirely by land reads better as part of that land region than as a stranded
-            // pond province, so fold it into its dominant land neighbour.
-            AbsorbInlandLakes();
+            // Phase 5b1: share inland lakes across their shore regions (#48). Phase 2.5 floods every water
+            // body — a small inland lake included — into its own water province, so a lake ends up an
+            // unowned wedge and the region border rings it. A lake is not a border: the polities on its
+            // shores share it. SplitInlandLakes hands each below-cap enclosed body's tiles to the shore
+            // regions in proportion to their shoreline, so the seam runs ACROSS the water. This supersedes
+            // the old whole-absorb rule (small ponds fall out of the same rule with a single shore region).
+            SplitInlandLakes();
 
             // Phase 5b2: fold impassable-mountain (and other unclaimed, non-water) pockets that are
             // fully enclosed by a single region INTO that region, so they read as owned terrain rather
@@ -1220,66 +1222,86 @@ namespace RegionsAndSocieties
             if (toRemove.Count > 0) provinces.RemoveAll(p => toRemove.Contains(p));
             Log.Message($"[RegionsAndSocieties] AbsorbMountainSealedSpecks: folded {toRemove.Count} speck(s) into surrounding mountains.");
         }
-
-        /// <summary>Largest inland lake (in tiles) still folded into its surrounding land (#20). Bigger
-        /// water bodies stay their own provinces.</summary>
-        private const int InlandLakeMaxTiles = 40;
-
         /// <summary>
-        /// Dissolve small inland lakes into their dominant land neighbour (#20). A water province that is
-        /// small and touches no other water province is a pond ringed by land; its tiles read better as
-        /// part of that land region. Larger lakes and any water touching the sea are left alone.
+        /// Share every enclosed inland lake across the land regions on its shores (#48). Phase 2.5 floods
+        /// each water body into its own Ocean province; a lake ringed by land then reads as an unowned
+        /// wedge with the region border drawn around it. A real inland lake is shared by the polities on
+        /// its shores, so its tiles are handed to those regions in proportion to their shoreline (lake
+        /// dominance = number of bordering tiles) and the border runs across the water instead. An inland
+        /// body larger than <see cref="Partition.LakeSplitRules.LakeMaxTiles"/> stays Ocean — an inland sea
+        /// is a genuine barrier; a body touching another water province is a sea inlet, not a lake. The
+        /// proportional cut is the pure <see cref="Partition.LakeSplitRules"/>; this pass only gathers the
+        /// lake's adjacency and shore labels and applies the result. Replaces the old whole-absorb rule — a
+        /// pond wholly inside one region is just a lake with a single shore region and splits the same way.
         /// </summary>
-        private void AbsorbInlandLakes()
+        private void SplitInlandLakes()
         {
             if (provinces == null || tileToProvinceId == null || Find.WorldGrid == null) return;
 
             var byId = provinces.ToDictionary(p => p.id, p => p);
             var neighbors = new List<RimWorld.Planet.PlanetTile>();
             var toRemove = new List<GeographicProvince>();
-            int absorbed = 0;
+            int splitLakes = 0, movedTiles = 0;
 
-            foreach (var lake in provinces)
+            foreach (var lake in provinces.ToList())
             {
                 if (lake.provinceType != ProvinceType.Ocean || lake.tiles == null) continue;
-                if (lake.tiles.Count == 0 || lake.tiles.Count > InlandLakeMaxTiles) continue;
+                if (lake.tiles.Count == 0 || lake.tiles.Count > Partition.LakeSplitRules.LakeMaxTiles) continue;
 
-                // Tally land neighbours by shared edges; bail if it touches any other water province
-                // (then it is a sea inlet, not an enclosed pond).
-                var landEdges = new Dictionary<int, int>();
-                bool touchesWater = false;
+                var lakeSet = new HashSet<int>(lake.tiles);
+                var lakeAdj = new Dictionary<int, List<int>>();
+                var shoreLabels = new Dictionary<int, List<int>>();
+                bool touchesOtherWater = false;
+
                 foreach (int t in lake.tiles)
                 {
                     neighbors.Clear();
                     Find.WorldGrid.GetTileNeighbors(t, neighbors);
+                    List<int> adj = null;
+                    List<int> labels = null;
                     foreach (var n in neighbors)
                     {
-                        int npid = GetProvinceId(n.tileId);
+                        int nid = n.tileId;
+                        if (lakeSet.Contains(nid)) { if (adj == null) adj = new List<int>(); adj.Add(nid); continue; }
+                        int npid = GetProvinceId(nid);
                         if (npid < 0 || npid == lake.id) continue;
                         if (!byId.TryGetValue(npid, out var np)) continue;
-                        if (np.provinceType == ProvinceType.Ocean) { touchesWater = true; break; }
+                        if (np.provinceType == ProvinceType.Ocean || np.provinceType == ProvinceType.Lake)
+                        {
+                            touchesOtherWater = true; break;   // a sea inlet, not an enclosed lake
+                        }
                         if (np.provinceType == ProvinceType.Land)
                         {
-                            int c; landEdges.TryGetValue(npid, out c); landEdges[npid] = c + 1;
+                            if (labels == null) labels = new List<int>();
+                            labels.Add(npid);
                         }
                     }
-                    if (touchesWater) break;
+                    if (touchesOtherWater) break;
+                    if (adj != null) lakeAdj[t] = adj;
+                    if (labels != null) shoreLabels[t] = labels;
                 }
-                if (touchesWater || landEdges.Count == 0) continue;
 
-                int bestId = -1, bestEdges = -1;
-                foreach (var kv in landEdges)
-                    if (kv.Value > bestEdges || (kv.Value == bestEdges && kv.Key < bestId)) { bestEdges = kv.Value; bestId = kv.Key; }
-                if (bestId < 0 || !byId.TryGetValue(bestId, out var host)) continue;
+                if (touchesOtherWater) continue;
+                if (shoreLabels.Count == 0) continue;   // no land shore at all — leave it as water
 
-                foreach (int t in lake.tiles) { host.tiles.Add(t); tileToProvinceId[t] = host.id; }
+                var assign = Partition.LakeSplitRules.Split(lake.tiles, lakeAdj, shoreLabels);
+                if (assign.Count == 0) continue;
+
+                foreach (var kv in assign)
+                {
+                    if (!byId.TryGetValue(kv.Value, out var host)) continue;
+                    host.tiles.Add(kv.Key);
+                    tileToProvinceId[kv.Key] = host.id;
+                    movedTiles++;
+                }
                 toRemove.Add(lake);
-                absorbed += lake.tiles.Count;
+                splitLakes++;
             }
 
             foreach (var p in toRemove) provinces.Remove(p);
-            if (absorbed > 0)
-                Log.Message($"[RegionsAndSocieties] Absorbed {toRemove.Count} inland lake(s) ({absorbed} tiles) into surrounding land.");
+            if (splitLakes > 0)
+                Log.Message($"[RegionsAndSocieties] SplitInlandLakes (#48): split {splitLakes} inland lake(s), "
+                    + $"{movedTiles} water tile(s) shared among their shore regions.");
         }
 
         /// <summary>
