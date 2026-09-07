@@ -3,16 +3,17 @@ using System.Collections.Generic;
 namespace RegionsAndSocieties.Partition
 {
     /// <summary>
-    /// Core's default algorithm (0.3.0): draw regions INSIDE the terrain's natural sections — each flooded
+    /// Core's default algorithm (0.4.0): draw regions INSIDE the terrain's natural sections — each flooded
     /// into one biome- and barrier-bounded container — then cut each container into evenly-sized,
-    /// biome-weighted cells. Borders sit on mountains, coasts and biome edges. Wraps
-    /// <see cref="BorderPartitioner.PartitionContainSubdivide"/>.
+    /// biome-weighted cells, and finally share inland lakes across their shores, absorb/chain islands and
+    /// fold or drop tiny slivers. Borders sit on mountains, coasts and biome edges. Wraps
+    /// <see cref="BorderPartitioner.PartitionContainSubdivide"/> plus the 0.4.0 post-passes.
     /// </summary>
     public class ContainSubdividePartitioner : IRegionPartitioner
     {
         public string AlgorithmId => RegionPartitionerRegistry.DefaultAlgorithmId;
         public string Label => "Contain then subdivide (default)";
-        public string Description => "Draws regions inside natural sections (biome + barriers), then cuts each into evenly-sized cells. The 0.3.0 algorithm.";
+        public string Description => "Draws regions inside natural sections (biome + barriers), cuts each into evenly-sized cells, then shares inland lakes and cleans up islands and slivers. The v0.4.0 algorithm.";
         public int Order => 0;
 
         public List<List<int>> Partition(int[] tileToProvinceId, int minRegionTiles, int maxRegionTiles)

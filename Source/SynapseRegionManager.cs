@@ -162,10 +162,12 @@ namespace RegionsAndSocieties
         }
 
         // The mod's worldgen/rendering version, stamped onto a world when its provinces are generated, so a
-        // save records which build rendered it ("this is a 0.3.0 rendering"). Human-readable and finer than
+        // save records which build rendered it ("this is a 0.4.0 rendering"). Human-readable and finer than
         // the binary partition selector above — bump it with each release that changes worldgen. Persisted;
-        // a save that predates the stamp resolves to a legacy label on load.
-        public const string WorldGenVersion = "0.3.0";
+        // a save that predates the stamp resolves to a legacy label on load. 0.4.0: the map-handling
+        // overhaul — shore-split inland lakes (#48), island absorb/chain (#49), tiny-region fold/drop (#51)
+        // and ridge-aware ownership walls (#50) — is a materially different map from the 0.3.0 partition.
+        public const string WorldGenVersion = "0.4.0";
         private string worldGenVersionRaw;
 
         /// <summary>The worldgen version this world was rendered by: the stamped value, or a legacy label
