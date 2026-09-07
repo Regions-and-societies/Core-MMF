@@ -53,6 +53,9 @@ namespace Verse
 {
     using RimWorld.Planet;
 
+    // Player prefs surface used by the impure typecheck (the dev-mode tile inspector reads Prefs.DevMode).
+    public static class Prefs { public static bool DevMode; }
+
     public interface IExposable { void ExposeData(); }
 
     public enum LookMode { Undefined, Value, Def, Deep, Reference, LocalTargetInfo, TargetInfo, GlobalTargetInfo, BodyPart }

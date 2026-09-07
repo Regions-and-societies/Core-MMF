@@ -54,6 +54,7 @@ namespace RegionsAndSocieties
                 l.Label(currentPartitioner.Description);
                 GUI.color = Color.white;
             }
+
             l.GapLine();
 
             l.CheckboxLabeled("Show ownership calculation breakdown in the region panel",

@@ -13,11 +13,28 @@ namespace RegionsAndSocieties.Partition
     {
         public string AlgorithmId => RegionPartitionerRegistry.DefaultAlgorithmId;
         public string Label => "Contain then subdivide (default)";
-        public string Description => "Draws regions inside natural sections (biome + barriers), cuts each into evenly-sized cells, then shares inland lakes and cleans up islands and slivers. The v0.4.0 algorithm.";
+        public string Description => "Draws regions inside natural sections (biome + barriers), cuts each into even honeycomb cells, then shares inland lakes and cleans up islands and slivers. The v0.4.0 algorithm.";
         public int Order => 0;
 
         public List<List<int>> Partition(int[] tileToProvinceId, int minRegionTiles, int maxRegionTiles)
-            => BorderPartitioner.PartitionContainSubdivide(tileToProvinceId, minRegionTiles, maxRegionTiles);
+            => BorderPartitioner.PartitionContainSubdivide(tileToProvinceId, minRegionTiles, maxRegionTiles, honeycomb: true);
+    }
+
+    /// <summary>
+    /// Core's previous algorithm (0.3.0): the same contain-then-subdivide, but with its original balanced
+    /// Chebyshev-ish CELL subdivision instead of the 0.4.0 honeycomb. Packaged so a world built under it
+    /// regenerates faithfully and for players who prefer that region shape. Wraps
+    /// <see cref="BorderPartitioner.PartitionContainSubdivide"/> with honeycomb off.
+    /// </summary>
+    public class ContainSubdivide030Partitioner : IRegionPartitioner
+    {
+        public string AlgorithmId => RegionPartitionerRegistry.Legacy030AlgorithmId;
+        public string Label => "Contain then subdivide (v0.3.0 cells)";
+        public string Description => "The v0.3.0 algorithm: the same natural-section containers, cut into balanced box-ish cells rather than the 0.4.0 honeycomb. Kept for old-save fidelity and for preference.";
+        public int Order => 5;
+
+        public List<List<int>> Partition(int[] tileToProvinceId, int minRegionTiles, int maxRegionTiles)
+            => BorderPartitioner.PartitionContainSubdivide(tileToProvinceId, minRegionTiles, maxRegionTiles, honeycomb: false);
     }
 
     /// <summary>
