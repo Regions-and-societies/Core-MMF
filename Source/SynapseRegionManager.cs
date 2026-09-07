@@ -2372,10 +2372,16 @@ namespace RegionsAndSocieties
                     boundary = true;
                     prov.perimeterEdgeCount++;
 
-                    // A frontier against water or an impassable mountain is a secure natural border —
-                    // it counts for this region's own owner, not as a contestable land border (#44).
+                    // A frontier against water, an impassable mountain, or a RIDGE is a secure natural
+                    // border — it counts for this region's own owner, not as a contestable land border
+                    // (#44). Since 0.3.0 the border-first partition draws borders ON passable ridges
+                    // (LargeHills+), treating them as interior terrain, so an enclosed basin's whole ring
+                    // is high ground; counting LargeHills+ as a wall lets a region earn the ridge it sits
+                    // behind, regardless of who is beyond it — "geography is a free wall" (#50). The edge
+                    // is scored by the NEIGHBOUR tile's terrain, exactly as water is.
                     Tile nt = Find.WorldGrid[n.tileId];
-                    bool naturalBarrier = nt.WaterCovered || nt.hilliness == Hilliness.Impassable
+                    bool naturalBarrier = nt.WaterCovered
+                        || nt.hilliness >= Hilliness.LargeHills
                         || (nt.PrimaryBiome != null && nt.PrimaryBiome.impassable);
                     if (naturalBarrier)
                     {
