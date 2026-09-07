@@ -55,22 +55,6 @@ namespace RegionsAndSocieties
                 GUI.color = Color.white;
             }
 
-            // #40 follow-up: region shape within a large biome. A comparison knob — applies to newly
-            // generated worlds; flip it and regenerate to compare the styles.
-            string[] shapeLabels = { "Balanced cells (current)", "Pie slices (from centre)", "Honeycomb (relaxed)" };
-            int shapeIdx = Mathf.Clamp(FactionPlacementSettings.subdivisionStyle, 0, shapeLabels.Length - 1);
-            l.Label("Region shape:",
-                tooltip: "How a large biome is cut into regions. Balanced cells is the current box-ish fill; Pie slices cut wedges from the biome's centre; Honeycomb relaxes even rounded cells to fill the shape. Applies to newly generated worlds.");
-            if (l.ButtonText(shapeLabels[shapeIdx]))
-            {
-                var options = new List<FloatMenuOption>();
-                for (int i = 0; i < shapeLabels.Length; i++)
-                {
-                    int picked = i;   // capture per-iteration
-                    options.Add(new FloatMenuOption(shapeLabels[i], () => FactionPlacementSettings.subdivisionStyle = picked));
-                }
-                Find.WindowStack.Add(new FloatMenu(options));
-            }
             l.GapLine();
 
             l.CheckboxLabeled("Show ownership calculation breakdown in the region panel",

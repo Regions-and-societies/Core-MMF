@@ -182,7 +182,7 @@ namespace RegionsAndSocieties.Partition
         /// subdivision is scoped per container (no whole-grid pass each). Downstream MergeTinyDomains still
         /// cleans up sub-minimum shards, biome- and barrier-aware.</para>
         /// </summary>
-        public static List<List<int>> PartitionContainSubdivide(int[] tileToProvinceId, int minRegionTiles, int maxRegionTiles)
+        public static List<List<int>> PartitionContainSubdivide(int[] tileToProvinceId, int minRegionTiles, int maxRegionTiles, bool honeycomb = true)
         {
             var result = new List<List<int>>();
             WorldGrid grid = Find.WorldGrid;
@@ -306,14 +306,17 @@ namespace RegionsAndSocieties.Partition
                 }
             }
 
-            // Phase 3 (SUBDIVIDE): cut each container into appropriately sized squares. Target size is
+            // Phase 3 (SUBDIVIDE): cut each container into appropriately sized regions. Target size is
             // baseMax × the biome's size weight (temperate ~1×, tundra ~2×, desert ~3×, ice ~10×), so a
-            // sparse biome makes fewer, larger squares. A container at or under its target stays one region
-            // (a small biome patch is kept whole); a larger one splits into ~ceil(size/target) square
-            // Chebyshev cells, the fill confined to the container so no square leaks past a barrier.
+            // sparse biome makes fewer, larger regions. A container at or under its target stays one region
+            // (a small biome patch is kept whole); a larger one splits into ~ceil(size/target) cells. The
+            // 0.4.0 algorithm uses the relaxed-honeycomb subdivision (a centroidal Voronoi / Lloyd that
+            // fills the biome with even rounded cells following its shape); the packaged 0.3.0 algorithm
+            // keeps its balanced Chebyshev-ish cells (honeycomb == false). Either fill is confined to the
+            // container so no cell leaks past a barrier.
             var regionOf = new int[total];
             for (int i = 0; i < total; i++) regionOf[i] = -1;
-            var owner = new int[total];
+            var owner = new int[total];        // scratch for the 0.3.0 balanced fill
             var cost = new float[total];
             var set = new HashSet<int>();
             foreach (var container in containers)
@@ -322,15 +325,9 @@ namespace RegionsAndSocieties.Partition
                 float w = BiomeRegionWeights.Weight(biome);
                 int target = System.Math.Max(1, (int)System.Math.Round(baseMax * w));
                 if (container.Count <= target) { AddRegion(result, regionOf, container); continue; }
-                // Region shape within a container (#40 follow-up): 0 = balanced Chebyshev-ish cells
-                // (default), 1 = pie slices from the centroid, 2 = relaxed honeycomb (centroidal Voronoi).
-                List<List<int>> cells;
-                switch (FactionPlacementSettings.subdivisionStyle)
-                {
-                    case 1: cells = PieSliceCells(grid, container, target, neigh); break;
-                    case 2: cells = HoneycombCells(grid, container, target, neigh); break;
-                    default: cells = BalancedCellsScoped(grid, container, target, owner, cost, set, neigh); break;
-                }
+                var cells = honeycomb
+                    ? HoneycombCells(grid, container, target, neigh)
+                    : BalancedCellsScoped(grid, container, target, owner, cost, set, neigh);
                 if (cells.Count == 0) { AddRegion(result, regionOf, container); continue; }
                 foreach (var g in cells) AddRegion(result, regionOf, g);
             }
@@ -475,50 +472,6 @@ namespace RegionsAndSocieties.Partition
             return result;
         }
 
-
-        /// <summary>
-        /// Divide a container into k roughly-equal PIE SLICES around its centroid (#40 follow-up): each
-        /// tile is bucketed by its bearing from the centre, so every region is a wedge running centre-to-
-        /// edge and the biome's shape is preserved in each piece (a star keeps its arms distributed across
-        /// the wedges). Non-contiguous buckets — a wedge broken by a concave inlet — are split into their
-        /// connected components so no region is in two places. Best on blobby/star biomes; a long thin
-        /// biome gives lopsided wedges, which is the trade-off the honeycomb style avoids.
-        /// </summary>
-        private static List<List<int>> PieSliceCells(WorldGrid grid, List<int> tiles, int target, List<PlanetTile> nb)
-        {
-            var result = new List<List<int>>();
-            int count = tiles.Count;
-            if (count == 0) return result;
-            int k = System.Math.Max(1, (int)System.Math.Ceiling(count / (double)target));
-            var sorted = new List<int>(tiles); sorted.Sort();
-            if (k <= 1) { result.Add(sorted); return result; }
-
-            UnityEngine.Vector3 c = UnityEngine.Vector3.zero;
-            foreach (int t in sorted) c += grid.GetTileCenter(t);
-            c /= count;
-            UnityEngine.Vector3 up = c.normalized;
-            UnityEngine.Vector3 refA = UnityEngine.Mathf.Abs(UnityEngine.Vector3.Dot(up, UnityEngine.Vector3.up)) > 0.99f
-                ? UnityEngine.Vector3.right : UnityEngine.Vector3.up;
-            UnityEngine.Vector3 east = UnityEngine.Vector3.Cross(up, refA).normalized;
-            UnityEngine.Vector3 north = UnityEngine.Vector3.Cross(east, up).normalized;
-
-            var buckets = new List<int>[k];
-            for (int i = 0; i < k; i++) buckets[i] = new List<int>();
-            foreach (int t in sorted)
-            {
-                UnityEngine.Vector3 d = grid.GetTileCenter(t) - c;
-                float ang = UnityEngine.Mathf.Atan2(UnityEngine.Vector3.Dot(d, north), UnityEngine.Vector3.Dot(d, east)); // -pi..pi
-                int sec = (int)UnityEngine.Mathf.Floor((ang + UnityEngine.Mathf.PI) / (2f * UnityEngine.Mathf.PI) * k);
-                if (sec < 0) sec = 0; else if (sec >= k) sec = k - 1;
-                buckets[sec].Add(t);
-            }
-
-            foreach (var b in buckets)
-                if (b.Count > 0)
-                    foreach (var comp in ConnectedComponents(grid, b, nb)) result.Add(comp);
-            return result;
-        }
-
         /// <summary>
         /// Divide a container into k even HONEYCOMB cells (#40 follow-up): a centroidal Voronoi built by
         /// Lloyd relaxation — spread k seeds by farthest-point, assign every tile to the nearest seed by
@@ -618,36 +571,6 @@ namespace RegionsAndSocieties.Partition
                 int o; if (owner.TryGetValue(t, out o)) groups[o].Add(t); else groups[0].Add(t);
             }
             return groups;
-        }
-
-        /// <summary>Hex-connected components of a tile set (deterministic, ascending ids).</summary>
-        private static List<List<int>> ConnectedComponents(WorldGrid grid, List<int> tiles, List<PlanetTile> nb)
-        {
-            var set = new HashSet<int>(tiles);
-            var seen = new HashSet<int>();
-            var comps = new List<List<int>>();
-            var stack = new Stack<int>();
-            var ordered = new List<int>(tiles); ordered.Sort();
-            foreach (int start in ordered)
-            {
-                if (seen.Contains(start)) continue;
-                var comp = new List<int>();
-                stack.Clear(); stack.Push(start); seen.Add(start);
-                while (stack.Count > 0)
-                {
-                    int cur = stack.Pop();
-                    comp.Add(cur);
-                    nb.Clear();
-                    grid.GetTileNeighbors(cur, nb);
-                    for (int i = 0; i < nb.Count; i++)
-                    {
-                        int nid = nb[i].tileId;
-                        if (set.Contains(nid) && !seen.Contains(nid)) { seen.Add(nid); stack.Push(nid); }
-                    }
-                }
-                comps.Add(comp);
-            }
-            return comps;
         }
 
         // Small surcharges (distance-dominant) that let a border SNAP onto a nearby biome / forest edge
