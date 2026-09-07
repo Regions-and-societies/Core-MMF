@@ -158,6 +158,12 @@ run_suite tinyregion Exe \
     Tests/TinyRegionRulesTests.cs \
     $SRC/Placement/TinyRegionRules.cs
 
+# 0.4.0 shared region-count estimate (#54): expected regions from land tiles + target size, the
+# +/- band, and the pre-gen land-tile fallback. Pure, no game.
+run_suite placementestimates Exe \
+    Tests/PlacementEstimatesTests.cs \
+    $SRC/Placement/PlacementEstimates.cs
+
 # 0.4.0 small-island handling (#49): the join threshold and the 30-tile archipelago chain cut.
 # Pure, no game.
 run_suite island Exe \

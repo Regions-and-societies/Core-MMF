@@ -45,19 +45,37 @@ namespace RegionsAndSocieties
                 }
             }
 
-            int totalTiles = Mathf.RoundToInt(100000f * coverage);
-            int landTiles = Mathf.RoundToInt(totalTiles * 0.38f); // ~38% of tiles are land on average
+            int target = FactionPlacementSettings.targetRegionSize;
 
-            // Average region ~0.75× the target (the subdivision produces cells from ~0.5 to 1.0× target).
-            float avgSize = FactionPlacementSettings.targetRegionSize * 0.75f;
-            int estIdeal = Mathf.RoundToInt(landTiles / avgSize);
+            // Land tiles: count the real grid when a world exists (exact); otherwise estimate from planet
+            // size × a typical land fraction (pre-gen — shown to the player as an assumption).
+            int landTiles;
+            bool landFromGrid = false;
+            if (Find.WorldGrid != null && Find.WorldGrid.TilesCount > 0)
+            {
+                int lt = 0, tc = Find.WorldGrid.TilesCount;
+                for (int i = 0; i < tc; i++) if (!Find.WorldGrid[i].WaterCovered) lt++;
+                landTiles = lt;
+                landFromGrid = true;
+            }
+            else
+            {
+                int totalTiles = Mathf.RoundToInt(100000f * coverage);
+                landTiles = Placement.PlacementEstimates.EstimateLandTiles(totalTiles, Placement.PlacementEstimates.TypicalLandFraction);
+            }
 
-            // Due to biome fragmentation, the actual count is ~1.4x to 2.0x of the ideal
-            int estMin = Mathf.RoundToInt(estIdeal * 1.4f);
-            int estMax = Mathf.RoundToInt(estIdeal * 2.0f);
-
-            if (estMin < 1) estMin = 1;
-            if (estMax < 1) estMax = 1;
+            // If the world's regions are already generated, report the ACTUAL count; else the estimate band.
+            int actualRegions = -1;
+            var regionMgr = Find.World != null ? Find.World.GetComponent<SynapseRegionManager>() : null;
+            if (regionMgr != null && regionMgr.Provinces != null)
+            {
+                int c = 0;
+                foreach (var pr in regionMgr.Provinces)
+                    if (pr.provinceType == ProvinceType.Land && pr.tiles != null && pr.tiles.Count > 0) c++;
+                if (c > 0) actualRegions = c;
+            }
+            int estLo = Placement.PlacementEstimates.ExpectedRegionCountLow(landTiles, target);
+            int estHi = Placement.PlacementEstimates.ExpectedRegionCountHigh(landTiles, target);
 
             // Global Map Region Parameters Panel
             Rect globalBoxRect = new Rect(0f, 40f, inRect.width - 15f, 160f);
@@ -98,7 +116,13 @@ namespace RegionsAndSocieties
 
             // Estimates row
             Rect estRect = new Rect(10f, 135f, globalBoxRect.width - 20f, 22f);
-            Widgets.Label(estRect, $"Estimated Land Tiles: <color=cyan>{landTiles}</color> (at {Mathf.RoundToInt(coverage * 100f)}% coverage) | Expected Region Count: <color=green>{estMin} - {estMax}</color> (Avg Size: {avgSize:F0} tiles)");
+            string landPart = landFromGrid
+                ? $"Land tiles: <color=cyan>{landTiles}</color>"
+                : $"Est. land tiles: <color=cyan>{landTiles}</color> (~{Mathf.RoundToInt(Placement.PlacementEstimates.TypicalLandFraction * 100f)}% of a {Mathf.RoundToInt(coverage * 100f)}%-coverage planet)";
+            string countPart = actualRegions > 0
+                ? $"Regions: <color=green>{actualRegions}</color> (this world)"
+                : $"Expected regions: <color=green>{estLo}–{estHi}</color>";
+            Widgets.Label(estRect, landPart + "  |  " + countPart);
 
             // Box is tall enough for the "Detected:" status line at the bottom (title + master +
             // four 24px rows + the status row need ~178px); outRect starts below it so the label
