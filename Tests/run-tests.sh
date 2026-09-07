@@ -158,6 +158,12 @@ run_suite tinyregion Exe \
     Tests/TinyRegionRulesTests.cs \
     $SRC/Placement/TinyRegionRules.cs
 
+# 0.4.0 small-island handling (#49): the join threshold and the 30-tile archipelago chain cut.
+# Pure, no game.
+run_suite island Exe \
+    Tests/IslandRulesTests.cs \
+    $SRC/Placement/IslandRules.cs
+
 # 0.4.0 territory clustering (#46): the 1/3/5/7/9+ cap, faction-kind defaults, within-cap-first
 # ranking, body tracking with merges, ascending seeding key. Pure, no game.
 run_suite clustering Exe \

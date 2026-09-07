@@ -1005,6 +1005,13 @@ namespace RegionsAndSocieties
             // edges without touching feature borders (water/impassable neighbours never vote).
             SmoothRegionBoundaries(8);
 
+            // Phase 5c.05: small-island handling (#49). Absorb lone small islands (<10 tiles, water-
+            // surrounded, land within 4 hops) into the nearest mainland, but group island clusters into
+            // chains first: a chain totalling >=30 tiles becomes its own archipelago region instead of
+            // being scattered onto whatever coast each speck is nearest. Runs before the contiguity split,
+            // which then exempts water-surrounded island components from being spun back off (#49).
+            ResolveSmallIslands();
+
             // Phase 5c.1: enforce contiguity. A merge/absorb pass can leave a region as two DETACHED land
             // masses — a component sharing no hex edge with the rest of its region (separated by water or
             // another region). A region is by definition one connected landmass, so split any region with
@@ -1428,6 +1435,10 @@ namespace RegionsAndSocieties
             var neighbors = new List<RimWorld.Planet.PlanetTile>();
             var toAdd = new List<GeographicProvince>();
             int splitRegions = 0, newPieces = 0;
+            // Land province ids, so a component's boundary can be tested for an adjacent land region:
+            // a small component touching only water/impassable/feature tiles is a true island (#49).
+            var landIds = new HashSet<int>();
+            foreach (var lp in provinces) if (lp.provinceType == ProvinceType.Land) landIds.Add(lp.id);
 
             foreach (var p in provinces)
             {
@@ -1459,27 +1470,236 @@ namespace RegionsAndSocieties
 
                 if (components.Count <= 1) continue;
 
-                // Largest component keeps p's identity; the rest spin off into their own regions.
+                // Largest component keeps p's identity. A smaller component that is a true small island —
+                // fewer than SmallIslandMaxTiles tiles, touching no OTHER land region (only water /
+                // impassable / feature tiles) — is legitimately part of its host (either #49 absorbed it or
+                // it is a natural coastal islet of the same region), so it STAYS attached rather than being
+                // spun back off. A component cut off by another LAND region is still split, as before (#49).
                 components.Sort((a, b) => b.Count.CompareTo(a.Count));
-                p.tiles = components[0];
-                p.primaryBiome = GetPrimaryBiome(p.tiles);
+                var keep = new List<int>(components[0]);
+                bool splitAny = false;
                 for (int c = 1; c < components.Count; c++)
                 {
+                    var comp = components[c];
+                    if (comp.Count < Placement.IslandRules.SmallIslandMaxTiles
+                        && IsWaterSurroundedComponent(comp, members, landIds, neighbors))
+                    {
+                        keep.AddRange(comp);   // true island fragment: keep it in the host region
+                        continue;
+                    }
                     var np = new GeographicProvince(nextId++);
-                    np.tiles = components[c];
+                    np.tiles = comp;
                     np.provinceType = ProvinceType.Land;
-                    np.primaryBiome = GetPrimaryBiome(components[c]);
+                    np.primaryBiome = GetPrimaryBiome(comp);
                     np.name = GenerateProvinceName(np.id, np.primaryBiome, np.provinceType);
-                    foreach (int t in components[c]) tileToProvinceId[t] = np.id;
+                    foreach (int t in comp) tileToProvinceId[t] = np.id;
                     toAdd.Add(np);
                     newPieces++;
+                    splitAny = true;
                 }
-                splitRegions++;
+                p.tiles = keep;
+                p.primaryBiome = GetPrimaryBiome(p.tiles);
+                if (splitAny) splitRegions++;
             }
 
             provinces.AddRange(toAdd);
             if (splitRegions > 0)
                 Log.Message($"[RegionsAndSocieties] SplitDisconnectedRegions: split {splitRegions} region(s) into {newPieces} extra piece(s) to enforce contiguity.");
+        }
+
+        /// <summary>
+        /// Small-island handling (#49): absorb lone small islands into the nearest mainland, but group
+        /// island clusters into chains first so a &gt;=30-tile archipelago becomes its own region instead of
+        /// being scattered onto whatever coast each speck is nearest. A "small island" is a Land region
+        /// under <see cref="Placement.IslandRules.SmallIslandMaxTiles"/> tiles that touches no other land
+        /// region (water / impassable / feature tiles only). Runs before SplitDisconnectedRegions, whose
+        /// island exemption then keeps the absorbed/chained pieces attached. Size and chain decisions are
+        /// the pure <see cref="Placement.IslandRules"/>.
+        /// </summary>
+        private void ResolveSmallIslands()
+        {
+            if (provinces == null || tileToProvinceId == null || Find.WorldGrid == null) return;
+
+            var byId = provinces.ToDictionary(p => p.id, p => p);
+            var landIds = new HashSet<int>();
+            foreach (var lp in provinces) if (lp.provinceType == ProvinceType.Land) landIds.Add(lp.id);
+            var neighbors = new List<RimWorld.Planet.PlanetTile>();
+
+            // 1. Small water-surrounded island provinces.
+            var islands = new List<GeographicProvince>();
+            var smallIslandIds = new HashSet<int>();
+            foreach (var p in provinces)
+            {
+                if (p.provinceType != ProvinceType.Land || p.tiles == null || p.tiles.Count == 0) continue;
+                if (p.tiles.Count >= Placement.IslandRules.SmallIslandMaxTiles) continue;
+                if (!IsWaterSurroundedComponent(p.tiles, new HashSet<int>(p.tiles), landIds, neighbors)) continue;
+                islands.Add(p); smallIslandIds.Add(p.id);
+            }
+            if (islands.Count == 0) return;
+
+            // 2. Per island: reachable sibling islands (to chain, union-find) and nearest mainland (absorb).
+            var parent = new Dictionary<int, int>();
+            foreach (var isl in islands) parent[isl.id] = isl.id;
+            var nearestMainland = new Dictionary<int, int>();
+            var nearestHops = new Dictionary<int, int>();
+            foreach (var isl in islands)
+            {
+                IslandReachBFS(isl, smallIslandIds, landIds, neighbors,
+                    out var reachedIslands, out int mainlandPid, out int mainlandHops);
+                foreach (int oid in reachedIslands) UnionIslands(parent, isl.id, oid);
+                nearestMainland[isl.id] = mainlandPid;
+                nearestHops[isl.id] = mainlandHops;
+            }
+
+            // 3. Group into chains, resolve each by total size.
+            var chains = new Dictionary<int, List<GeographicProvince>>();
+            foreach (var isl in islands)
+            {
+                int r = FindIslandRoot(parent, isl.id);
+                if (!chains.TryGetValue(r, out var list)) { list = new List<GeographicProvince>(); chains[r] = list; }
+                list.Add(isl);
+            }
+
+            var toRemove = new HashSet<GeographicProvince>();
+            int joined = 0, chainRegions = 0, kept = 0;
+            foreach (var kv in chains)
+            {
+                var members = kv.Value;
+                int chainTiles = 0; foreach (var m in members) chainTiles += m.tiles.Count;
+                int chainHops = -1;
+                foreach (var m in members) { int h = nearestHops[m.id]; if (h >= 0 && (chainHops < 0 || h < chainHops)) chainHops = h; }
+
+                var res = Placement.IslandRules.ResolveChain(chainTiles, chainHops);
+                if (res == Placement.IslandChainResolution.FormChainRegion)
+                {
+                    // Merge the chain's islands into their lowest-id member: one archipelago region whose
+                    // water-separated parts SplitDisconnectedRegions leaves attached (the island exemption).
+                    members.Sort((a, b) => a.id.CompareTo(b.id));
+                    var host = members[0];
+                    for (int i = 1; i < members.Count; i++)
+                    {
+                        foreach (int t in members[i].tiles) { host.tiles.Add(t); tileToProvinceId[t] = host.id; }
+                        toRemove.Add(members[i]);
+                    }
+                    host.primaryBiome = GetPrimaryBiome(host.tiles);
+                    host.name = GenerateProvinceName(host.id, host.primaryBiome, host.provinceType);
+                    chainRegions++;
+                }
+                else if (res == Placement.IslandChainResolution.JoinMainland)
+                {
+                    foreach (var m in members)
+                    {
+                        int target = nearestMainland[m.id];
+                        if (target != -1 && byId.TryGetValue(target, out var host) && !toRemove.Contains(host))
+                        {
+                            foreach (int t in m.tiles) { host.tiles.Add(t); tileToProvinceId[t] = host.id; }
+                            host.primaryBiome = GetPrimaryBiome(host.tiles);
+                            toRemove.Add(m); joined++;
+                        }
+                        else kept++;   // reach evaporated (target already consumed) — leave it standing
+                    }
+                }
+                else kept += members.Count;   // KeepSeparate: no mainland in reach, chain too small
+            }
+
+            if (toRemove.Count > 0) provinces.RemoveAll(p => toRemove.Contains(p));
+            Log.Message($"[RegionsAndSocieties] ResolveSmallIslands (#49): {joined} island(s) joined mainland, "
+                + $"{chainRegions} island-chain region(s) formed, {kept} kept separate (of {islands.Count} small island(s)).");
+        }
+
+        private static int FindIslandRoot(Dictionary<int, int> parent, int x)
+        {
+            while (parent[x] != x) { parent[x] = parent[parent[x]]; x = parent[x]; }
+            return x;
+        }
+
+        private static void UnionIslands(Dictionary<int, int> parent, int a, int b)
+        {
+            int ra = FindIslandRoot(parent, a), rb = FindIslandRoot(parent, b);
+            if (ra != rb) parent[ra] = rb;
+        }
+
+        /// <summary>True when no tile of <paramref name="comp"/> touches a DIFFERENT land region — the
+        /// component borders only water, impassable rock, or non-Land feature provinces. <paramref
+        /// name="members"/> is the full tile set the component belongs to (its own region); those tiles
+        /// never count as an outside land neighbour.</summary>
+        private bool IsWaterSurroundedComponent(List<int> comp, HashSet<int> members, HashSet<int> landIds,
+            List<RimWorld.Planet.PlanetTile> neighbors)
+        {
+            foreach (int t in comp)
+            {
+                neighbors.Clear();
+                Find.WorldGrid.GetTileNeighbors(t, neighbors);
+                foreach (var n in neighbors)
+                {
+                    int nid = n.tileId;
+                    if (members.Contains(nid)) continue;
+                    int np = GetProvinceId(nid);
+                    if (np != -1 && landIds.Contains(np)) return false;   // adjacent to another land region
+                }
+            }
+            return true;
+        }
+
+        /// <summary>BFS over water from an island's tiles out to <see
+        /// cref="Placement.IslandRules.IslandAbsorbHops"/> hops. Collects the ids of other small islands
+        /// reached (to chain) and picks the nearest mainland land region (to absorb into), tie-broken by
+        /// most shore tiles facing the island, then lowest id. A negative <paramref name="mainlandHops"/>
+        /// means no mainland is in reach.</summary>
+        private void IslandReachBFS(GeographicProvince island, HashSet<int> smallIslandIds, HashSet<int> landIds,
+            List<RimWorld.Planet.PlanetTile> neighbors,
+            out List<int> reachedIslands, out int mainlandPid, out int mainlandHops)
+        {
+            reachedIslands = new List<int>();
+            mainlandPid = -1; mainlandHops = -1;
+
+            var reachedSet = new HashSet<int>();
+            var mainlandHits = new Dictionary<int, int>();
+            var mainlandFirstHop = new Dictionary<int, int>();
+
+            var queue = new Queue<KeyValuePair<int, int>>();
+            var visited = new HashSet<int>();
+            foreach (int t in island.tiles) { queue.Enqueue(new KeyValuePair<int, int>(t, 0)); visited.Add(t); }
+
+            int maxHops = Placement.IslandRules.IslandAbsorbHops;
+            while (queue.Count > 0)
+            {
+                var cur = queue.Dequeue();
+                int tile = cur.Key, depth = cur.Value;
+                neighbors.Clear();
+                Find.WorldGrid.GetTileNeighbors(tile, neighbors);
+                foreach (var n in neighbors)
+                {
+                    int nid = n.tileId;
+                    if (visited.Contains(nid)) continue;
+                    visited.Add(nid);
+                    int pid = GetProvinceId(nid);
+                    if (pid != -1 && pid != island.id)
+                    {
+                        if (smallIslandIds.Contains(pid)) { if (reachedSet.Add(pid)) reachedIslands.Add(pid); }
+                        else if (landIds.Contains(pid))
+                        {
+                            int c; mainlandHits.TryGetValue(pid, out c); mainlandHits[pid] = c + 1;
+                            if (!mainlandFirstHop.ContainsKey(pid)) mainlandFirstHop[pid] = depth;
+                        }
+                        continue;   // never expand through land
+                    }
+                    if (depth < maxHops && Find.WorldGrid[nid].WaterCovered)
+                        queue.Enqueue(new KeyValuePair<int, int>(nid, depth + 1));
+                }
+            }
+
+            foreach (var kv in mainlandHits)
+            {
+                int pid = kv.Key, hits = kv.Value, hop = mainlandFirstHop[pid];
+                if (mainlandPid == -1
+                    || hop < mainlandHops
+                    || (hop == mainlandHops && (hits > mainlandHits[mainlandPid]
+                        || (hits == mainlandHits[mainlandPid] && pid < mainlandPid))))
+                {
+                    mainlandPid = pid; mainlandHops = hop;
+                }
+            }
         }
 
         /// <summary>
@@ -1610,39 +1830,11 @@ namespace RegionsAndSocieties
         {
             Log.Message($"[RegionsAndSocieties] MergeTinyDomains started. Initial region count: {provinces.Count}");
             List<RimWorld.Planet.PlanetTile> neighbors = new List<RimWorld.Planet.PlanetTile>();
-            // Cache province types
-            var provinceTypeMap = provinces.ToDictionary(p => p.id, p => p.provinceType);
 
-            // Pass 0: Small Island Absorption (islands < 5 tiles, closest landmass < 3 tiles away)
-            List<GeographicProvince> islandsToRemove = new List<GeographicProvince>();
-            var initialProvinceMap = provinces.ToDictionary(p => p.id, p => p);
+            // Small-island absorption/chaining moved to its own pass (#49), ResolveSmallIslands, run
+            // just before SplitDisconnectedRegions, whose island exemption then preserves it. The old
+            // Pass 0 (islands < 5 tiles, 2 water hops) was silently undone by that split and is retired.
             int totalMerged = 0;
-
-            foreach (var p in provinces)
-            {
-                if (p.provinceType == ProvinceType.Land && p.tiles.Count > 0 && p.tiles.Count < 5)
-                {
-                    int targetPid = FindClosestLandProvinceWithinDistance(p, 2, provinceTypeMap);
-                    if (targetPid != -1 && initialProvinceMap.TryGetValue(targetPid, out var targetProv))
-                    {
-                        // Per-merge logging removed: a full world has thousands of tiny islands, and one
-                        // Log.Message each stalled worldgen and ballooned memory until it crashed. The
-                        // one-line summary at the end of MergeTinyDomains reports the total instead.
-                        foreach (int tileId in p.tiles)
-                        {
-                            targetProv.tiles.Add(tileId);
-                            tileToProvinceId[tileId] = targetProv.id;
-                        }
-                        islandsToRemove.Add(p);
-                        totalMerged++;
-                    }
-                }
-            }
-
-            foreach (var p in islandsToRemove)
-            {
-                provinces.Remove(p);
-            }
 
             int pass = 0;
             while (pass < 10) // Safety limit of 10 passes
@@ -1884,54 +2076,6 @@ namespace RegionsAndSocieties
                 else if (t.hilliness == Hilliness.Mountainous) total += 1.5f;
             }
             return total / p.tiles.Count;
-        }
-
-        private int FindClosestLandProvinceWithinDistance(GeographicProvince island, int maxDistance, Dictionary<int, ProvinceType> provinceTypeMap)
-        {
-            Queue<KeyValuePair<int, int>> queue = new Queue<KeyValuePair<int, int>>();
-            HashSet<int> visited = new HashSet<int>();
-
-            foreach (int t in island.tiles)
-            {
-                queue.Enqueue(new KeyValuePair<int, int>(t, 0));
-                visited.Add(t);
-            }
-
-            List<RimWorld.Planet.PlanetTile> neighbors = new List<RimWorld.Planet.PlanetTile>();
-
-            while (queue.Count > 0)
-            {
-                var currentKvp = queue.Dequeue();
-                int currentTile = currentKvp.Key;
-                int currentDepth = currentKvp.Value;
-
-                if (currentDepth > maxDistance) continue;
-
-                neighbors.Clear();
-                Find.WorldGrid.GetTileNeighbors(currentTile, neighbors);
-                foreach (var n in neighbors)
-                {
-                    int nid = n.tileId;
-                    if (visited.Contains(nid)) continue;
-                    visited.Add(nid);
-
-                    int pid = tileToProvinceId[nid];
-                    if (pid != -1 && pid != island.id)
-                    {
-                        if (provinceTypeMap.TryGetValue(pid, out var type) && type == ProvinceType.Land)
-                        {
-                            return pid;
-                        }
-                    }
-
-                    if (Find.WorldGrid[nid].WaterCovered && currentDepth < maxDistance)
-                    {
-                        queue.Enqueue(new KeyValuePair<int, int>(nid, currentDepth + 1));
-                    }
-                }
-            }
-
-            return -1;
         }
 
         private void ResolveContextualNames()
