@@ -77,12 +77,32 @@ namespace RegionsAndSocieties
             int estLo = Placement.PlacementEstimates.ExpectedRegionCountLow(landTiles, target);
             int estHi = Placement.PlacementEstimates.ExpectedRegionCountHigh(landTiles, target);
 
+            // #47: the shared denominators for every per-faction "≈ N regions" estimate. The region basis is
+            // the actual count once a world exists, else the mid estimate; the placed total scales that by
+            // the density knob; the total share weight normalises the per-faction slices.
+            int regionBasis = actualRegions > 0 ? actualRegions : Placement.PlacementEstimates.ExpectedRegionCount(landTiles, target);
+            int placedTotal = Placement.PlacementShareRules.PlacedTotal(regionBasis, FactionPlacementSettings.claimedLandAreaPercent);
+            float totalShareWeight = 0f;
+            foreach (var d in activeFactions) totalShareWeight += FactionPlacementSettings.GetProfile(d).placementShare;
+
             // Global Map Region Parameters Panel
             Rect globalBoxRect = new Rect(0f, 40f, inRect.width - 15f, 160f);
             Widgets.DrawMenuSection(globalBoxRect);
 
             Rect globalTitleRect = new Rect(10f, 44f, 300f, 22f);
             Widgets.Label(globalTitleRect, "<b>Global Map Region Parameters</b>");
+
+            // #47: basic/advanced view toggle, top-right of the global box.
+            bool advanced = FactionPlacementSettings.placementUiAdvanced;
+            Rect toggleRect = new Rect(globalBoxRect.xMax - 150f, 44f, 140f, 24f);
+            if (Widgets.ButtonText(toggleRect, advanced ? "View: Advanced" : "View: Basic"))
+            {
+                FactionPlacementSettings.placementUiAdvanced = !advanced;
+                advanced = FactionPlacementSettings.placementUiAdvanced;
+            }
+            TooltipHandler.TipRegion(toggleRect,
+                "Basic: one row per faction — just the share of the map each faction gets.\n\n" +
+                "Advanced: the full per-faction controls (resource weights, placement order, clustering) plus mod-integration governance.");
 
             // Left Column: one Target size knob (the merge floor derives as half of it).
             float colWidth = (globalBoxRect.width - 30f) / 2f;
@@ -94,7 +114,7 @@ namespace RegionsAndSocieties
 
             // Right Column: what the target means — sparse biomes scale up on their own.
             float rightColStart = 10f + colWidth + 10f;
-            Rect noteRect = new Rect(rightColStart, 64f, colWidth, 34f);
+            Rect noteRect = new Rect(rightColStart, 64f, colWidth - 145f, 34f);
             GUI.color = new Color(0.7f, 0.7f, 0.7f);
             Text.Font = GameFont.Tiny;
             Widgets.Label(noteRect, "tiles per region. Sparse biomes (desert, tundra, ice) scale up automatically to fewer, larger regions.");
@@ -122,14 +142,94 @@ namespace RegionsAndSocieties
             string countPart = actualRegions > 0
                 ? $"Regions: <color=green>{actualRegions}</color> (this world)"
                 : $"Expected regions: <color=green>{estLo}–{estHi}</color>";
-            Widgets.Label(estRect, landPart + "  |  " + countPart);
+            Widgets.Label(estRect, landPart + "  |  " + countPart + $"  |  Territories placed: <color=orange>{placedTotal}</color>");
 
-            // Box is tall enough for the "Detected:" status line at the bottom (title + master +
-            // four 24px rows + the status row need ~178px); outRect starts below it so the label
-            // can't spill onto the Faction Geography scroll panel (#47).
-            DrawIntegrationPanel(new Rect(0f, 205f, inRect.width - 15f, 178f));
+            if (advanced)
+            {
+                // Box is tall enough for the "Detected:" status line at the bottom (title + master +
+                // four 24px rows + the status row need ~178px); outRect starts below it so the label
+                // can't spill onto the Faction Geography scroll panel (#47).
+                DrawIntegrationPanel(new Rect(0f, 205f, inRect.width - 15f, 178f));
+                DrawAdvancedCards(inRect, 388f, totalShareWeight, placedTotal);
+            }
+            else
+            {
+                DrawBasicRows(inRect, 205f, totalShareWeight, placedTotal);
+            }
 
-            Rect outRect = new Rect(0f, 388f, inRect.width, inRect.height - 443f);
+            Rect closeButtonRect = new Rect(inRect.width / 2f - 75f, inRect.height - 45f, 150f, 35f);
+            if (Widgets.ButtonText(closeButtonRect, "Close"))
+            {
+                this.Close();
+            }
+        }
+
+        /// <summary>
+        /// #47 basic view: one compact row per faction — its share of the placed territories and the live
+        /// "≈ N regions" that share works out to. Nothing else; the point of basic mode is that most
+        /// players only want to say how much of the map each faction gets. Fits ≤ 12 factions without
+        /// scrolling.
+        /// </summary>
+        private void DrawBasicRows(Rect inRect, float top, float totalShareWeight, int placedTotal)
+        {
+            // Header: what the shares mean and the running total (normalised at worldgen).
+            Rect headerRect = new Rect(0f, top, inRect.width - 15f, 22f);
+            GUI.color = new Color(0.75f, 0.75f, 0.75f);
+            Widgets.Label(headerRect,
+                $"Share of placed territories — shares need not add to 100%; worldgen normalises by the total " +
+                $"(<color=cyan>{Mathf.RoundToInt(totalShareWeight)}</color>).");
+            GUI.color = Color.white;
+
+            float rowH = 34f;
+            Rect outRect = new Rect(0f, top + 26f, inRect.width, inRect.height - (top + 26f) - 55f);
+            Rect viewRect = new Rect(0f, 0f, inRect.width - 25f, activeFactions.Count * rowH);
+
+            Widgets.BeginScrollView(outRect, ref scrollPosition, viewRect);
+            float curY = 0f;
+            foreach (var def in activeFactions)
+            {
+                var profile = FactionPlacementSettings.GetProfile(def);
+
+                Rect rowRect = new Rect(0f, curY, viewRect.width, rowH - 4f);
+                Widgets.DrawMenuSection(rowRect);
+
+                // Name (left).
+                Rect nameRect = new Rect(rowRect.x + 8f, rowRect.y + 3f, 230f, 24f);
+                Widgets.Label(nameRect, $"<b>{def.LabelCap}</b>");
+
+                // Share slider (middle).
+                float sliderX = nameRect.xMax + 8f;
+                float sliderW = 200f;
+                Rect shareLabelRect = new Rect(sliderX, rowRect.y + 3f, 70f, 24f);
+                Widgets.Label(shareLabelRect, $"Share: {Mathf.RoundToInt(profile.placementShare)}%");
+                Rect shareSliderRect = new Rect(sliderX + 72f, rowRect.y + 6f, sliderW, 18f);
+                float tempShare = Widgets.HorizontalSlider(shareSliderRect, profile.placementShare, 0f, 100f, false, null, null, null, 1f);
+                profile.placementShare = tempShare;
+
+                // Estimate (right).
+                int est = Placement.PlacementShareRules.EstimatedFactionCount(profile.placementShare, totalShareWeight, placedTotal);
+                Rect estCellRect = new Rect(shareSliderRect.xMax + 12f, rowRect.y + 3f, 130f, 24f);
+                Widgets.Label(estCellRect, $"≈ <color=green>{est}</color> regions");
+
+                // Reset (far right).
+                Rect resetRect = new Rect(rowRect.xMax - 96f, rowRect.y + 3f, 88f, 22f);
+                if (Widgets.ButtonText(resetRect, "Reset"))
+                {
+                    profile.placementShare = FactionPlacementSettings.DefaultShare(def);
+                }
+
+                curY += rowH;
+            }
+            Widgets.EndScrollView();
+        }
+
+        /// <summary>
+        /// #47 advanced view: the full per-faction card — resource weights, placement order, clustering —
+        /// with the old Settlement Range replaced by the same share row basic mode shows.
+        /// </summary>
+        private void DrawAdvancedCards(Rect inRect, float top, float totalShareWeight, int placedTotal)
+        {
+            Rect outRect = new Rect(0f, top, inRect.width, inRect.height - top - 55f);
             Rect viewRect = new Rect(0f, 0f, inRect.width - 25f, activeFactions.Count * 295f);
 
             Widgets.BeginScrollView(outRect, ref scrollPosition, viewRect);
@@ -155,7 +255,7 @@ namespace RegionsAndSocieties
                     profile.grazingWeight = defaultProfile.grazingWeight;
                     profile.huntingWeight = defaultProfile.huntingWeight;
                     profile.marginWeight = defaultProfile.marginWeight;
-                    profile.baseCountRange = defaultProfile.baseCountRange;
+                    profile.placementShare = defaultProfile.placementShare;
                     profile.placementOrder = defaultProfile.placementOrder;
                     profile.clusterSize = defaultProfile.clusterSize;
                 }
@@ -172,10 +272,18 @@ namespace RegionsAndSocieties
                 DrawWeightSlider(ref rightY, boxRect.width / 2f - 15f, boxRect.width / 2f + 5f, "Hunting (Forests/Wilds)", ref profile.huntingWeight, 0f, 5f);
                 DrawWeightSlider(ref rightY, boxRect.width / 2f - 15f, boxRect.width / 2f + 5f, "Margin (Desert/Tundra Edges)", ref profile.marginWeight, 0f, 5f);
 
-                // Bases counts
-                Rect basesRect = new Rect(10f, curY + 180f, boxRect.width - 20f, 24f);
-                Widgets.Label(new Rect(basesRect.x, basesRect.y, 250f, 24f), $"Settlement Range: {profile.baseCountRange.min} - {profile.baseCountRange.max}");
-                Widgets.IntRange(new Rect(basesRect.x + 260f, basesRect.y, basesRect.width - 270f, 24f), def.GetHashCode(), ref profile.baseCountRange, 1, 50, null, 0);
+                // #47: share of placed territories + live estimate — replaces the old Settlement Range.
+                // baseCountRange is no longer a setting; the count is derived from this share at worldgen.
+                Rect shareRect = new Rect(10f, curY + 180f, boxRect.width - 20f, 24f);
+                int est = Placement.PlacementShareRules.EstimatedFactionCount(profile.placementShare, totalShareWeight, placedTotal);
+                Rect shareLabelRect = new Rect(shareRect.x, shareRect.y, 300f, 24f);
+                Widgets.Label(shareLabelRect, $"Share of placed territories: {Mathf.RoundToInt(profile.placementShare)}%  (≈ <color=green>{est}</color> regions)");
+                TooltipHandler.TipRegion(shareLabelRect,
+                    "This faction's slice of the placed territories. Shares across factions need not add to 100% — " +
+                    "worldgen normalises by the total, so a share is a relative weight, not a hard quota. " +
+                    "The estimate is this share of the territories the map allows (region count × claimed land area).");
+                float tempShare = Widgets.HorizontalSlider(new Rect(shareRect.x + 310f, shareRect.y, shareRect.width - 320f, 18f), profile.placementShare, 0f, 100f, false, null, "0%", "100%", 1f);
+                profile.placementShare = tempShare;
 
                 // Placement Order
                 Rect orderRect = new Rect(10f, curY + 215f, boxRect.width - 20f, 24f);
@@ -201,12 +309,6 @@ namespace RegionsAndSocieties
             }
 
             Widgets.EndScrollView();
-
-            Rect closeButtonRect = new Rect(inRect.width / 2f - 75f, inRect.height - 45f, 150f, 35f);
-            if (Widgets.ButtonText(closeButtonRect, "Close"))
-            {
-                this.Close();
-            }
         }
 
         /// <summary>

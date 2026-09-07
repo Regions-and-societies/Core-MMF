@@ -164,6 +164,12 @@ run_suite placementestimates Exe \
     Tests/PlacementEstimatesTests.cs \
     $SRC/Placement/PlacementEstimates.cs
 
+# 0.4.0 placement-share model (#47): range->share migration, normalised fractions, per-faction
+# estimate, largest-remainder apportionment. Pure, no game.
+run_suite placementshare Exe \
+    Tests/PlacementShareRulesTests.cs \
+    $SRC/Placement/PlacementShareRules.cs
+
 # 0.4.0 small-island handling (#49): the join threshold and the 30-tile archipelago chain cut.
 # Pure, no game.
 run_suite island Exe \

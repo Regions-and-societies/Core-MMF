@@ -1630,6 +1630,84 @@ namespace RegionsAndSocieties.Integration
             return sb.ToString().TrimEnd();
         }
 
+        /// <summary>
+        /// #47: the placement-share acceptance report — per faction, its share weight, the normalised %,
+        /// the estimated territory count (largest-remainder apportionment of the placed total, the same
+        /// arithmetic the settings dialog shows), and the actual number of settlements it received. A share
+        /// of 40% should line up with ≈ 40% of the placed provinces (±1), which this makes checkable
+        /// headlessly after worldgen.
+        /// </summary>
+        public static string PlacementShareReport()
+        {
+            if (!UnityData.IsInMainThread) return "must run on the main thread";
+            if (Find.World == null || Find.FactionManager == null) return "no world loaded";
+            var mgr = Find.World.GetComponent<SynapseRegionManager>();
+            if (mgr?.Provinces == null) return "no provinces";
+
+            // Actual settlements per faction (the placed result the shares were meant to distribute).
+            var actualByFaction = new Dictionary<Faction, int>();
+            if (Find.WorldObjects != null)
+            {
+                foreach (var o in Find.WorldObjects.AllWorldObjects)
+                {
+                    if (o?.Faction == null || o.Faction.IsPlayer) continue;
+                    if (WorldObjectClassifier.Classify(o) != WorldObjectKind.Settlement) continue;
+                    actualByFaction.TryGetValue(o.Faction, out int n);
+                    actualByFaction[o.Faction] = n + 1;
+                }
+            }
+
+            // The share is a per-FactionDef weight, so the acceptance ("share 40% → ≈40% of placed") is a
+            // per-def property. Aggregate by def: #57 splits one placed faction into several kin factions
+            // that all carry the parent's def (and therefore its share), so a per-instance row would show
+            // each kin claiming the whole def share and its own subset count — misleading. Grouping by def
+            // sums those subsets back into the one share the player actually set.
+            var defs = new List<FactionDef>();
+            var defWeight = new Dictionary<FactionDef, float>();
+            var defActual = new Dictionary<FactionDef, int>();
+            var defInstances = new Dictionary<FactionDef, int>();
+            foreach (var f in Find.FactionManager.AllFactionsListForReading)
+            {
+                if (f == null || f.IsPlayer || f.def == null || f.def.hidden) continue;
+                if (!defWeight.ContainsKey(f.def))
+                {
+                    defs.Add(f.def);
+                    var prof = FactionPlacementSettings.GetProfile(f.def);
+                    defWeight[f.def] = prof != null && prof.placementShare > 0f ? prof.placementShare : FactionPlacementSettings.DefaultShare(f.def);
+                    defActual[f.def] = 0;
+                    defInstances[f.def] = 0;
+                }
+                defInstances[f.def]++;
+                actualByFaction.TryGetValue(f, out int fActual);
+                defActual[f.def] += fActual;
+            }
+
+            var weights = new List<float>();
+            float totalWeight = 0f;
+            foreach (var d in defs) { weights.Add(defWeight[d]); totalWeight += defWeight[d]; }
+
+            int landRegions = mgr.Provinces.Count(p => p != null && p.provinceType == ProvinceType.Land && p.tiles != null && p.tiles.Count > 0);
+            int placedTotal = Placement.PlacementShareRules.PlacedTotal(landRegions, FactionPlacementSettings.claimedLandAreaPercent);
+            int[] estimates = Placement.PlacementShareRules.Apportion(weights, placedTotal);
+            int actualTotal = actualByFaction.Values.Sum();
+
+            var sb = new StringBuilder();
+            sb.AppendLine("=== R&S placement share report (#47) ===");
+            sb.AppendLine($"land regions={landRegions}, claimed land area={UnityEngine.Mathf.RoundToInt(FactionPlacementSettings.claimedLandAreaPercent * 100f)}%, territories placed (est)={placedTotal}, actual settlements={actualTotal}");
+            sb.AppendLine("grouped by faction def (a def's share is split among its #57 kin, so kin are summed back)");
+            sb.AppendLine("faction def                      kin   share%   norm%    est    actual   delta");
+            for (int i = 0; i < defs.Count; i++)
+            {
+                var d = defs[i];
+                float normPct = Placement.PlacementShareRules.NormalizedFraction(weights[i], totalWeight) * 100f;
+                int actual = defActual[d];
+                int est = estimates[i];
+                sb.AppendLine($"{d.defName,-32} {defInstances[d],3}   {UnityEngine.Mathf.RoundToInt(weights[i]),5}   {normPct,5:0.0}   {est,4}   {actual,6}   {actual - est,5}");
+            }
+            if (defs.Count == 0) sb.AppendLine("  (no NPC factions)");
+            return sb.ToString().TrimEnd();
+        }
+
         public static string HoldingsReport()
         {
             if (!UnityData.IsInMainThread) return "must run on the main thread";
