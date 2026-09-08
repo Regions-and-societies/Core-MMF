@@ -133,6 +133,26 @@ namespace RegionsAndSocieties.Placement
             int s = Snap(clusterSize);
             return IsUnbounded(s) ? int.MaxValue : s;   // unbounded (0) is least segmented → seeds last
         }
+
+        /// <summary>
+        /// The BODY-SIZE cap placement should enforce, given the value mode and the faction's planned region
+        /// count (#47 follow-up). The stored cluster field means two different things by mode:
+        /// <list type="bullet">
+        /// <item><b>Count</b>: the field IS the body-size cap (largest contiguous body), in regions.</item>
+        /// <item><b>Percent</b>: the field is the desired NUMBER of clusters, so the body-size cap is
+        /// <c>ceil(plannedRegions / clusterField)</c> — split the faction's land into that many bodies. A
+        /// field of 0/1 (or no planned land) means one contiguous body: unbounded.</item>
+        /// </list>
+        /// Either way the result is a body-size cap the existing placement ranking consumes unchanged.
+        /// </summary>
+        public static int EffectiveBodyCap(PlacementValueMode mode, int clusterField, int plannedRegions)
+        {
+            if (mode == PlacementValueMode.Count) return Snap(clusterField);
+            // Percent: clusterField = number of clusters wanted.
+            if (clusterField <= 1 || plannedRegions <= 0) return Unbounded;
+            if (clusterField >= plannedRegions) return 1;       // more clusters than land → one region each
+            return (plannedRegions + clusterField - 1) / clusterField;   // ceil(regions / clusters)
+        }
     }
 
     /// <summary>

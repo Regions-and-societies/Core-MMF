@@ -94,6 +94,26 @@ namespace SubFactionRulesTests
             Check("cluster 1 -> one kin per region", SubFactionRules.EstimateKinCount(6, 1) == 6);
             Check("degenerate zero regions -> 1", SubFactionRules.EstimateKinCount(0, 3) == 1);
 
+            Section("planned kin count is mode-aware (count = size, percent = cluster number)");
+            Check("count: 61 regions, size 5 -> ceil = 13", SubFactionRules.PlannedKinCount(PlacementValueMode.Count, 5, 61) == 13);
+            Check("count: matches EstimateKinCount", SubFactionRules.PlannedKinCount(PlacementValueMode.Count, 3, 10) == SubFactionRules.EstimateKinCount(10, 3));
+            Check("percent: field IS the kin count", SubFactionRules.PlannedKinCount(PlacementValueMode.Percent, 5, 40) == 5);
+            Check("percent: capped at the region count", SubFactionRules.PlannedKinCount(PlacementValueMode.Percent, 20, 8) == 8);
+            Check("percent: 0/1 cluster = whole (one faction)", SubFactionRules.PlannedKinCount(PlacementValueMode.Percent, 1, 40) == 1 && SubFactionRules.PlannedKinCount(PlacementValueMode.Percent, 0, 40) == 1);
+            Check("either mode: zero regions -> 1", SubFactionRules.PlannedKinCount(PlacementValueMode.Percent, 5, 0) == 1 && SubFactionRules.PlannedKinCount(PlacementValueMode.Count, 5, 0) == 1);
+
+            Section("body labels: compass bearings, kept body keeps the clean base name, distinct per body");
+            var bl = new List<GeoPoint> { new GeoPoint(0, 2, 0), new GeoPoint(0, -2, 0), new GeoPoint(2, 0, 0) };
+            var lbls = SubFactionRules.BodyLabels(bl, 2);   // keep the eastern body
+            Check("kept body -> empty (clean base name)", lbls[2] == "");
+            Check("northern body -> North", lbls[0] == "North");
+            Check("southern body -> South", lbls[1] == "South");
+            var north4 = new List<GeoPoint> { new GeoPoint(0, -3, 0), new GeoPoint(0, 2, 0), new GeoPoint(0.05, 2.1, 0), new GeoPoint(-0.05, 2.05, 0) };
+            var l4 = SubFactionRules.BodyLabels(north4, 0);   // keep the lone southern body
+            Check("kept clean", l4[0] == "");
+            Check("clustered same-bearing bodies get DISTINCT non-empty labels", l4[1] != "" && l4[2] != "" && l4[3] != "" && l4[1] != l4[2] && l4[2] != l4[3] && l4[1] != l4[3]);
+            Check("empty input safe", SubFactionRules.BodyLabels(new List<GeoPoint>(), 0).Length == 0);
+
             Section("name composition: direction slips in after a leading article (#59 polish)");
             Check("'The Abene Tribe' -> 'The West Abene Tribe'", SubFactionRules.ComposeName("West", "The Abene Tribe") == "The West Abene Tribe");
             Check("plain base just takes the prefix", SubFactionRules.ComposeName("North", "Toban Union") == "North Toban Union");

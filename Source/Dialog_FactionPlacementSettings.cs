@@ -88,7 +88,7 @@ namespace RegionsAndSocieties
             }
             else
             {
-                int totalTiles = Mathf.RoundToInt(100000f * coverage);
+                int totalTiles = Placement.PlacementEstimates.EstimateTotalTiles(coverage);
                 landTiles = Placement.PlacementEstimates.EstimateLandTiles(totalTiles, Placement.PlacementEstimates.TypicalLandFraction);
             }
 
@@ -102,8 +102,7 @@ namespace RegionsAndSocieties
                     if (pr.provinceType == ProvinceType.Land && pr.tiles != null && pr.tiles.Count > 0) c++;
                 if (c > 0) actualRegions = c;
             }
-            int estLo = Placement.PlacementEstimates.ExpectedRegionCountLow(landTiles, target);
-            int estHi = Placement.PlacementEstimates.ExpectedRegionCountHigh(landTiles, target);
+            int estMid = Placement.PlacementEstimates.ExpectedRegionCount(landTiles, target);
 
             // #47: the region basis is the actual count once a world exists, else the mid estimate. The value
             // MODE + BASIS then decide how each faction's stored number becomes a region count. Build the
@@ -187,7 +186,7 @@ namespace RegionsAndSocieties
                 : $"Est. land tiles: <color=cyan>{landTiles}</color> (~{Mathf.RoundToInt(Placement.PlacementEstimates.TypicalLandFraction * 100f)}% of a {Mathf.RoundToInt(coverage * 100f)}%-coverage planet)";
             string countPart = actualRegions > 0
                 ? $"Regions: <color=green>{actualRegions}</color> (this world)"
-                : $"Expected regions: <color=green>{estLo}–{estHi}</color>";
+                : $"Expected regions: <color=green>~{estMid}</color> <color=grey>(rough — varies with sea level)</color>";
             Widgets.Label(estRect, landPart + "  |  " + countPart + $"  |  Claimed: <color=orange>{placedTotal}</color>  Wilderness: <color=grey>{wilderness}</color>");
 
             // Regional kin is now a per-faction toggle (each faction's card / the table's Kin column), so the
@@ -344,17 +343,20 @@ namespace RegionsAndSocieties
                 bool kinBefore = kinOn;
                 Widgets.Checkbox(kinX, rowRect.y + 2f, ref kinOn, 22f);
                 if (kinOn != kinBefore) profile.enableKinRaw = kinOn ? 1 : 0;
-                int kinCount = kinOn ? Placement.SubFactionRules.EstimateKinCount(est, Placement.ClusteringRules.Snap(profile.clusterSize)) : 1;
+                int kinCount = kinOn ? Placement.SubFactionRules.PlannedKinCount(FactionPlacementSettings.placementValueMode, profile.clusterSize, est) : 1;
                 bool actuallySplits = kinOn && kinCount >= 2;
                 GUI.color = actuallySplits ? Color.white : new Color(0.6f, 0.6f, 0.6f);
                 Widgets.Label(new Rect(kinX + 28f, rowRect.y + 3f, 150f, 24f),
                     actuallySplits ? $"→ <color=cyan>{kinCount}</color> factions" : "one faction");
                 GUI.color = Color.white;
+                bool basicCount = FactionPlacementSettings.placementValueMode == Placement.PlacementValueMode.Count;
                 TooltipHandler.TipRegion(new Rect(kinX, rowRect.y, 180f, rowRect.height - 4f),
                     actuallySplits
-                        ? $"Kin on: this faction's {est} regions split into ~{kinCount} kin factions (regions ÷ cluster size {Placement.ClusteringRules.Snap(profile.clusterSize)})."
+                        ? (basicCount
+                            ? $"Kin on: this faction's {est} regions form ~{kinCount} clusters of up to {Placement.ClusteringRules.Snap(profile.clusterSize)} regions each, and each cluster becomes a kin faction."
+                            : $"Kin on: this faction breaks into {kinCount} clusters (the cluster number set in Advanced), and each cluster becomes a kin faction.")
                         : kinOn
-                            ? $"Kin is on, but {est} region{(est == 1 ? "" : "s")} fit inside one cluster (size {Placement.ClusteringRules.Snap(profile.clusterSize)}), so it stays ONE faction. Raise its size or lower its cluster size (Advanced) to split it into kin factions."
+                            ? "Kin is on, but this faction resolves to a single cluster, so it stays ONE faction. In count mode give it more regions or a smaller cluster size; in percent mode raise its cluster count (Advanced)."
                             : "Kin is off — this faction stays whole.");
 
                 Rect resetRect = new Rect(rowRect.xMax - 96f, rowRect.y + 3f, 88f, 22f);
@@ -459,13 +461,16 @@ namespace RegionsAndSocieties
                 // #46 cluster size: any whole number 1..8, where 8 = 8+ (no limit) — how many territories may
                 // cluster together (the largest contiguous body). A soft maximum: the faction prefers ground
                 // where it cannot cluster and fills in against itself only when nothing else is left.
+                bool clCount = FactionPlacementSettings.placementValueMode == Placement.PlacementValueMode.Count;
                 Rect clusterRect = new Rect(10f, curY + 245f, boxRect.width - 20f, 24f);
                 Rect clusterLabelRect = new Rect(clusterRect.x, clusterRect.y, 240f, 24f);
-                Widgets.Label(clusterLabelRect, "Cluster size (largest body, 0 = no limit):");
-                TooltipHandler.TipRegion(clusterLabelRect,
-                    "The largest contiguous body of territory this faction builds — any whole number from 1 to 8, where 8 means one contiguous nation. " +
-                    "A maximum, not a wall: the faction prefers ground where it cannot cluster and only fills in against itself when nothing else is left. " +
-                    "A separate idea from kin. Defaults: pirates and the Empire 3, tribes 5, rough unions 7, everyone else 8.");
+                Widgets.Label(clusterLabelRect, clCount ? "Cluster size (largest body, 0 = no limit):" : "Number of clusters (0/1 = one body):");
+                TooltipHandler.TipRegion(clusterLabelRect, clCount
+                    ? "COUNT mode: the largest contiguous body of territory this faction builds, in regions (0 = one contiguous nation). " +
+                      "A soft maximum: the faction prefers ground where it cannot cluster and only fills in against itself when nothing else is left. " +
+                      "With kin on, each body it forms becomes a kin faction. Defaults: pirates and the Empire 3, tribes 5, rough unions 7, everyone else no limit."
+                    : "PERCENT mode: how many separate clusters this faction breaks into (0/1 = one contiguous body). Its regions are split roughly evenly " +
+                      "across that many bodies, and with kin on each body becomes a kin faction. A separate idea from the faction's land share.");
                 int cl = Placement.ClusteringRules.Snap(profile.clusterSize);
                 string ckey = def.defName + ":adv_cl";
                 if (!tableBuffers.TryGetValue(ckey, out var cbuf)) cbuf = cl.ToString();

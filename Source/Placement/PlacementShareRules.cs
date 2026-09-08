@@ -9,20 +9,8 @@ namespace RegionsAndSocieties.Placement
     /// clustering scale. Advanced lets the player type any integer instead.
     /// </summary>
     public enum ShareCategory { Tiny, Small, Medium, Large, VeryLarge }
-
-    /// <summary>How each faction's stored placement number is read (#47 follow-up). <b>Percent</b> (default):
-    /// the number is a share that self-scales to whatever regions the planet actually has — so a small planet
-    /// with few (vanilla) factions still fills, where a fixed count would leave it sparse. <b>Count</b>: the
-    /// number is a literal target region count (exact control).</summary>
-    public enum PlacementValueMode { Percent, Count }
-
-    /// <summary>What a percentage is measured against, when the value mode is Percent.
-    /// <b>SettledNormalized</b>: a relative share of the SETTLED land — every faction's number is a weight,
-    /// normalised across whoever is present, then applied to the density-scaled claimed area, so the claimed
-    /// area always fills fully regardless of planet size or faction count. <b>PlanetAbsolute</b>: the number
-    /// is an absolute percent of ALL livable regions; the leftover is wilderness and the density knob is
-    /// unused.</summary>
-    public enum PlacementPercentBasis { SettledNormalized, PlanetAbsolute }
+    // PlacementValueMode and PlacementPercentBasis live in PlacementValueMode.cs (shared by the clustering
+    // and sub-faction rules too, so the lean test suites can compile them without this file).
 
     /// <summary>
     /// The region-count model behind the placement settings (#47): each faction stores a target number of

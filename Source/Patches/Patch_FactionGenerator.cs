@@ -277,7 +277,11 @@ namespace RegionsAndSocieties.Patches
             int ClusterOf(Faction f)
             {
                 var prof = FactionPlacementSettings.GetProfile(f.def);
-                return Placement.ClusteringRules.SeedingKey(prof != null ? prof.clusterSize : 0);
+                int planned = factionTargetBases.TryGetValue(f, out var b) ? b : 0;
+                // Seed by the EFFECTIVE body-size cap, so percent-mode "many clusters" (small bodies) seeds
+                // first just like a small count-mode size does.
+                int cap = Placement.ClusteringRules.EffectiveBodyCap(placementMode, prof != null ? prof.clusterSize : 0, planned);
+                return Placement.ClusteringRules.SeedingKey(cap);
             }
 
             List<Faction> alternatingFactions = new List<Faction>();
@@ -398,8 +402,10 @@ namespace RegionsAndSocieties.Patches
                 // #46 clustering: this faction's cap on how many territories cluster together, and the
                 // bodies (land-connected sets of its provinces) it has built so far. A candidate that
                 // would push a body over the cap ranks behind every candidate that would not, and is
-                // taken only when nothing else is left.
-                int clusterCap = Placement.ClusteringRules.Snap(profile.clusterSize);
+                // taken only when nothing else is left. The cluster field means SIZE in count mode and
+                // NUMBER OF CLUSTERS in percent mode; EffectiveBodyCap resolves both to a body-size cap
+                // using this faction's planned region count.
+                int clusterCap = Placement.ClusteringRules.EffectiveBodyCap(placementMode, profile.clusterSize, baseCount);
                 var bodies = new Placement.TerritoryBodies();
                 int overflowPicks = 0;
 
@@ -822,37 +828,29 @@ namespace RegionsAndSocieties.Patches
                 var bodies = BuildFactionBodies(provs);
                 if (bodies.Count < 2) continue;   // needs at least two clusters to form regional kin
 
-                int k = Placement.SubFactionRules.SectionCount(bodies.Count, Placement.SubFactionRules.MaxSections);
-                if (k <= 1) continue;
-
+                // ONE kin faction per contiguous body (the owner's model: each cluster becomes a kin faction).
+                // The value mode already decided how many bodies formed — count mode caps body SIZE, percent
+                // mode caps the NUMBER of clusters (both via EffectiveBodyCap in placement) — so here we
+                // simply promote each body, no geographic re-sectioning. The largest body keeps the parent;
+                // every other body becomes a new faction, bounded by the world faction budget so a very
+                // scattered faction cannot exhaust the world's slots.
                 var centroids = new List<Placement.GeoPoint>(bodies.Count);
                 foreach (var b in bodies) centroids.Add(BodyCentroid(b, worldGrid));
-                int[] sectionOf = Placement.SubFactionRules.AssignSections(centroids, k);
 
-                var sectionProvs = new List<List<GeographicProvince>>();
-                for (int s = 0; s < k; s++) sectionProvs.Add(new List<GeographicProvince>());
-                var sx = new double[k]; var sy = new double[k]; var sz = new double[k]; var sc = new int[k];
-                for (int bi = 0; bi < bodies.Count; bi++)
-                {
-                    int s = sectionOf[bi];
-                    sectionProvs[s].AddRange(bodies[bi]);
-                    sx[s] += centroids[bi].X; sy[s] += centroids[bi].Y; sz[s] += centroids[bi].Z; sc[s]++;
-                }
-                var sectionPts = new List<Placement.GeoPoint>(k);
-                for (int s = 0; s < k; s++) { int n = System.Math.Max(1, sc[s]); sectionPts.Add(new Placement.GeoPoint(sx[s] / n, sy[s] / n, sz[s] / n)); }
-
-                // The section with the most settlement provinces keeps the parent faction.
+                // The body with the most settlement provinces keeps the parent faction (clean base name).
                 int keep = 0;
-                for (int s = 1; s < k; s++) if (sectionProvs[s].Count > sectionProvs[keep].Count) keep = s;
+                for (int bi = 1; bi < bodies.Count; bi++) if (bodies[bi].Count > bodies[keep].Count) keep = bi;
 
-                string[] labels = Placement.SubFactionRules.SectionLabels(sectionPts);
+                // One distinct compass label per body; the kept body gets the clean base name (empty label).
+                string[] labels = Placement.SubFactionRules.BodyLabels(centroids, keep);
+
                 string baseName = parent.Name;
                 if (!string.IsNullOrEmpty(labels[keep])) parent.Name = Placement.SubFactionRules.ComposeName(labels[keep], baseName);
 
                 var kin = new List<Faction> { parent };
-                for (int s = 0; s < k; s++)
+                for (int bi = 0; bi < bodies.Count; bi++)
                 {
-                    if (s == keep) continue;
+                    if (bi == keep) continue;
                     if (factionManager.AllFactions.Count() >= MaxWorldFactionsAfterSplit) break;
 
                     Faction sub = TryGenerateFaction(layer, parent.def);
@@ -863,7 +861,7 @@ namespace RegionsAndSocieties.Patches
                     // overlay does) then NREs deep in vanilla's GoodwillSituationManager. Add it BEFORE any
                     // relation/goodwill work so that state exists.
                     factionManager.Add(sub);
-                    sub.Name = Placement.SubFactionRules.ComposeName(labels[s], baseName);
+                    sub.Name = Placement.SubFactionRules.ComposeName(labels[bi], baseName);
 
                     // Relations against every existing faction, then friendly kin goodwill with the parent
                     // and any siblings already made — loosely related, not merged, not hostile.
@@ -873,24 +871,24 @@ namespace RegionsAndSocieties.Patches
                     TryShareIdeo(parent, sub);
                     kin.Add(sub);
 
-                    // Reassign this section's settlements and province ownership to the sub-faction.
+                    // Reassign this body's settlements and province ownership to the sub-faction.
                     string subId = sub.GetUniqueLoadID();
                     string parentId = parent.GetUniqueLoadID();
-                    var sectionSet = new HashSet<GeographicProvince>(sectionProvs[s]);
+                    var bodySet = new HashSet<GeographicProvince>(bodies[bi]);
                     foreach (var o in worldObjects.AllWorldObjects)
                     {
                         if (o?.Faction != parent) continue;
                         if (Integration.WorldObjectClassifier.Classify(o) != Integration.WorldObjectKind.Settlement) continue;
                         var p = regionManager.GetProvinceForTile(o.Tile);
-                        if (p != null && sectionSet.Contains(p)) o.SetFaction(sub);
+                        if (p != null && bodySet.Contains(p)) o.SetFaction(sub);
                     }
-                    foreach (var p in sectionProvs[s])
+                    foreach (var p in bodies[bi])
                     {
                         p.owningFactionIds.Remove(parentId);
                         if (!p.owningFactionIds.Contains(subId)) p.owningFactionIds.Add(subId);
                     }
                     created++;
-                    Log.Message($"[RegionsAndSocieties] #57: split '{sub.Name}' off '{parent.Name}' ({sectionProvs[s].Count} provinces).");
+                    Log.Message($"[RegionsAndSocieties] #57: kin '{sub.Name}' off '{parent.Name}' ({bodies[bi].Count} provinces).");
                 }
             }
             if (created > 0)
@@ -1325,6 +1323,29 @@ namespace RegionsAndSocieties.Patches
             int tiles = __result?.grid?.TilesCount ?? 0;
             int settlements = __result?.worldObjects?.Settlements?.Count ?? 0;
             Log.Message($"[RegionsAndSocieties] World generation completed in {worldgenTimer.ElapsedMilliseconds} ms ({planetCoverage:P0} coverage, {tiles} tiles, {settlements} settlements).");
+
+            // Region-estimate calibration line (#54/#47): exact land-tile count, land fraction, land-region
+            // count and average region size for the generated world — the pre-gen dialog can only estimate
+            // these from planet coverage, so this is the ground truth to calibrate that estimate against.
+            try
+            {
+                int landTiles = 0;
+                var grid = __result?.grid;
+                if (grid != null)
+                {
+                    int tc = grid.TilesCount;
+                    for (int i = 0; i < tc; i++) if (!grid[i].WaterCovered) landTiles++;
+                }
+                int landRegions = 0;
+                var mgr = __result?.GetComponent<SynapseRegionManager>();
+                if (mgr?.Provinces != null)
+                    foreach (var pr in mgr.Provinces)
+                        if (pr.provinceType == ProvinceType.Land && pr.tiles != null && pr.tiles.Count > 0) landRegions++;
+                float landFrac = tiles > 0 ? (float)landTiles / tiles : 0f;
+                float avgRegion = landRegions > 0 ? (float)landTiles / landRegions : 0f;
+                Log.Message($"[RegionsAndSocieties] CALIB: coverage={planetCoverage:P0} totalTiles={tiles} landTiles={landTiles} landFrac={landFrac:P1} landRegions={landRegions} avgRegionTiles={avgRegion:F1} targetSize={FactionPlacementSettings.targetRegionSize}");
+            }
+            catch (Exception ex) { Log.Warning($"[RegionsAndSocieties] CALIB line failed: {ex.Message}"); }
             worldgenTimer = null;
         }
     }

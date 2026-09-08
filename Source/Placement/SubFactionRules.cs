@@ -38,6 +38,25 @@ namespace RegionsAndSocieties.Placement
         }
 
         /// <summary>
+        /// The number of kin factions a faction forms, honouring the value mode (#47 follow-up). Each
+        /// contiguous body is one kin faction, and the mode decides how many bodies form:
+        /// <list type="bullet">
+        /// <item><b>Count</b>: the cluster field caps body SIZE, so bodies ≈ ceil(regions / field) — the
+        /// same as <see cref="EstimateKinCount"/>.</item>
+        /// <item><b>Percent</b>: the cluster field IS the desired number of clusters, so kin = that field,
+        /// capped at the region count (can't have more bodies than regions). A field of 0/1 means one
+        /// faction — no kin.</item>
+        /// </list>
+        /// </summary>
+        public static int PlannedKinCount(PlacementValueMode mode, int clusterField, int regions)
+        {
+            if (regions <= 0) return 1;
+            if (mode == PlacementValueMode.Count) return EstimateKinCount(regions, clusterField);
+            if (clusterField <= 1) return 1;                 // percent: 0/1 cluster = whole
+            return clusterField < regions ? clusterField : regions;
+        }
+
+        /// <summary>
         /// Compose a sub-faction's name from a directional <paramref name="label"/> (North/South/East/West/
         /// Central, possibly empty) and the parent's <paramref name="baseName"/>. A bare prefix reads badly
         /// when the base already opens with an article — "West The Abene Tribe" — so the direction is slipped
@@ -155,6 +174,47 @@ namespace RegionsAndSocieties.Placement
             string[] ordered = OrderedLabels(k, northSouth);
             for (int rank = 0; rank < k; rank++) labels[order[rank]] = ordered[rank];
             return labels;
+        }
+
+        /// <summary>
+        /// A distinct compass label per body for the one-faction-per-cluster kin split (#47 follow-up). The
+        /// body that keeps the parent faction (<paramref name="keepIndex"/>) gets an empty label — the clean
+        /// base name — and every other body is named by its compass bearing from the faction's overall
+        /// centroid (North / Northeast / … / Northwest), with a numeric suffix when two bodies share a
+        /// bearing ("North", "North 2"). Reads far better than the old "Central 1 … Central 15" for a faction
+        /// that scatters into many clusters. Pure and unit-tested.
+        /// </summary>
+        public static string[] BodyLabels(IList<GeoPoint> centroids, int keepIndex)
+        {
+            int n = centroids?.Count ?? 0;
+            var labels = new string[n];
+            if (n == 0) return labels;
+
+            double cx = 0, cy = 0, cz = 0;
+            foreach (var p in centroids) { cx += p.X; cy += p.Y; cz += p.Z; }
+            cx /= n; cy /= n; cz /= n;
+
+            var used = new Dictionary<string, int>();
+            for (int i = 0; i < n; i++)
+            {
+                if (i == keepIndex) { labels[i] = ""; continue; }
+                string dir = Compass(centroids[i].X - cx, centroids[i].Y - cy);
+                if (!used.ContainsKey(dir)) { used[dir] = 1; labels[i] = dir; }
+                else { used[dir]++; labels[i] = dir + " " + used[dir]; }
+            }
+            return labels;
+        }
+
+        /// <summary>Eight-point compass of a horizontal offset: easting = ΔX, northing = ΔY. A near-zero
+        /// offset still resolves to a stable bearing (atan2(0,0)=0 → East), which the numeric dedup then
+        /// disambiguates.</summary>
+        private static string Compass(double east, double north)
+        {
+            string[] names = { "East", "Northeast", "North", "Northwest", "West", "Southwest", "South", "Southeast" };
+            double ang = Math.Atan2(north, east) * 180.0 / Math.PI;   // 0 = East, 90 = North
+            int idx = (int)Math.Round(ang / 45.0);
+            idx = ((idx % 8) + 8) % 8;
+            return names[idx];
         }
 
         /// <summary>The ordered label list, low axis value to high.</summary>
