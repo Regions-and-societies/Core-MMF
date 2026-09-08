@@ -81,16 +81,42 @@ namespace RegionsAndSocieties
             l.Label("Regions and Societies features — toggle any off to avoid conflicts with other mods:");
             l.CheckboxLabeled("Societies: population, demographics & economy", ref FactionPlacementSettings.societiesEnabled,
                 "The whole Societies layer. Off means Regions only — the partition, territories, borders, placement and their map modes still work, but nothing models or draws population, demographics or economy, and none of it ticks. Turn it off if you only want the map framework, or to save the load-time and tick cost.");
-            l.CheckboxLabeled("Split scattered factions into regional kin", ref FactionPlacementSettings.splitScatteredFactions,
-                "At world generation, a pirate, tribe, or rough-union faction whose settlements are scattered into separate clusters is split into loosely-related regional sub-factions — a north and a south tribe, kin but no longer one polity. The Empire and spacer civilisations stay whole. On by default.");
             l.CheckboxLabeled("Enable small regions (< 7 tiles)", ref FactionPlacementSettings.enableSmallRegions,
                 "Keep tiny 1-6 tile regions on the map instead of dropping them at world generation. They are real, settle-able regions, but too small to sustain a regional society — so they earn no regional benefits (no demographics or economy). Off by default: such slivers are dropped and their tiles left unassigned.");
             l.CheckboxLabeled("World-object integration (master)", ref Integration.WorldObjectIntegrationSettings.masterEnabled,
-                "Master switch for the 0.7+ integration layer. Off means R&T governs only vanilla objects.");
+                "Master switch for the world-object integration layer. Off means Regions & Societies governs only vanilla objects and leaves modded outposts, camps and bases alone.");
+            l.CheckboxLabeled("Placement rules for modded world objects", ref Integration.WorldObjectIntegrationSettings.placementGovernance,
+                "Apply region ownership, buffer distance and supply range to where modded world objects may be built.");
             l.CheckboxLabeled("Settlement tiers & capitals", ref Integration.WorldObjectIntegrationSettings.settlementTiers,
                 "Structural tiers (village → metropolis) from each faction's settlement pyramid, and the capital star marker.");
-            l.CheckboxLabeled("Seed outposts at world generation", ref Integration.WorldObjectIntegrationSettings.outpostSeeding,
-                "Place outposts around settlements up to each territory's tier-based allowance during world generation. Needs a compatibility patch that contributes an outpost creator (e.g. the Outposts Expanded patch).");
+
+            // Territorial ownership and the region lock. Both are per-world and safe to change mid-game: with
+            // a world loaded we edit that world's own flag; from the main menu we set the default for newly
+            // generated worlds. (Presented as a status line on the world-generation placement dialog, which
+            // points here.)
+            var mgr = Find.World?.GetComponent<SynapseRegionManager>();
+            if (mgr != null)
+            {
+                bool strict = mgr.StrictTerritorialOwnership, beforeStrict = strict;
+                l.CheckboxLabeled("Strict territorial ownership (this world)", ref strict,
+                    "On: Regions & Societies decides where settlements and outposts may be built — buffers, supply range and footholds. Off (compatibility): placement is left to vanilla and other mods. Regions are still generated and territory still owned and drawn. Safe to change mid-game.");
+                if (strict != beforeStrict) mgr.StrictTerritorialOwnership = strict;
+
+                bool locked = mgr.RegionLock, beforeLock = locked;
+                l.CheckboxLabeled("Enforce region locks (this world)", ref locked,
+                    "On: a faction (and holding seeding) is refused a settlement/outpost in a region a rival holds exclusively (≥71%). Off: that hard refusal stands down — buffers, spacing, supply range and footholds still apply. Safe to change mid-game.");
+                if (locked != beforeLock) mgr.RegionLock = locked;
+            }
+            else
+            {
+                l.CheckboxLabeled("Strict territorial ownership (new worlds)", ref FactionPlacementSettings.strictTerritorialOwnershipDefault,
+                    "Whether newly generated worlds enforce Regions & Societies' placement rules (buffers, supply range, footholds). Load a save to change that world's own setting.");
+                l.CheckboxLabeled("Enforce region locks (new worlds)", ref FactionPlacementSettings.regionLockDefault,
+                    "Whether newly generated worlds refuse a holding in a region a rival holds exclusively. Load a save to change that world's own setting.");
+            }
+
+            l.CheckboxLabeled("Log world object types no integration recognises", ref Integration.WorldObjectIntegrationSettings.logUnknownWorldObjects,
+                "Writes one message per unrecognised type. Useful when reporting a mod that Regions & Societies should support.");
             // #53: population caps and demographic tuning belong to the Societies layer; hide them when
             // it is off so the panel offers only what actually does something.
             if (FactionPlacementSettings.societiesEnabled)

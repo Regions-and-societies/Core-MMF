@@ -28,9 +28,15 @@ namespace RegionsAndSocieties
         public int placementOrder = 3;
 
         /// <summary>#46: how many territories may cluster together — the largest contiguous body this
-        /// faction builds: 1, 3, 5, 7 or 9 (= no limit). 0 = unset, resolved to the faction kind's
-        /// default on first read so a profile saved before 0.4.0 picks up the owner's table.</summary>
-        public int clusterSize = 0;
+        /// faction builds. Any positive number is a cap; 0 = no limit (one contiguous nation). -1 = unset,
+        /// resolved to the faction kind's default on first read.</summary>
+        public int clusterSize = -1;
+
+        /// <summary>Per-faction kin toggle (replaces the blanket split switch): whether this faction, when
+        /// its territory scatters, is organised into geographically separated regional groups. Clustering
+        /// (largest contiguous body) is a separate idea. -1 = unset (resolve to the kind default), 0 = off,
+        /// 1 = on. Stored as an int so "unset" is distinguishable and a per-kind default can fill it in.</summary>
+        public int enableKinRaw = -1;
 
         public FactionPlacementProfile() { }
 
@@ -68,7 +74,8 @@ namespace RegionsAndSocieties
                 }
             }
             Scribe_Values.Look(ref placementOrder, "placementOrder", 3);
-            Scribe_Values.Look(ref clusterSize, "clusterSize", 0);
+            Scribe_Values.Look(ref clusterSize, "clusterSize", -1);
+            Scribe_Values.Look(ref enableKinRaw, "enableKinRaw", -1);
         }
     }
 
@@ -87,7 +94,6 @@ namespace RegionsAndSocieties
         /// <see cref="Partition.IRegionPartitioner.AlgorithmId"/>. An existing save keeps the algorithm it
         /// was generated with (stamped on the world), so changing this never re-cuts a live map.</summary>
         public static string partitionAlgorithmId = Partition.RegionPartitionerRegistry.DefaultAlgorithmId;
-        public static float maxThreatPercent = 0.50f;
 
         /// <summary>
         /// Dev-only knobs, not in the settings UI (set them in the mod-settings XML). They exist for the
@@ -161,10 +167,6 @@ namespace RegionsAndSocieties
         /// </summary>
         public static bool mapFrameworkWarningDismissed = false;
 
-        /// <summary>#57: whether worldgen splits a scattered fractious faction (pirates, tribes, rough
-        /// unions) into loosely-related regional kin sub-factions. Default on.</summary>
-        public static bool splitScatteredFactions = true;
-
         /// <summary>#53: the master switch for the whole Societies layer — population, demographics and
         /// economy. Off means Regions only: the partition, territories, borders, placement and their map
         /// modes still run, but nothing models or draws population/demographics/economy, and none of it
@@ -184,11 +186,19 @@ namespace RegionsAndSocieties
         /// weights, placement order, clustering, and the same share row. Persisted so the choice sticks.</summary>
         public static bool placementUiAdvanced = false;
 
+        /// <summary>Advanced-view layout: false = one card per faction, true = a dense table (every faction
+        /// and setting in one grid, better for comparing while tuning). Persisted.</summary>
+        public static bool placementUiTable = false;
+
+        /// <summary>How each faction's placement number is read: Percent (default — a share of the total land
+        /// regions that self-scales, so a small vanilla world still fills) or Count (a literal region target).
+        /// Percent always normalises across whoever is present and fills the claimed-land area. Persisted.</summary>
+        public static Placement.PlacementValueMode placementValueMode = Placement.PlacementValueMode.Percent;
+
         public override void ExposeData()
         {
             base.ExposeData();
             Scribe_Values.Look(ref targetRegionSize, "targetRegionSize", 150);
-            Scribe_Values.Look(ref maxThreatPercent, "maxThreatPercent", 0.50f);
             Scribe_Values.Look(ref devQuicktestCoverage, "devQuicktestCoverage", 0f);
             Scribe_Values.Look(ref devQuicktestSeed, "devQuicktestSeed", "");
             Scribe_Values.Look(ref claimedLandAreaPercent, "maxSettlementPercentOfRegions", 0.50f);
@@ -200,10 +210,11 @@ namespace RegionsAndSocieties
             Scribe_Values.Look(ref regionPanelUseShift, "regionPanelUseShift", false);
             Scribe_Values.Look(ref maxRegionPanels, "maxRegionPanels", 2);
             Scribe_Values.Look(ref mapFrameworkWarningDismissed, "mapFrameworkWarningDismissed", false);
-            Scribe_Values.Look(ref splitScatteredFactions, "splitScatteredFactions", true);
             Scribe_Values.Look(ref societiesEnabled, "societiesEnabled", true);
             Scribe_Values.Look(ref enableSmallRegions, "enableSmallRegions", false);
             Scribe_Values.Look(ref placementUiAdvanced, "placementUiAdvanced", false);
+            Scribe_Values.Look(ref placementUiTable, "placementUiTable", false);
+            Scribe_Values.Look(ref placementValueMode, "placementValueMode", Placement.PlacementValueMode.Percent);
 
             // 0.7: world-object governance / mod-integration switches.
             Integration.WorldObjectIntegrationSettings.ExposeData();
@@ -238,7 +249,7 @@ namespace RegionsAndSocieties
                 profiles[def.defName] = p;
             }
             // #46: a profile saved before cluster size existed carries 0; resolve it to the kind's default.
-            if (p.clusterSize <= 0) p.clusterSize = DefaultClusterSize(def);
+            if (p.clusterSize < 0) p.clusterSize = DefaultClusterSize(def);
             // #47: a profile with no share yet (fresh, or from a save whose range midpoint was 0) gets the
             // kind's default share so the faction always has a slice.
             if (p.placementShare <= 0f) p.placementShare = DefaultShare(def);
@@ -252,6 +263,23 @@ namespace RegionsAndSocieties
         {
             var d = GetDefaultProfile(def);
             return Placement.PlacementShareRules.MigrateRangeToShareWeight(d.baseCountRange.min, d.baseCountRange.max);
+        }
+
+        /// <summary>The kin default for a faction kind: scattered low-tech factions (pirates, tribes, rough
+        /// unions) form regional kin by default; the Empire and cohesive civilisations do not, but a player
+        /// can turn kin on for any faction per-faction.</summary>
+        public static bool KinEnabledDefault(FactionDef def)
+        {
+            if (def == null) return false;
+            var kind = Placement.ClusteringRules.ClassifyKind(def.defName, def.label, (int)def.techLevel, def.permanentEnemy, def.hostileToFactionlessHumanlikes);
+            return Placement.SubFactionRules.IsSplittableKind(kind);
+        }
+
+        /// <summary>Whether this faction forms regional kin — the per-faction choice, else the kind default.</summary>
+        public static bool EffectiveEnableKin(FactionPlacementProfile p, FactionDef def)
+        {
+            if (p == null) return KinEnabledDefault(def);
+            return p.enableKinRaw >= 0 ? p.enableKinRaw == 1 : KinEnabledDefault(def);
         }
 
         /// <summary>#46: the owner's default cluster size for a faction — pirates and the Empire 3,

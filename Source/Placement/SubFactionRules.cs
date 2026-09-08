@@ -23,6 +23,21 @@ namespace RegionsAndSocieties.Placement
         public const int MaxSections = 3;
 
         /// <summary>
+        /// The likely number of kin factions a faction forms, from its region count and cluster size: each
+        /// contiguous body holds up to <paramref name="clusterSize"/> regions, so the territory falls into
+        /// about ceil(regions / clusterSize) bodies, and (with kin on) each body is a kin faction. An
+        /// unbounded cluster (or a count that fits one body) means one faction — no kin. Pure, so the dialog
+        /// and worldgen agree on the arithmetic.
+        /// </summary>
+        public static int EstimateKinCount(int regions, int clusterSize)
+        {
+            if (regions <= 0) return 1;
+            int cap = clusterSize <= 0 ? regions : clusterSize;
+            if (cap >= regions) return 1;
+            return (regions + cap - 1) / cap;   // ceil(regions / cap)
+        }
+
+        /// <summary>
         /// Compose a sub-faction's name from a directional <paramref name="label"/> (North/South/East/West/
         /// Central, possibly empty) and the parent's <paramref name="baseName"/>. A bare prefix reads badly
         /// when the base already opens with an article — "West The Abene Tribe" — so the direction is slipped
@@ -64,7 +79,7 @@ namespace RegionsAndSocieties.Placement
         public static bool ShouldSplit(FactionKind kind, int clusterCap, int bodyCount)
         {
             return bodyCount >= 2
-                && clusterCap < ClusteringRules.Unbounded
+                && !ClusteringRules.IsUnbounded(clusterCap)
                 && IsSplittableKind(kind);
         }
 

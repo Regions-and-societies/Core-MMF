@@ -85,6 +85,15 @@ namespace SubFactionRulesTests
             Check("all labels distinct", l3[0] != l3[1] && l3[1] != l3[2] && l3[0] != l3[2]);
             Check("goodwill constant is friendly kin, not merged", SubFactionRules.LooseKinGoodwill > 0 && SubFactionRules.LooseKinGoodwill < 100);
 
+            Section("kin-count estimate = ceil(regions / cluster size)");
+            Check("10 regions, cluster 5 -> 2 kin", SubFactionRules.EstimateKinCount(10, 5) == 2);
+            Check("10 regions, cluster 3 -> 4 kin", SubFactionRules.EstimateKinCount(10, 3) == 4);
+            Check("7 regions, cluster 7 -> 1 (fits one body)", SubFactionRules.EstimateKinCount(7, 7) == 1);
+            Check("15 regions, cluster 3 -> 5 kin", SubFactionRules.EstimateKinCount(15, 3) == 5);
+            Check("unbounded cluster (8) with 5 regions -> 1", SubFactionRules.EstimateKinCount(5, 8) == 1);
+            Check("cluster 1 -> one kin per region", SubFactionRules.EstimateKinCount(6, 1) == 6);
+            Check("degenerate zero regions -> 1", SubFactionRules.EstimateKinCount(0, 3) == 1);
+
             Section("name composition: direction slips in after a leading article (#59 polish)");
             Check("'The Abene Tribe' -> 'The West Abene Tribe'", SubFactionRules.ComposeName("West", "The Abene Tribe") == "The West Abene Tribe");
             Check("plain base just takes the prefix", SubFactionRules.ComposeName("North", "Toban Union") == "North Toban Union");

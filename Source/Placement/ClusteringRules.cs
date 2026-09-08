@@ -15,17 +15,16 @@ namespace RegionsAndSocieties.Placement
 
     /// <summary>
     /// Territory clustering (#46): how many territories a faction's holdings may cluster together — the
-    /// largest contiguous body it builds. A discrete cap of 1, 3, 5, 7 or 9+ (9 = no limit). The cap is a
-    /// <b>soft maximum</b>: placement ranks candidates that keep every body within the cap ahead of any
-    /// candidate that would overflow one, whatever the land is worth, and falls back to overflow only when
-    /// nothing else is left. Segmented factions (small caps) are seeded first so they can find isolated
-    /// ground before the map fills. Pure: numbers and ids in, ranks out.
+    /// largest contiguous body it builds. Any positive whole number is a cap; <b>0 means no limit</b> (one
+    /// contiguous nation). The cap is a <b>soft maximum</b>: placement ranks candidates that keep every body
+    /// within the cap ahead of any candidate that would overflow one, whatever the land is worth, and falls
+    /// back to overflow only when nothing else is left. Segmented factions (small caps) are seeded first so
+    /// they can find isolated ground before the map fills. Pure: numbers and ids in, ranks out.
     /// </summary>
     public static class ClusteringRules
     {
-        /// <summary>The "9+" stop: no cap at all.</summary>
-        public const int Unbounded = 9;
-        public static readonly int[] Stops = { 1, 3, 5, 7, Unbounded };
+        /// <summary>The "no limit" value: 0 means one contiguous nation, no cap on body size.</summary>
+        public const int Unbounded = 0;
 
         /// <summary>How far a NEW body must sit from the faction's other bodies, in tiles (#46). Two
         /// separate clusters landing side by side read as one big cluster and defeat the cap, so opening a
@@ -36,26 +35,19 @@ namespace RegionsAndSocieties.Placement
         // RimWorld's TechLevel ordinals: Undefined 0, Animal 1, Neolithic 2, Medieval 3, Industrial 4, Spacer 5 ...
         public const int TechIndustrial = 4;
 
-        public static bool IsUnbounded(int cap) { return cap >= Unbounded; }
+        /// <summary>0 (or any non-positive value) means no cap on body size.</summary>
+        public static bool IsUnbounded(int cap) { return cap <= 0; }
 
-        /// <summary>Snap any value onto the nearest slider stop; non-positive (unset) reads as unbounded.</summary>
+        /// <summary>Normalise a cluster-size value: a positive number is a literal cap; anything ≤ 0 is
+        /// unbounded (0). No upper limit — the player may type any whole number, and 0 = infinite.</summary>
         public static int Snap(int value)
         {
-            if (value <= 0) return Unbounded;
-            if (value >= Unbounded) return Unbounded;
-            int best = Stops[0];
-            int bestDist = Math.Abs(value - best);
-            for (int i = 1; i < Stops.Length; i++)
-            {
-                int d = Math.Abs(value - Stops[i]);
-                if (d < bestDist) { best = Stops[i]; bestDist = d; }
-            }
-            return best;
+            return value <= 0 ? Unbounded : value;
         }
 
         public static string Label(int cap)
         {
-            return IsUnbounded(cap) ? "9+ (no limit)" : cap.ToString();
+            return IsUnbounded(cap) ? "0 = no limit" : cap.ToString();
         }
 
         /// <summary>
@@ -77,7 +69,7 @@ namespace RegionsAndSocieties.Placement
         }
 
         /// <summary>The owner's defaults: pirates and the shattered Empire 3, tribes 5, rough unions 7,
-        /// everyone else no limit.</summary>
+        /// everyone else no limit (8+).</summary>
         public static int DefaultClusterSize(FactionKind kind)
         {
             switch (kind)
@@ -136,7 +128,11 @@ namespace RegionsAndSocieties.Placement
         }
 
         /// <summary>Primary seeding key: ascending cluster size, so the most segmented factions place first.</summary>
-        public static int SeedingKey(int clusterSize) { return Snap(clusterSize); }
+        public static int SeedingKey(int clusterSize)
+        {
+            int s = Snap(clusterSize);
+            return IsUnbounded(s) ? int.MaxValue : s;   // unbounded (0) is least segmented → seeds last
+        }
     }
 
     /// <summary>
