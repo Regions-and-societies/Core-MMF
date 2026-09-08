@@ -124,29 +124,24 @@ namespace RegionsAndSocieties
 
             l.CheckboxLabeled("Log world object types no integration recognises", ref Integration.WorldObjectIntegrationSettings.logUnknownWorldObjects,
                 "Writes one message per unrecognised type. Useful when reporting a mod that Regions & Societies should support.");
-            // #53: population caps and demographic tuning belong to the Societies layer; hide them when
-            // it is off so the panel offers only what actually does something.
+            // #53: the population model's tuning belongs to the Societies layer; hide it when off. The old
+            // "Population caps" on/off checkbox was removed — it gated nothing (the model always applies);
+            // only these multipliers actually do something, so they are shown directly.
             if (FactionPlacementSettings.societiesEnabled)
-            {
-            l.CheckboxLabeled("Population caps (model only)", ref Integration.WorldObjectIntegrationSettings.populationCaps,
-                "Model a per-tier population cap that settlements drift toward. Never adds or removes the player's real colonists.");
-
-            if (Integration.WorldObjectIntegrationSettings.populationCaps)
             {
                 float mult = Integration.WorldObjectIntegrationSettings.populationCapMultiplier;
                 mult = Mathf.RoundToInt(l.SliderLabeled(
-                    $"   Population cap multiplier: {mult:0}  (metropolis ≈ {15 * mult:0} pawns, village ≈ {mult:0})",
+                    $"Population cap multiplier: {mult:0}  (metropolis ≈ {15 * mult:0} pawns, village ≈ {mult:0})",
                     mult, 5f, 60f));
                 Integration.WorldObjectIntegrationSettings.populationCapMultiplier = mult;
 
                 float growth = Integration.WorldObjectIntegrationSettings.growthRateMultiplier;
                 growth = l.SliderLabeled(
-                    $"   Population growth rate: {growth:0.0}× real  (a healthy town grows ~{1.5f * growth:0}%/yr)",
+                    $"Population growth rate: {growth:0.0}× real  (a healthy town grows ~{1.5f * growth:0}%/yr)",
                     growth,
                     Integration.WorldObjectIntegrationSettings.GrowthRateMultiplierMin,
                     Integration.WorldObjectIntegrationSettings.GrowthRateMultiplierMax);
                 Integration.WorldObjectIntegrationSettings.growthRateMultiplier = (float)System.Math.Round(growth, 1);
-            }
 
             l.CheckboxLabeled("Demographic pressure tuning", ref demographicTuningExpanded, "Show the reach/falloff sliders that shape how far a settlement's make-up carries and how contested its borders are.");
             if (demographicTuningExpanded)
