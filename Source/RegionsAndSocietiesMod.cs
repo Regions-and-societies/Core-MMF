@@ -13,6 +13,7 @@ namespace RegionsAndSocieties
     {
         public static FactionPlacementSettings Settings;
         private static bool demographicTuningExpanded;
+        private static string maxPanelsBuffer;
 
         /// <summary>#53: whether the Societies layer (population, demographics, economy) runs at all.
         /// The single gate every societies entry point reads; off means Regions only.</summary>
@@ -25,9 +26,7 @@ namespace RegionsAndSocieties
             var l = new Listing_Standard();
             l.Begin(inRect);
 
-            l.Label($"Claimed land area (settlement density): {Mathf.RoundToInt(FactionPlacementSettings.claimedLandAreaPercent * 100f)}%",
-                tooltip: "The single density knob (#51): the target share of livable land area claimed by faction territories at world generation. Higher means more settlements. Replaces the old tile-count scaling; also settable on the world-generation screen. Applies to newly generated worlds.");
-            FactionPlacementSettings.claimedLandAreaPercent = l.Slider(FactionPlacementSettings.claimedLandAreaPercent, 0.10f, 0.90f);
+            // Claimed land area (settlement density) moved to the world-creation Geographic Placement dialog.
 
             l.Label($"Territory compactness (squaring): {Mathf.RoundToInt(FactionPlacementSettings.territoryCompactness * 100f)}%",
                 tooltip: "How strongly territories prefer squaring off over spidering (#19). Growth favors provinces already embedded in the domain — filling pockets before extending tendrils. 0% is the old purely-greedy behavior; 100% means a poorly-connected province is chosen only when its land is dramatically better. Applies to newly generated worlds and to expansion mods that read the compactness endpoint.");
@@ -55,13 +54,16 @@ namespace RegionsAndSocieties
                 GUI.color = Color.white;
             }
 
+            // Biome region sizes — per-biome multipliers on the region size band, so a player can make sparse
+            // biomes (ice, desert) subdivide more or less. Ours are the defaults; opens a dedicated editor.
+            if (l.ButtonText("Biome region sizes…"))
+                Find.WindowStack.Add(new UI.Dialog_BiomeRegionWeights());
+            GUI.color = new Color(0.7f, 0.7f, 0.7f);
+            l.Label("Tune how big each biome's regions are (ice & desert default larger). Applies to newly generated worlds.");
+            GUI.color = Color.white;
+
             l.GapLine();
 
-            l.CheckboxLabeled("Show ownership calculation breakdown in the region panel",
-                ref FactionPlacementSettings.showCalculationBreakdowns,
-                "Adds the developer ownership-derivation readout to the expanded region panel (opened with the modifier + click chosen below). Off by default, and never shown in the hover tooltip.");
-
-            l.Gap();
             l.Label("Open a region's comparison panel with:");
             if (l.RadioButton("Ctrl + click", !FactionPlacementSettings.regionPanelUseShift))
             {
@@ -73,24 +75,55 @@ namespace RegionsAndSocieties
             }
 
             l.Gap();
-            FactionPlacementSettings.maxRegionPanels = Mathf.RoundToInt(l.SliderLabeled(
-                $"Max comparison panels open at once: {FactionPlacementSettings.maxRegionPanels}",
-                FactionPlacementSettings.maxRegionPanels, 1f, 8f));
+            // Max comparison panels: a free-entry number, 0 = no limit.
+            l.Label($"Max comparison panels open at once ({(FactionPlacementSettings.maxRegionPanels <= 0 ? "no limit" : FactionPlacementSettings.maxRegionPanels.ToString())}):",
+                tooltip: "How many region comparison panels can be open together. Type 0 for no limit.");
+            string mpBuf = maxPanelsBuffer ?? FactionPlacementSettings.maxRegionPanels.ToString();
+            var mpRect = l.GetRect(28f);
+            mpRect.width = 90f;
+            Widgets.TextFieldNumeric(mpRect, ref FactionPlacementSettings.maxRegionPanels, ref mpBuf, 0f, 999f);
+            maxPanelsBuffer = mpBuf;
 
             l.GapLine();
             l.Label("Regions and Societies features — toggle any off to avoid conflicts with other mods:");
             l.CheckboxLabeled("Societies: population, demographics & economy", ref FactionPlacementSettings.societiesEnabled,
                 "The whole Societies layer. Off means Regions only — the partition, territories, borders, placement and their map modes still work, but nothing models or draws population, demographics or economy, and none of it ticks. Turn it off if you only want the map framework, or to save the load-time and tick cost.");
-            l.CheckboxLabeled("Split scattered factions into regional kin", ref FactionPlacementSettings.splitScatteredFactions,
-                "At world generation, a pirate, tribe, or rough-union faction whose settlements are scattered into separate clusters is split into loosely-related regional sub-factions — a north and a south tribe, kin but no longer one polity. The Empire and spacer civilisations stay whole. On by default.");
             l.CheckboxLabeled("Enable small regions (< 7 tiles)", ref FactionPlacementSettings.enableSmallRegions,
                 "Keep tiny 1-6 tile regions on the map instead of dropping them at world generation. They are real, settle-able regions, but too small to sustain a regional society — so they earn no regional benefits (no demographics or economy). Off by default: such slivers are dropped and their tiles left unassigned.");
             l.CheckboxLabeled("World-object integration (master)", ref Integration.WorldObjectIntegrationSettings.masterEnabled,
-                "Master switch for the 0.7+ integration layer. Off means R&T governs only vanilla objects.");
+                "Master switch for the world-object integration layer. Off means Regions & Societies governs only vanilla objects and leaves modded outposts, camps and bases alone.");
+            l.CheckboxLabeled("Placement rules for modded world objects", ref Integration.WorldObjectIntegrationSettings.placementGovernance,
+                "Apply region ownership, buffer distance and supply range to where modded world objects may be built.");
             l.CheckboxLabeled("Settlement tiers & capitals", ref Integration.WorldObjectIntegrationSettings.settlementTiers,
                 "Structural tiers (village → metropolis) from each faction's settlement pyramid, and the capital star marker.");
-            l.CheckboxLabeled("Seed outposts at world generation", ref Integration.WorldObjectIntegrationSettings.outpostSeeding,
-                "Place outposts around settlements up to each territory's tier-based allowance during world generation. Needs a compatibility patch that contributes an outpost creator (e.g. the Outposts Expanded patch).");
+
+            // Territorial ownership and the region lock. Both are per-world and safe to change mid-game: with
+            // a world loaded we edit that world's own flag; from the main menu we set the default for newly
+            // generated worlds. (Presented as a status line on the world-generation placement dialog, which
+            // points here.)
+            var mgr = Find.World?.GetComponent<SynapseRegionManager>();
+            if (mgr != null)
+            {
+                bool strict = mgr.StrictTerritorialOwnership, beforeStrict = strict;
+                l.CheckboxLabeled("Strict territorial ownership (this world)", ref strict,
+                    "On: Regions & Societies decides where settlements and outposts may be built — buffers, supply range and footholds. Off (compatibility): placement is left to vanilla and other mods. Regions are still generated and territory still owned and drawn. Safe to change mid-game.");
+                if (strict != beforeStrict) mgr.StrictTerritorialOwnership = strict;
+
+                bool locked = mgr.RegionLock, beforeLock = locked;
+                l.CheckboxLabeled("Enforce region locks (this world)", ref locked,
+                    "On: a faction (and holding seeding) is refused a settlement/outpost in a region a rival holds exclusively (≥71%). Off: that hard refusal stands down — buffers, spacing, supply range and footholds still apply. Safe to change mid-game.");
+                if (locked != beforeLock) mgr.RegionLock = locked;
+            }
+            else
+            {
+                l.CheckboxLabeled("Strict territorial ownership (new worlds)", ref FactionPlacementSettings.strictTerritorialOwnershipDefault,
+                    "Whether newly generated worlds enforce Regions & Societies' placement rules (buffers, supply range, footholds). Load a save to change that world's own setting.");
+                l.CheckboxLabeled("Enforce region locks (new worlds)", ref FactionPlacementSettings.regionLockDefault,
+                    "Whether newly generated worlds refuse a holding in a region a rival holds exclusively. Load a save to change that world's own setting.");
+            }
+
+            l.CheckboxLabeled("Log world object types no integration recognises", ref Integration.WorldObjectIntegrationSettings.logUnknownWorldObjects,
+                "Writes one message per unrecognised type. Useful when reporting a mod that Regions & Societies should support.");
             // #53: population caps and demographic tuning belong to the Societies layer; hide them when
             // it is off so the panel offers only what actually does something.
             if (FactionPlacementSettings.societiesEnabled)

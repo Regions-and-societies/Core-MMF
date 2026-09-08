@@ -222,91 +222,77 @@ namespace RegionsAndSocieties.Patches
 
             // Calculate raw target base counts for all NPC factions
             Dictionary<Faction, int> factionTargetBases = new Dictionary<Faction, int>();
-            int totalHostileTarget = 0;
-            int totalNonHostileTarget = 0;
 
-            // #47: the relative distribution is now the per-faction SHARE weight, not a random draw. Each
-            // faction's stored share (a "%" the player edits; shares need not sum to 100) seeds its raw
-            // target; the threat cap and the density-driven global normalisation below scale the whole set
-            // to the number of territories the map actually allows, so the shares set only the split.
-            foreach (var faction in allNPCFactions)
+            // #47 follow-up: per-faction distribution honours the VALUE MODE. PERCENT (default) makes each
+            // faction's stored number a share of the total land regions that self-scales — so a small vanilla
+            // world still fills, where a fixed count would leave it sparse — while COUNT keeps it a literal
+            // region target. DistributeRegions is the SAME pure arithmetic the placement dialog and its pie
+            // chart display, so what the player sees is what worldgen builds. Density (claimed land area) is
+            // folded in by DistributeRegions in percent mode; the settleable-land cap below still applies on
+            // top. The floor of one base per faction keeps every faction on the map.
+            var npcFactionList = allNPCFactions.ToList();
+            int landProvinceCount = allProvinces.Count(p => p.provinceType == ProvinceType.Land);
+
+            var shareWeights = new List<float>(npcFactionList.Count);
+            foreach (var faction in npcFactionList)
             {
                 var shareProfile = FactionPlacementSettings.GetProfile(faction.def);
-                float shareWeight = (shareProfile != null && shareProfile.placementShare > 0f)
+                float w = (shareProfile != null && shareProfile.placementShare > 0f)
                     ? shareProfile.placementShare
                     : FactionPlacementSettings.DefaultShare(faction.def);
-                int baseCount = Mathf.Max(1, Mathf.RoundToInt(shareWeight));
-
-                factionTargetBases[faction] = baseCount;
-
-                bool isHostile = (playerFaction != null) ? faction.HostileTo(playerFaction) : faction.def.permanentEnemy;
-                if (isHostile)
-                {
-                    totalHostileTarget += baseCount;
-                }
-                else
-                {
-                    totalNonHostileTarget += baseCount;
-                }
+                shareWeights.Add(w);
             }
 
-            // Adjust for threat percentage cap (default 50%)
-            float maxThreatPercent = FactionPlacementSettings.maxThreatPercent;
-            if (maxThreatPercent < 1.0f && totalNonHostileTarget > 0)
-            {
-                int maxHostileAllowed = Mathf.RoundToInt(totalNonHostileTarget * maxThreatPercent / (1f - maxThreatPercent));
-                if (totalHostileTarget > maxHostileAllowed)
-                {
-                    float hostileScale = (float)maxHostileAllowed / totalHostileTarget;
-                    foreach (var faction in allNPCFactions)
-                    {
-                        bool isHostile = (playerFaction != null) ? faction.HostileTo(playerFaction) : faction.def.permanentEnemy;
-                        if (isHostile)
-                        {
-                            int scaled = Mathf.RoundToInt(factionTargetBases[faction] * hostileScale);
-                            factionTargetBases[faction] = Mathf.Max(1, scaled);
-                        }
-                    }
-                }
-            }
+            // One combined relative-size model (the static/percentage switch was dropped): shares self-scale
+            // to the land, normalised, with a guaranteed minimum of one region per faction.
+            int[] distributed = Placement.PlacementShareRules.DistributeRegions(
+                Placement.PlacementValueMode.Percent, Placement.PlacementPercentBasis.SettledNormalized, shareWeights, landProvinceCount,
+                FactionPlacementSettings.claimedLandAreaPercent);
 
-            // #51: the total settlement volume is driven by a single density knob — the target fraction of
-            // livable LAND area claimed by territories — not by the old raw tile-count scaling (which made
-            // planets wall-to-wall and blew up on large worlds). Each settlement claims one province, so the
-            // fraction is applied to the count of LAND provinces (the unit of claimed ground; ocean is not
-            // livable and is excluded). Scaling is BIDIRECTIONAL so the knob is the single monotonic driver:
-            // the per-faction counts computed above become only the relative distribution and are normalized
-            // to hit the target. The floor of one base per faction keeps every faction on the map.
-            int landProvinceCount = allProvinces.Count(p => p.provinceType == ProvinceType.Land);
-            // The player must always have somewhere to land: reserve at least one settleable land
-            // province (>=20 tiles, the same floor the province scorer applies) that NPC placement may
-            // never claim. At small worlds / low coverage the faction-count floor below could otherwise
-            // occupy every region, and the starting-site chooser errors out with no valid tile
-            // ("Failed to find faction base tile for PlayerColony").
+            for (int i = 0; i < npcFactionList.Count; i++)
+                factionTargetBases[npcFactionList[i]] = Mathf.Max(1, distributed[i]);   // keep every faction on the map
+
+            // The player must always have somewhere to land: reserve at least one settleable land province
+            // (>=20 tiles, the province scorer's floor) that NPC placement may never claim, or the starting
+            // -site chooser errors out ("Failed to find faction base tile for PlayerColony"). The map cannot
+            // hold more than its settleable land, so if the demand still exceeds the settleable cap after the
+            // distribution, scale the whole set down proportionally to fit (largest-remainder, so it sums
+            // exactly and no faction is singled out by rounding).
             int settleableLandProvinces = allProvinces.Count(p =>
                 p.provinceType == ProvinceType.Land && p.tiles != null && p.tiles.Count >= 20);
-            int totalBasesAfterThreat = factionTargetBases.Values.Sum();
-            int maxBasesAllowed = Mathf.Max(allNPCFactions.Count, Mathf.RoundToInt(landProvinceCount * FactionPlacementSettings.claimedLandAreaPercent));
-            maxBasesAllowed = Mathf.Min(maxBasesAllowed, Mathf.Max(0, settleableLandProvinces - PlayerReserveProvinces));
-
-            if (totalBasesAfterThreat > 0 && totalBasesAfterThreat != maxBasesAllowed)
+            int settleCap = Mathf.Max(0, settleableLandProvinces - PlayerReserveProvinces);
+            int totalBasesDemanded = factionTargetBases.Values.Sum();
+            if (settleCap > 0 && totalBasesDemanded > settleCap)
             {
-                float globalScale = (float)maxBasesAllowed / totalBasesAfterThreat;
-                foreach (var faction in allNPCFactions)
-                {
-                    int scaled = Mathf.RoundToInt(factionTargetBases[faction] * globalScale);
-                    factionTargetBases[faction] = Mathf.Max(1, scaled);
-                }
+                var capWeights = npcFactionList.Select(f => (float)factionTargetBases[f]).ToList();
+                int[] capped = Placement.PlacementShareRules.Apportion(capWeights, settleCap);
+                for (int i = 0; i < npcFactionList.Count; i++)
+                    factionTargetBases[npcFactionList[i]] = capped[i];
+                Log.Warning($"[RegionsAndSocieties] Placement demand {totalBasesDemanded} regions exceeds the {settleCap} settleable — scaled down to fit.");
             }
 
             // Seeding order (#46): the most segmented factions place first — ascending cluster size
             // (3s, then 5s, 7s, then the unbounded) — so a faction that must scatter can still find
             // isolated ground before the map fills. Within one cluster stop the old order stands: sort
             // and interleave NPC factions 1 Industrial, then 1 Tribal, then 1 other.
-            int ClusterOf(Faction f)
+            // Kin faction count for a faction, from the two clustering knobs and its planned region count.
+            int KinCountOf(Faction f)
             {
                 var prof = FactionPlacementSettings.GetProfile(f.def);
-                return Placement.ClusteringRules.SeedingKey(prof != null ? prof.clusterSize : 0);
+                if (!FactionPlacementSettings.EffectiveEnableKin(prof, f.def)) return 1;
+                int regions = factionTargetBases.TryGetValue(f, out var b) ? b : 0;
+                int clusters = FactionPlacementSettings.EffectiveClusterCount(prof, f.def);
+                int minSize = prof != null ? prof.clusterSize : 0;
+                return Placement.SubFactionRules.PlannedKinCount(regions, clusters, minSize);
+            }
+
+            int ClusterOf(Faction f)
+            {
+                int planned = factionTargetBases.TryGetValue(f, out var b) ? b : 0;
+                // Seed by the body-size cap that produces this faction's cluster count — more clusters (smaller
+                // bodies) seed first so a fragmented faction finds isolated ground before the map fills.
+                int cap = Placement.ClusteringRules.BodyCap(planned, KinCountOf(f));
+                return Placement.ClusteringRules.SeedingKey(cap);
             }
 
             List<Faction> alternatingFactions = new List<Faction>();
@@ -424,11 +410,11 @@ namespace RegionsAndSocieties.Patches
 
                 int baseCount = factionTargetBases.ContainsKey(faction) ? factionTargetBases[faction] : 5;
 
-                // #46 clustering: this faction's cap on how many territories cluster together, and the
-                // bodies (land-connected sets of its provinces) it has built so far. A candidate that
-                // would push a body over the cap ranks behind every candidate that would not, and is
-                // taken only when nothing else is left.
-                int clusterCap = Placement.ClusteringRules.Snap(profile.clusterSize);
+                // Clustering: the faction physically scatters into ~kinCount contiguous bodies, so the body-
+                // size cap is ceil(regions / kinCount). kinCount combines the two knobs — number of clusters
+                // (equal division) clamped by the minimum cluster size. A candidate that would push a body
+                // over the cap ranks behind every candidate that would not, taken only as a last resort.
+                int clusterCap = Placement.ClusteringRules.BodyCap(baseCount, KinCountOf(faction));
                 var bodies = new Placement.TerritoryBodies();
                 int overflowPicks = 0;
 
@@ -815,7 +801,8 @@ namespace RegionsAndSocieties.Patches
             SynapseRegionManager regionManager, WorldObjectsHolder worldObjects, WorldGrid worldGrid)
         {
             if (factionManager == null || regionManager == null || worldObjects == null || worldGrid == null) return;
-            if (!FactionPlacementSettings.splitScatteredFactions) return;   // #57: toggle, default on
+            // Kin is now a per-faction choice (each faction's enableKin, defaulted from its kind) — the blanket
+            // toggle is gone. Each faction is gated individually in the loop below.
 
             // Settlement provinces per faction (only surface settlements count).
             var provincesByFaction = new Dictionary<Faction, List<GeographicProvince>>();
@@ -842,16 +829,24 @@ namespace RegionsAndSocieties.Patches
                 if (!provincesByFaction.TryGetValue(parent, out var provs) || provs.Count == 0) continue;
 
                 var profile = FactionPlacementSettings.GetProfile(parent.def);
-                int cap = Placement.ClusteringRules.Snap(profile != null ? profile.clusterSize : 0);
-                var kind = Placement.ClusteringRules.ClassifyKind(parent.def.defName, parent.def.label,
-                    (int)parent.def.techLevel, parent.def.permanentEnemy, parent.def.hostileToFactionlessHumanlikes);
+
+                // Kin is enabled per faction (defaulted from its kind). If off, this faction stays whole —
+                // its scattered clusters are just the same faction's territory, no kin factions are made.
+                if (!FactionPlacementSettings.EffectiveEnableKin(profile, parent.def)) continue;
 
                 var bodies = BuildFactionBodies(provs);
-                if (!Placement.SubFactionRules.ShouldSplit(kind, cap, bodies.Count)) continue;
+                if (bodies.Count < 2) continue;   // needs at least two clusters to form regional kin
 
-                int k = Placement.SubFactionRules.SectionCount(bodies.Count, Placement.SubFactionRules.MaxSections);
-                if (k <= 1) continue;
+                // How many kin factions this faction forms — the two knobs combined: number of clusters
+                // (equal division) clamped by the minimum cluster size, capped at the bodies it actually has.
+                int clusters = FactionPlacementSettings.EffectiveClusterCount(profile, parent.def);
+                int kinCount = Placement.SubFactionRules.PlannedKinCount(provs.Count, clusters, profile.clusterSize);
+                int k = kinCount < bodies.Count ? kinCount : bodies.Count;
+                if (k < 2) continue;   // resolves to one faction — no kin
 
+                // Group the bodies into k geographic sections (equal-ish division by centroid); each section
+                // becomes one kin faction. This CAPS the kin count at k even when terrain fragmented the
+                // faction into more bodies than k.
                 var centroids = new List<Placement.GeoPoint>(bodies.Count);
                 foreach (var b in bodies) centroids.Add(BodyCentroid(b, worldGrid));
                 int[] sectionOf = Placement.SubFactionRules.AssignSections(centroids, k);
@@ -866,13 +861,15 @@ namespace RegionsAndSocieties.Patches
                     sx[s] += centroids[bi].X; sy[s] += centroids[bi].Y; sz[s] += centroids[bi].Z; sc[s]++;
                 }
                 var sectionPts = new List<Placement.GeoPoint>(k);
-                for (int s = 0; s < k; s++) { int n = System.Math.Max(1, sc[s]); sectionPts.Add(new Placement.GeoPoint(sx[s] / n, sy[s] / n, sz[s] / n)); }
+                for (int s = 0; s < k; s++) { int nn = System.Math.Max(1, sc[s]); sectionPts.Add(new Placement.GeoPoint(sx[s] / nn, sy[s] / nn, sz[s] / nn)); }
 
-                // The section with the most settlement provinces keeps the parent faction.
+                // The section with the most settlement provinces keeps the parent faction (clean base name).
                 int keep = 0;
                 for (int s = 1; s < k; s++) if (sectionProvs[s].Count > sectionProvs[keep].Count) keep = s;
 
-                string[] labels = Placement.SubFactionRules.SectionLabels(sectionPts);
+                // One distinct compass label per section; the kept section gets the clean base name.
+                string[] labels = Placement.SubFactionRules.BodyLabels(sectionPts, keep);
+
                 string baseName = parent.Name;
                 if (!string.IsNullOrEmpty(labels[keep])) parent.Name = Placement.SubFactionRules.ComposeName(labels[keep], baseName);
 
@@ -917,7 +914,7 @@ namespace RegionsAndSocieties.Patches
                         if (!p.owningFactionIds.Contains(subId)) p.owningFactionIds.Add(subId);
                     }
                     created++;
-                    Log.Message($"[RegionsAndSocieties] #57: split '{sub.Name}' off '{parent.Name}' ({sectionProvs[s].Count} provinces).");
+                    Log.Message($"[RegionsAndSocieties] #57: kin '{sub.Name}' off '{parent.Name}' ({sectionProvs[s].Count} provinces).");
                 }
             }
             if (created > 0)
@@ -1352,6 +1349,29 @@ namespace RegionsAndSocieties.Patches
             int tiles = __result?.grid?.TilesCount ?? 0;
             int settlements = __result?.worldObjects?.Settlements?.Count ?? 0;
             Log.Message($"[RegionsAndSocieties] World generation completed in {worldgenTimer.ElapsedMilliseconds} ms ({planetCoverage:P0} coverage, {tiles} tiles, {settlements} settlements).");
+
+            // Region-estimate calibration line (#54/#47): exact land-tile count, land fraction, land-region
+            // count and average region size for the generated world — the pre-gen dialog can only estimate
+            // these from planet coverage, so this is the ground truth to calibrate that estimate against.
+            try
+            {
+                int landTiles = 0;
+                var grid = __result?.grid;
+                if (grid != null)
+                {
+                    int tc = grid.TilesCount;
+                    for (int i = 0; i < tc; i++) if (!grid[i].WaterCovered) landTiles++;
+                }
+                int landRegions = 0;
+                var mgr = __result?.GetComponent<SynapseRegionManager>();
+                if (mgr?.Provinces != null)
+                    foreach (var pr in mgr.Provinces)
+                        if (pr.provinceType == ProvinceType.Land && pr.tiles != null && pr.tiles.Count > 0) landRegions++;
+                float landFrac = tiles > 0 ? (float)landTiles / tiles : 0f;
+                float avgRegion = landRegions > 0 ? (float)landTiles / landRegions : 0f;
+                Log.Message($"[RegionsAndSocieties] CALIB: coverage={planetCoverage:P0} totalTiles={tiles} landTiles={landTiles} landFrac={landFrac:P1} landRegions={landRegions} avgRegionTiles={avgRegion:F1} targetSize={FactionPlacementSettings.targetRegionSize}");
+            }
+            catch (Exception ex) { Log.Warning($"[RegionsAndSocieties] CALIB line failed: {ex.Message}"); }
             worldgenTimer = null;
         }
     }

@@ -174,7 +174,7 @@ run_suite placementestimates Exe \
 # estimate, largest-remainder apportionment. Pure, no game.
 run_suite placementshare Exe \
     Tests/PlacementShareRulesTests.cs \
-    $SRC/Placement/PlacementShareRules.cs
+    $SRC/Placement/PlacementShareRules.cs $SRC/Placement/PlacementValueMode.cs
 
 # 0.4.0 small-island handling (#49): the join threshold and the 30-tile archipelago chain cut.
 # Pure, no game.
@@ -186,13 +186,13 @@ run_suite island Exe \
 # ranking, body tracking with merges, ascending seeding key. Pure, no game.
 run_suite clustering Exe \
     Tests/ClusteringRulesTests.cs \
-    $SRC/Placement/ClusteringRules.cs
+    $SRC/Placement/ClusteringRules.cs $SRC/Placement/PlacementValueMode.cs
 
 # 0.4.0 sub-faction splitting (#57): the eligibility gate, section count, geographic grouping and
 # direction labels. Pure, no game; needs the clustering rules for the caps.
 run_suite subfaction Exe \
     Tests/SubFactionRulesTests.cs \
-    $SRC/Placement/SubFactionRules.cs $SRC/Placement/ClusteringRules.cs
+    $SRC/Placement/SubFactionRules.cs $SRC/Placement/ClusteringRules.cs $SRC/Placement/PlacementValueMode.cs
 
 # 0.2.0 territory-shape core (#19): embeddedness, desired-ratio scoring, domain compactness.
 run_suite compactness Exe \

@@ -85,6 +85,38 @@ namespace SubFactionRulesTests
             Check("all labels distinct", l3[0] != l3[1] && l3[1] != l3[2] && l3[0] != l3[2]);
             Check("goodwill constant is friendly kin, not merged", SubFactionRules.LooseKinGoodwill > 0 && SubFactionRules.LooseKinGoodwill < 100);
 
+            Section("kin-count estimate = ceil(regions / cluster size)");
+            Check("10 regions, cluster 5 -> 2 kin", SubFactionRules.EstimateKinCount(10, 5) == 2);
+            Check("10 regions, cluster 3 -> 4 kin", SubFactionRules.EstimateKinCount(10, 3) == 4);
+            Check("7 regions, cluster 7 -> 1 (fits one body)", SubFactionRules.EstimateKinCount(7, 7) == 1);
+            Check("15 regions, cluster 3 -> 5 kin", SubFactionRules.EstimateKinCount(15, 3) == 5);
+            Check("unbounded cluster (8) with 5 regions -> 1", SubFactionRules.EstimateKinCount(5, 8) == 1);
+            Check("cluster 1 -> one kin per region", SubFactionRules.EstimateKinCount(6, 1) == 6);
+            Check("degenerate zero regions -> 1", SubFactionRules.EstimateKinCount(0, 3) == 1);
+
+            Section("planned kin count is mode-aware (count = size, percent = cluster number)");
+            // kin = min(numberOfClusters, floor(regions / minClusterSize)), >= 1.
+            Check("tribe 39 regions, 3 clusters, min 5 -> 3 (cap bites)", SubFactionRules.PlannedKinCount(39, 3, 5) == 3);
+            Check("pirate 39 regions, 5 clusters, min 3 -> 5", SubFactionRules.PlannedKinCount(39, 5, 3) == 5);
+            Check("rough 39 regions, 2 clusters, min 7 -> 2", SubFactionRules.PlannedKinCount(39, 2, 7) == 2);
+            Check("min-size clamp bites: 12 regions, 5 clusters, min 5 -> 2", SubFactionRules.PlannedKinCount(12, 5, 5) == 2);
+            Check("cohesive: 1 cluster -> whole", SubFactionRules.PlannedKinCount(40, 1, 5) == 1);
+            Check("0 clusters = uncapped: floor(regions/min)", SubFactionRules.PlannedKinCount(40, 0, 5) == 8);
+            Check("0 clusters + min 1 = one faction per region", SubFactionRules.PlannedKinCount(40, 0, 1) == 40);
+            Check("never below 1", SubFactionRules.PlannedKinCount(2, 5, 9) == 1 && SubFactionRules.PlannedKinCount(0, 5, 3) == 1);
+
+            Section("body labels: compass bearings, kept body keeps the clean base name, distinct per body");
+            var bl = new List<GeoPoint> { new GeoPoint(0, 2, 0), new GeoPoint(0, -2, 0), new GeoPoint(2, 0, 0) };
+            var lbls = SubFactionRules.BodyLabels(bl, 2);   // keep the eastern body
+            Check("kept body -> empty (clean base name)", lbls[2] == "");
+            Check("northern body -> North", lbls[0] == "North");
+            Check("southern body -> South", lbls[1] == "South");
+            var north4 = new List<GeoPoint> { new GeoPoint(0, -3, 0), new GeoPoint(0, 2, 0), new GeoPoint(0.05, 2.1, 0), new GeoPoint(-0.05, 2.05, 0) };
+            var l4 = SubFactionRules.BodyLabels(north4, 0);   // keep the lone southern body
+            Check("kept clean", l4[0] == "");
+            Check("clustered same-bearing bodies get DISTINCT non-empty labels", l4[1] != "" && l4[2] != "" && l4[3] != "" && l4[1] != l4[2] && l4[2] != l4[3] && l4[1] != l4[3]);
+            Check("empty input safe", SubFactionRules.BodyLabels(new List<GeoPoint>(), 0).Length == 0);
+
             Section("name composition: direction slips in after a leading article (#59 polish)");
             Check("'The Abene Tribe' -> 'The West Abene Tribe'", SubFactionRules.ComposeName("West", "The Abene Tribe") == "The West Abene Tribe");
             Check("plain base just takes the prefix", SubFactionRules.ComposeName("North", "Toban Union") == "North Toban Union");

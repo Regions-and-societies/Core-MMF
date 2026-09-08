@@ -33,6 +33,16 @@ namespace PlacementEstimatesTests
             Check("fraction clamped to 1", PlacementEstimates.EstimateLandTiles(1000, 2f) == 1000);
             Check("zero total -> 0", PlacementEstimates.EstimateLandTiles(0, 0.5f) == 0);
 
+            Section("total tiles from coverage — measured anchors, interpolated (2026-09-08 campaign)");
+            Check("5% anchor", PlacementEstimates.EstimateTotalTiles(0.05f) == 3787);
+            Check("30% anchor", PlacementEstimates.EstimateTotalTiles(0.30f) == 119904);
+            Check("100% anchor", PlacementEstimates.EstimateTotalTiles(1.00f) == 590492);
+            Check("interpolates between 30% and 50%", Near(PlacementEstimates.EstimateTotalTiles(0.40f), (119904 + 295732) / 2, 2));
+            Check("above 100% holds the top anchor", PlacementEstimates.EstimateTotalTiles(1.5f) == 590492);
+            Check("below 5% scales down toward zero", PlacementEstimates.EstimateTotalTiles(0.025f) < 3787 && PlacementEstimates.EstimateTotalTiles(0.025f) > 0);
+            Check("zero coverage -> 0", PlacementEstimates.EstimateTotalTiles(0f) == 0);
+            Check("far above the old linear model at 30% (was 30000)", PlacementEstimates.EstimateTotalTiles(0.30f) > 30000 * 3);
+
             Console.WriteLine();
             Console.WriteLine(failures == 0 ? "ALL PLACEMENT-ESTIMATE TESTS PASSED" : failures + " PLACEMENT-ESTIMATE TEST(S) FAILED");
             return failures == 0 ? 0 : 1;

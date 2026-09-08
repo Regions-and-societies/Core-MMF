@@ -58,7 +58,8 @@ namespace RegionsAndSocieties.UI
                 if (w.province != null && w.province.id == province.id) return;
             }
 
-            int cap = Mathf.Max(1, FactionPlacementSettings.maxRegionPanels);
+            // 0 (or negative) means no limit — never close an old panel to make room.
+            int cap = FactionPlacementSettings.maxRegionPanels <= 0 ? int.MaxValue : FactionPlacementSettings.maxRegionPanels;
             while (Open.Count >= cap)
             {
                 RegionInfoWindow oldest = Open[0];

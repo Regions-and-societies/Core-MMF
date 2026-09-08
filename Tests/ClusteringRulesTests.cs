@@ -1,4 +1,4 @@
-// Behaviour tests for territory clustering (#46): the 1/3/5/7/9+ stops, faction-kind defaults,
+// Behaviour tests for territory clustering (#46): the continuous 1..8+ scale, faction-kind defaults,
 // within-cap-first ranking with overflow only as a fallback, body tracking with merges, and the
 // ascending seeding key. Pure, no game.
 using System;
@@ -15,14 +15,20 @@ namespace ClusteringRulesTests
         {
             const int neolithic = 2, industrial = 4, spacer = 5;
 
-            Section("stops and snapping");
-            Check("9 is unbounded", ClusteringRules.IsUnbounded(9) && ClusteringRules.IsUnbounded(12) && !ClusteringRules.IsUnbounded(7));
-            Check("unset (0) snaps to unbounded", ClusteringRules.Snap(0) == ClusteringRules.Unbounded);
-            Check("stops snap to themselves", ClusteringRules.Snap(1) == 1 && ClusteringRules.Snap(3) == 3 && ClusteringRules.Snap(5) == 5 && ClusteringRules.Snap(7) == 7 && ClusteringRules.Snap(9) == 9);
-            Check("even values snap to a neighbour stop", ClusteringRules.Snap(2) == 1 || ClusteringRules.Snap(2) == 3);
-            Check("4 -> 3 or 5", ClusteringRules.Snap(4) == 3 || ClusteringRules.Snap(4) == 5);
-            Check("above 9 -> 9", ClusteringRules.Snap(15) == 9);
-            Check("labels", ClusteringRules.Label(3) == "3" && ClusteringRules.Label(9) == "9+ (no limit)");
+            Section("cluster cap: 0 = unbounded, any positive = a literal cap");
+            Check("0 is unbounded", ClusteringRules.IsUnbounded(0) && !ClusteringRules.IsUnbounded(7));
+            Check("negatives read unbounded too", ClusteringRules.Snap(-1) == ClusteringRules.Unbounded && ClusteringRules.Unbounded == 0);
+            Check("every positive value passes through unchanged", ClusteringRules.Snap(1) == 1 && ClusteringRules.Snap(2) == 2 && ClusteringRules.Snap(7) == 7 && ClusteringRules.Snap(8) == 8 && ClusteringRules.Snap(20) == 20);
+            Check("no upper clamp — big values stay", ClusteringRules.Snap(50) == 50);
+            Check("labels", ClusteringRules.Label(3) == "3" && ClusteringRules.Label(0) == "0 = no limit");
+            Check("seeding key: unbounded (0) sorts last", ClusteringRules.SeedingKey(0) > ClusteringRules.SeedingKey(7) && ClusteringRules.SeedingKey(3) == 3);
+
+            Section("effective body cap: field is SIZE in count mode, CLUSTER COUNT in percent mode");
+            Check("default cluster counts: pirate 5, tribe 3, rough 2", ClusteringRules.DefaultClusterCount(FactionKind.Pirate) == 5 && ClusteringRules.DefaultClusterCount(FactionKind.Tribe) == 3 && ClusteringRules.DefaultClusterCount(FactionKind.RoughUnion) == 2);
+            Check("cohesive kinds default to 1 cluster (no kin)", ClusteringRules.DefaultClusterCount(FactionKind.Empire) == 1 && ClusteringRules.DefaultClusterCount(FactionKind.Other) == 1);
+            Check("body cap = ceil(regions / kinCount)", ClusteringRules.BodyCap(40, 5) == 8 && ClusteringRules.BodyCap(61, 4) == 16);
+            Check("one cluster (or none) = unbounded body", ClusteringRules.IsUnbounded(ClusteringRules.BodyCap(40, 1)) && ClusteringRules.IsUnbounded(ClusteringRules.BodyCap(0, 5)));
+            Check("more clusters than regions -> one region each", ClusteringRules.BodyCap(10, 50) == 1);
 
             Section("faction kinds and their defaults (owner's table)");
             Check("pirate gang -> Pirate", ClusteringRules.ClassifyKind("Pirate", "pirate gang", spacer, true, true) == FactionKind.Pirate);
@@ -50,7 +56,7 @@ namespace ClusteringRulesTests
             Check("3 within cap 3", ClusteringRules.WithinCap(3, 3));
             Check("4 overflows cap 3", !ClusteringRules.WithinCap(4, 3));
             Check("cap 1: only a lone province is within", ClusteringRules.WithinCap(1, 1) && !ClusteringRules.WithinCap(2, 1));
-            Check("9+ never overflows", ClusteringRules.WithinCap(40, 9));
+            Check("unbounded (0) never overflows", ClusteringRules.WithinCap(40, 0));
             Check("rank: within-cap first", ClusteringRules.CapRank(true) < ClusteringRules.CapRank(false));
 
             Section("ranking: within-cap beats any score; overflow only when nothing else is left");
@@ -123,9 +129,9 @@ namespace ClusteringRulesTests
             Check("same bodies whatever the add order", other.Count == 1 && other.Largest == 3);
 
             Section("seeding order: ascending cluster size");
-            var order = new List<int> { 9, 5, 3, 7, 0 };
+            var order = new List<int> { 0, 5, 3, 7 };
             order.Sort((a, b) => ClusteringRules.SeedingKey(a).CompareTo(ClusteringRules.SeedingKey(b)));
-            Check("3s, then 5s, 7s, then the unbounded (incl. unset)", order[0] == 3 && order[1] == 5 && order[2] == 7 && ClusteringRules.SeedingKey(order[3]) == 9 && ClusteringRules.SeedingKey(order[4]) == 9);
+            Check("3s, then 5s, 7s, then the unbounded", order[0] == 3 && order[1] == 5 && order[2] == 7 && ClusteringRules.IsUnbounded(order[3]));
 
             Console.WriteLine();
             Console.WriteLine(failures == 0 ? "ALL CLUSTERING TESTS PASSED" : failures + " CLUSTERING TEST(S) FAILED");
