@@ -12,7 +12,7 @@ namespace RegionsAndSocieties.Partition
     public class ContainSubdividePartitioner : IRegionPartitioner
     {
         public string AlgorithmId => RegionPartitionerRegistry.DefaultAlgorithmId;
-        public string Label => "Contain then subdivide (default)";
+        public string Label => "v0.4.0 — Contain then subdivide (default)";
         public string Description => "Draws regions inside natural sections (biome + barriers), cuts each into even honeycomb cells, then shares inland lakes and cleans up islands and slivers. The v0.4.0 algorithm.";
         public int Order => 0;
 
@@ -29,7 +29,7 @@ namespace RegionsAndSocieties.Partition
     public class ContainSubdivide030Partitioner : IRegionPartitioner
     {
         public string AlgorithmId => RegionPartitionerRegistry.Legacy030AlgorithmId;
-        public string Label => "Contain then subdivide (v0.3.0 cells)";
+        public string Label => "v0.3.0 — Contain then subdivide (cells)";
         public string Description => "The v0.3.0 algorithm: the same natural-section containers, cut into balanced box-ish cells rather than the 0.4.0 honeycomb. Kept for old-save fidelity and for preference.";
         public int Order => 5;
 
@@ -46,7 +46,7 @@ namespace RegionsAndSocieties.Partition
     public class AnchorVoronoiPartitioner : IRegionPartitioner
     {
         public string AlgorithmId => RegionPartitionerRegistry.LegacyAlgorithmId;
-        public string Label => "Anchor-Voronoi boxes (legacy)";
+        public string Label => "v0.2.x — Anchor-Voronoi boxes (legacy)";
         public string Description => "The 0.2.x algorithm: spaced anchors with a Chebyshev box fill. Kept for old-save fidelity and for preference.";
         public int Order => 10;
 

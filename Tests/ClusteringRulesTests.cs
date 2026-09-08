@@ -24,14 +24,11 @@ namespace ClusteringRulesTests
             Check("seeding key: unbounded (0) sorts last", ClusteringRules.SeedingKey(0) > ClusteringRules.SeedingKey(7) && ClusteringRules.SeedingKey(3) == 3);
 
             Section("effective body cap: field is SIZE in count mode, CLUSTER COUNT in percent mode");
-            Check("count mode: field is the body-size cap", ClusteringRules.EffectiveBodyCap(PlacementValueMode.Count, 5, 40) == 5);
-            Check("count mode ignores planned regions", ClusteringRules.EffectiveBodyCap(PlacementValueMode.Count, 3, 100) == 3);
-            Check("count mode 0 = unbounded", ClusteringRules.IsUnbounded(ClusteringRules.EffectiveBodyCap(PlacementValueMode.Count, 0, 40)));
-            Check("percent: 5 clusters over 40 regions -> body cap 8", ClusteringRules.EffectiveBodyCap(PlacementValueMode.Percent, 5, 40) == 8);
-            Check("percent: 4 clusters over 61 -> ceil = 16", ClusteringRules.EffectiveBodyCap(PlacementValueMode.Percent, 4, 61) == 16);
-            Check("percent: 0/1 clusters = unbounded (one body)", ClusteringRules.IsUnbounded(ClusteringRules.EffectiveBodyCap(PlacementValueMode.Percent, 1, 40)) && ClusteringRules.IsUnbounded(ClusteringRules.EffectiveBodyCap(PlacementValueMode.Percent, 0, 40)));
-            Check("percent: more clusters than regions -> one region each", ClusteringRules.EffectiveBodyCap(PlacementValueMode.Percent, 50, 10) == 1);
-            Check("percent: no planned land -> unbounded", ClusteringRules.IsUnbounded(ClusteringRules.EffectiveBodyCap(PlacementValueMode.Percent, 5, 0)));
+            Check("default cluster counts: pirate 5, tribe 3, rough 2", ClusteringRules.DefaultClusterCount(FactionKind.Pirate) == 5 && ClusteringRules.DefaultClusterCount(FactionKind.Tribe) == 3 && ClusteringRules.DefaultClusterCount(FactionKind.RoughUnion) == 2);
+            Check("cohesive kinds default to 1 cluster (no kin)", ClusteringRules.DefaultClusterCount(FactionKind.Empire) == 1 && ClusteringRules.DefaultClusterCount(FactionKind.Other) == 1);
+            Check("body cap = ceil(regions / kinCount)", ClusteringRules.BodyCap(40, 5) == 8 && ClusteringRules.BodyCap(61, 4) == 16);
+            Check("one cluster (or none) = unbounded body", ClusteringRules.IsUnbounded(ClusteringRules.BodyCap(40, 1)) && ClusteringRules.IsUnbounded(ClusteringRules.BodyCap(0, 5)));
+            Check("more clusters than regions -> one region each", ClusteringRules.BodyCap(10, 50) == 1);
 
             Section("faction kinds and their defaults (owner's table)");
             Check("pirate gang -> Pirate", ClusteringRules.ClassifyKind("Pirate", "pirate gang", spacer, true, true) == FactionKind.Pirate);

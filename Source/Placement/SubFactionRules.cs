@@ -38,22 +38,21 @@ namespace RegionsAndSocieties.Placement
         }
 
         /// <summary>
-        /// The number of kin factions a faction forms, honouring the value mode (#47 follow-up). Each
-        /// contiguous body is one kin faction, and the mode decides how many bodies form:
-        /// <list type="bullet">
-        /// <item><b>Count</b>: the cluster field caps body SIZE, so bodies ≈ ceil(regions / field) — the
-        /// same as <see cref="EstimateKinCount"/>.</item>
-        /// <item><b>Percent</b>: the cluster field IS the desired number of clusters, so kin = that field,
-        /// capped at the region count (can't have more bodies than regions). A field of 0/1 means one
-        /// faction — no kin.</item>
-        /// </list>
+        /// The number of kin factions a faction forms, combining the two clustering knobs (the owner's
+        /// model): <paramref name="numberOfClusters"/> is the equal-division / max-kin cap, and
+        /// <paramref name="minClusterSize"/> is the minimum regions a cluster must have to become its own kin
+        /// faction. So kin = min(numberOfClusters, floor(regions / minClusterSize)), never below one. A
+        /// <paramref name="numberOfClusters"/> of 0 means "no cap" → one cluster per <paramref name="minClusterSize"/>
+        /// regions (with minClusterSize 1 that is one faction per region, the warned-about extreme).
         /// </summary>
-        public static int PlannedKinCount(PlacementValueMode mode, int clusterField, int regions)
+        public static int PlannedKinCount(int regions, int numberOfClusters, int minClusterSize)
         {
             if (regions <= 0) return 1;
-            if (mode == PlacementValueMode.Count) return EstimateKinCount(regions, clusterField);
-            if (clusterField <= 1) return 1;                 // percent: 0/1 cluster = whole
-            return clusterField < regions ? clusterField : regions;
+            int bySize = minClusterSize >= 1 ? regions / minClusterSize : regions;   // floor; 0/neg = no size clamp
+            if (bySize < 1) bySize = 1;
+            int cap = numberOfClusters <= 0 ? bySize : numberOfClusters;             // 0 = uncapped
+            int k = bySize < cap ? bySize : cap;
+            return k < 1 ? 1 : k;
         }
 
         /// <summary>

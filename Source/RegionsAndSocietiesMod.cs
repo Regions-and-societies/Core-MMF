@@ -13,6 +13,7 @@ namespace RegionsAndSocieties
     {
         public static FactionPlacementSettings Settings;
         private static bool demographicTuningExpanded;
+        private static string maxPanelsBuffer;
 
         /// <summary>#53: whether the Societies layer (population, demographics, economy) runs at all.
         /// The single gate every societies entry point reads; off means Regions only.</summary>
@@ -25,9 +26,7 @@ namespace RegionsAndSocieties
             var l = new Listing_Standard();
             l.Begin(inRect);
 
-            l.Label($"Claimed land area (settlement density): {Mathf.RoundToInt(FactionPlacementSettings.claimedLandAreaPercent * 100f)}%",
-                tooltip: "The single density knob (#51): the target share of livable land area claimed by faction territories at world generation. Higher means more settlements. Replaces the old tile-count scaling; also settable on the world-generation screen. Applies to newly generated worlds.");
-            FactionPlacementSettings.claimedLandAreaPercent = l.Slider(FactionPlacementSettings.claimedLandAreaPercent, 0.10f, 0.90f);
+            // Claimed land area (settlement density) moved to the world-creation Geographic Placement dialog.
 
             l.Label($"Territory compactness (squaring): {Mathf.RoundToInt(FactionPlacementSettings.territoryCompactness * 100f)}%",
                 tooltip: "How strongly territories prefer squaring off over spidering (#19). Growth favors provinces already embedded in the domain — filling pockets before extending tendrils. 0% is the old purely-greedy behavior; 100% means a poorly-connected province is chosen only when its land is dramatically better. Applies to newly generated worlds and to expansion mods that read the compactness endpoint.");
@@ -55,13 +54,16 @@ namespace RegionsAndSocieties
                 GUI.color = Color.white;
             }
 
+            // Biome region sizes — per-biome multipliers on the region size band, so a player can make sparse
+            // biomes (ice, desert) subdivide more or less. Ours are the defaults; opens a dedicated editor.
+            if (l.ButtonText("Biome region sizes…"))
+                Find.WindowStack.Add(new UI.Dialog_BiomeRegionWeights());
+            GUI.color = new Color(0.7f, 0.7f, 0.7f);
+            l.Label("Tune how big each biome's regions are (ice & desert default larger). Applies to newly generated worlds.");
+            GUI.color = Color.white;
+
             l.GapLine();
 
-            l.CheckboxLabeled("Show ownership calculation breakdown in the region panel",
-                ref FactionPlacementSettings.showCalculationBreakdowns,
-                "Adds the developer ownership-derivation readout to the expanded region panel (opened with the modifier + click chosen below). Off by default, and never shown in the hover tooltip.");
-
-            l.Gap();
             l.Label("Open a region's comparison panel with:");
             if (l.RadioButton("Ctrl + click", !FactionPlacementSettings.regionPanelUseShift))
             {
@@ -73,9 +75,14 @@ namespace RegionsAndSocieties
             }
 
             l.Gap();
-            FactionPlacementSettings.maxRegionPanels = Mathf.RoundToInt(l.SliderLabeled(
-                $"Max comparison panels open at once: {FactionPlacementSettings.maxRegionPanels}",
-                FactionPlacementSettings.maxRegionPanels, 1f, 8f));
+            // Max comparison panels: a free-entry number, 0 = no limit.
+            l.Label($"Max comparison panels open at once ({(FactionPlacementSettings.maxRegionPanels <= 0 ? "no limit" : FactionPlacementSettings.maxRegionPanels.ToString())}):",
+                tooltip: "How many region comparison panels can be open together. Type 0 for no limit.");
+            string mpBuf = maxPanelsBuffer ?? FactionPlacementSettings.maxRegionPanels.ToString();
+            var mpRect = l.GetRect(28f);
+            mpRect.width = 90f;
+            Widgets.TextFieldNumeric(mpRect, ref FactionPlacementSettings.maxRegionPanels, ref mpBuf, 0f, 999f);
+            maxPanelsBuffer = mpBuf;
 
             l.GapLine();
             l.Label("Regions and Societies features — toggle any off to avoid conflicts with other mods:");

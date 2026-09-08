@@ -59,22 +59,22 @@ namespace PlacementShareRulesTests
             Check("share 40% -> ~40% of 137 (55) ±1", Math.Abs(f[0] - 55) <= 1);
             Check("acceptance apportionment sums exactly", Sum(f) == 137);
 
-            Section("five size categories map to region counts and back");
-            Check("Tiny -> 3", PlacementShareRules.CategoryToRegionCap(ShareCategory.Tiny) == 3);
-            Check("Small -> 5", PlacementShareRules.CategoryToRegionCap(ShareCategory.Small) == 5);
-            Check("Medium -> 7", PlacementShareRules.CategoryToRegionCap(ShareCategory.Medium) == 7);
-            Check("Large -> 10", PlacementShareRules.CategoryToRegionCap(ShareCategory.Large) == 10);
-            Check("Very large -> 15", PlacementShareRules.CategoryToRegionCap(ShareCategory.VeryLarge) == 15);
-            Check("3 reads Tiny", PlacementShareRules.CategoryForShare(3f) == ShareCategory.Tiny);
-            Check("5 reads Small", PlacementShareRules.CategoryForShare(5f) == ShareCategory.Small);
-            Check("7 reads Medium", PlacementShareRules.CategoryForShare(7f) == ShareCategory.Medium);
-            Check("10 reads Large", PlacementShareRules.CategoryForShare(10f) == ShareCategory.Large);
-            Check("15 reads Very large", PlacementShareRules.CategoryForShare(15f) == ShareCategory.VeryLarge);
-            Check("a low between-value (2) reads Tiny (nearest band)", PlacementShareRules.CategoryForShare(2f) == ShareCategory.Tiny);
-            Check("a between-value (8) reads Medium", PlacementShareRules.CategoryForShare(8f) == ShareCategory.Medium);
-            Check("12 reads Large (just under the Large/VeryLarge midpoint 12.5)", PlacementShareRules.CategoryForShare(12f) == ShareCategory.Large);
-            Check("a huge count still reads Very large", PlacementShareRules.CategoryForShare(100f) == ShareCategory.VeryLarge);
-            Check("round-trips: category -> count -> category", PlacementShareRules.CategoryForShare(PlacementShareRules.CategoryToRegionCap(ShareCategory.Large)) == ShareCategory.Large);
+            Section("five size categories map to the 1/2/4/8/16 multiplier scale and back");
+            Check("Tiny -> 1", PlacementShareRules.CategoryToRegionCap(ShareCategory.Tiny) == 1);
+            Check("Small -> 2", PlacementShareRules.CategoryToRegionCap(ShareCategory.Small) == 2);
+            Check("Medium -> 4", PlacementShareRules.CategoryToRegionCap(ShareCategory.Medium) == 4);
+            Check("Large -> 8", PlacementShareRules.CategoryToRegionCap(ShareCategory.Large) == 8);
+            Check("Very large -> 16", PlacementShareRules.CategoryToRegionCap(ShareCategory.VeryLarge) == 16);
+            Check("1 reads Tiny", PlacementShareRules.CategoryForShare(1f) == ShareCategory.Tiny);
+            Check("2 reads Small", PlacementShareRules.CategoryForShare(2f) == ShareCategory.Small);
+            Check("4 reads Medium", PlacementShareRules.CategoryForShare(4f) == ShareCategory.Medium);
+            Check("8 reads Large", PlacementShareRules.CategoryForShare(8f) == ShareCategory.Large);
+            Check("16 reads Very large", PlacementShareRules.CategoryForShare(16f) == ShareCategory.VeryLarge);
+            Check("a low between-value (1.4) reads Tiny (nearest band)", PlacementShareRules.CategoryForShare(1.4f) == ShareCategory.Tiny);
+            Check("a between-value (5) reads Medium", PlacementShareRules.CategoryForShare(5f) == ShareCategory.Medium);
+            Check("11 reads Large (just under the Large/VeryLarge midpoint 12)", PlacementShareRules.CategoryForShare(11f) == ShareCategory.Large);
+            Check("a huge value still reads Very large", PlacementShareRules.CategoryForShare(100f) == ShareCategory.VeryLarge);
+            Check("round-trips: category -> weight -> category", PlacementShareRules.CategoryForShare(PlacementShareRules.CategoryToRegionCap(ShareCategory.Large)) == ShareCategory.Large);
             Check("labels present", PlacementShareRules.CategoryLabel(ShareCategory.Tiny) == "Tiny" && PlacementShareRules.CategoryLabel(ShareCategory.VeryLarge) == "Very large");
 
             Section("region-count capacity gate");
@@ -101,6 +101,19 @@ namespace PlacementShareRulesTests
             Check("normalized split is proportional to weights", Same(PlacementShareRules.DistributeRegions(PlacementValueMode.Percent, PlacementPercentBasis.SettledNormalized, weights, 100, 0.4f), new[] { 10, 10, 20 }));
             Check("self-scales: same weights fill a SMALL planet fully too", Sum(PlacementShareRules.DistributeRegions(PlacementValueMode.Percent, PlacementPercentBasis.SettledNormalized, weights, 20, 0.5f)) == 10);
             Check("normalized never exceeds the planet (no over-capacity)", !PlacementShareRules.IsOverCapacity(PlacementShareRules.DemandRegions(PlacementValueMode.Percent, PlacementPercentBasis.SettledNormalized, weights, 100, 0.9f), 100));
+
+            Section("minimum-one guarantee: a tiny faction beside giants still lands >= 1 (the 1/2/4/8/16 clamp)");
+            var giants = new List<float> { 16f, 1f, 16f };   // very large / tiny / very large — the owner's example
+            var gdist = PlacementShareRules.DistributeRegions(PlacementValueMode.Percent, PlacementPercentBasis.SettledNormalized, giants, 100, 1.0f);
+            Check("every faction gets at least 1", gdist[0] >= 1 && gdist[1] >= 1 && gdist[2] >= 1);
+            Check("the tiny faction is not starved to 0", gdist[1] >= 1);
+            Check("the giants dwarf the tiny one but all placed", gdist[0] > gdist[1] && gdist[2] > gdist[1] && Sum(gdist) == 100);
+            // A brutal disparity where the exact share would round below one.
+            var starve = new List<float> { 100f, 1f };
+            var sdist = PlacementShareRules.DistributeRegions(PlacementValueMode.Percent, PlacementPercentBasis.SettledNormalized, starve, 10, 1.0f);
+            Check("weight-1 faction among a 100-weight one still gets >= 1", sdist[1] >= 1 && Sum(sdist) == 10);
+            Check("more factions than regions -> each still 1 (demand flags over-capacity)", Min(PlacementShareRules.DistributeRegions(PlacementValueMode.Percent, PlacementPercentBasis.SettledNormalized, new List<float> { 1f, 1f, 1f, 1f, 1f }, 3, 1.0f)) == 1
+                && PlacementShareRules.IsOverCapacity(PlacementShareRules.DemandRegions(PlacementValueMode.Percent, PlacementPercentBasis.SettledNormalized, new List<float> { 1f, 1f, 1f, 1f, 1f }, 3, 1.0f), 3));
 
             Section("value mode: PERCENT / PlanetAbsolute — shares are absolute planet percent");
             var pct = new List<float> { 20f, 30f };   // 50% of the planet claimed, 50% wilderness

@@ -95,12 +95,15 @@ namespace SubFactionRulesTests
             Check("degenerate zero regions -> 1", SubFactionRules.EstimateKinCount(0, 3) == 1);
 
             Section("planned kin count is mode-aware (count = size, percent = cluster number)");
-            Check("count: 61 regions, size 5 -> ceil = 13", SubFactionRules.PlannedKinCount(PlacementValueMode.Count, 5, 61) == 13);
-            Check("count: matches EstimateKinCount", SubFactionRules.PlannedKinCount(PlacementValueMode.Count, 3, 10) == SubFactionRules.EstimateKinCount(10, 3));
-            Check("percent: field IS the kin count", SubFactionRules.PlannedKinCount(PlacementValueMode.Percent, 5, 40) == 5);
-            Check("percent: capped at the region count", SubFactionRules.PlannedKinCount(PlacementValueMode.Percent, 20, 8) == 8);
-            Check("percent: 0/1 cluster = whole (one faction)", SubFactionRules.PlannedKinCount(PlacementValueMode.Percent, 1, 40) == 1 && SubFactionRules.PlannedKinCount(PlacementValueMode.Percent, 0, 40) == 1);
-            Check("either mode: zero regions -> 1", SubFactionRules.PlannedKinCount(PlacementValueMode.Percent, 5, 0) == 1 && SubFactionRules.PlannedKinCount(PlacementValueMode.Count, 5, 0) == 1);
+            // kin = min(numberOfClusters, floor(regions / minClusterSize)), >= 1.
+            Check("tribe 39 regions, 3 clusters, min 5 -> 3 (cap bites)", SubFactionRules.PlannedKinCount(39, 3, 5) == 3);
+            Check("pirate 39 regions, 5 clusters, min 3 -> 5", SubFactionRules.PlannedKinCount(39, 5, 3) == 5);
+            Check("rough 39 regions, 2 clusters, min 7 -> 2", SubFactionRules.PlannedKinCount(39, 2, 7) == 2);
+            Check("min-size clamp bites: 12 regions, 5 clusters, min 5 -> 2", SubFactionRules.PlannedKinCount(12, 5, 5) == 2);
+            Check("cohesive: 1 cluster -> whole", SubFactionRules.PlannedKinCount(40, 1, 5) == 1);
+            Check("0 clusters = uncapped: floor(regions/min)", SubFactionRules.PlannedKinCount(40, 0, 5) == 8);
+            Check("0 clusters + min 1 = one faction per region", SubFactionRules.PlannedKinCount(40, 0, 1) == 40);
+            Check("never below 1", SubFactionRules.PlannedKinCount(2, 5, 9) == 1 && SubFactionRules.PlannedKinCount(0, 5, 3) == 1);
 
             Section("body labels: compass bearings, kept body keeps the clean base name, distinct per body");
             var bl = new List<GeoPoint> { new GeoPoint(0, 2, 0), new GeoPoint(0, -2, 0), new GeoPoint(2, 0, 0) };

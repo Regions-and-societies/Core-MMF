@@ -21,18 +21,21 @@ namespace RegionsAndSocieties.Placement
     /// </summary>
     public static class PlacementShareRules
     {
-        /// <summary>The target region count a fresh profile carries when it has none yet (0 = unset) — a
-        /// neutral middle size until the player moves it.</summary>
-        public const float DefaultShareWeight = 7f;
+        /// <summary>The size weight a fresh profile carries when it has none yet (0 = unset) — Medium (4×).</summary>
+        public const float DefaultShareWeight = 4f;
 
-        /// <summary>Target region counts for the five basic-view size presets.</summary>
-        public const int TinyCap = 3;
-        public const int SmallCap = 5;
-        public const int MediumCap = 7;
-        public const int LargeCap = 10;
-        public const int VeryLargeCap = 15;
+        /// <summary>The five basic-view size presets, as RELATIVE MULTIPLIERS (each step doubles): Tiny 1×,
+        /// Small 2×, Medium 4×, Large 8×, Very large 16×. In percent mode these are the share weights (a
+        /// very-large faction pulls 16 points to a tiny faction's 1); in count mode they double as literal
+        /// region targets (Tiny = 1 region … Very large = 16). Every faction is guaranteed at least 1 region
+        /// regardless (see <see cref="DistributeRegions"/>).</summary>
+        public const int TinyCap = 1;
+        public const int SmallCap = 2;
+        public const int MediumCap = 4;
+        public const int LargeCap = 8;
+        public const int VeryLargeCap = 16;
 
-        /// <summary>The target region count for a size category.</summary>
+        /// <summary>The size multiplier / region weight for a size category.</summary>
         public static int CategoryToRegionCap(ShareCategory category)
         {
             switch (category)
@@ -68,9 +71,9 @@ namespace RegionsAndSocieties.Placement
             return capacity > 0 && !IsOverCapacity(demand, capacity) && CapacityFraction(demand, capacity) >= CapacityWarnFraction;
         }
 
-        /// <summary>The size category a target region count reads as, by nearest preset — so the basic picker
-        /// can show which size a typed-in (or migrated) count falls into. Boundaries are the midpoints between
-        /// the preset counts: &lt;4 Tiny, &lt;6 Small, &lt;8.5 Medium, &lt;12.5 Large, else Very large.</summary>
+        /// <summary>The size category a stored weight reads as, by nearest preset — so the basic picker can
+        /// show which multiplier a typed-in (or migrated) value falls into. Boundaries are the midpoints of
+        /// the 1/2/4/8/16 scale: &lt;1.5 Tiny, &lt;3 Small, &lt;6 Medium, &lt;12 Large, else Very large.</summary>
         public static ShareCategory CategoryForShare(float regions)
         {
             if (regions < (TinyCap + SmallCap) / 2f) return ShareCategory.Tiny;
@@ -193,17 +196,18 @@ namespace RegionsAndSocieties.Placement
             return result;
         }
 
-        /// <summary>The uncapped region demand the current settings ask for — the numerator of the capacity
-        /// gate, which may exceed the planet's regions (that is exactly what "over capacity" means).
+        /// <summary>The region demand the current settings ask for — the numerator of the capacity gate,
+        /// which may exceed the planet's regions (that is exactly what "over capacity" means).
         /// <list type="bullet">
         /// <item><b>Count</b>: the sum of the literal per-faction counts.</item>
         /// <item><b>Percent / PlanetAbsolute</b>: the sum of each faction's percent × the planet's regions.</item>
-        /// <item><b>Percent / SettledNormalized</b>: the density-scaled claimed total (never over — it is a
-        /// fraction of the planet by construction).</item>
+        /// <item><b>Percent / SettledNormalized</b>: the density-scaled claimed total, but never below one per
+        /// faction (the minimum-one guarantee can push demand up on a tiny world with many factions).</item>
         /// </list></summary>
         public static int DemandRegions(PlacementValueMode mode, PlacementPercentBasis basis, IList<float> values, int expectedRegions, float claimedFraction)
         {
-            if (expectedRegions <= 0 || values == null) return 0;
+            int n = values?.Count ?? 0;
+            if (expectedRegions <= 0 || n == 0) return 0;
             if (mode == PlacementValueMode.Count)
             {
                 int s = 0;
@@ -214,32 +218,46 @@ namespace RegionsAndSocieties.Placement
             {
                 double s = 0.0;
                 foreach (var v in values) if (v > 0f) s += (double)v / 100.0 * expectedRegions;
-                int n = (int)Math.Round(s);
-                return n < 0 ? 0 : n;
+                int a = (int)Math.Round(s);
+                return a < 0 ? 0 : a;
             }
-            return PlacedTotal(expectedRegions, claimedFraction);
+            // SettledNormalized: the claimed pool, floored at one per faction.
+            int pool = PlacedTotal(expectedRegions, claimedFraction);
+            return pool < n ? n : pool;
         }
 
-        /// <summary>The number of regions actually placed: the demand, capped at the planet's regions (an
-        /// over-capacity world places what fits, proportionally). This is the denominator/total that
-        /// <see cref="DistributeRegions"/> hands out.</summary>
-        public static int TotalToPlace(PlacementValueMode mode, PlacementPercentBasis basis, IList<float> values, int expectedRegions, float claimedFraction)
-        {
-            if (expectedRegions <= 0) return 0;
-            int demand = DemandRegions(mode, basis, values, expectedRegions, claimedFraction);
-            return demand < expectedRegions ? demand : expectedRegions;
-        }
-
-        /// <summary>Per-faction placed region counts, index-aligned with <paramref name="values"/>. In every
-        /// mode the placed total (see <see cref="TotalToPlace"/>) is apportioned across the values by the
-        /// largest-remainder method, so the counts sum to exactly that total and no faction is starved by
-        /// rounding. Percent mode self-scales; count mode returns the counts unchanged unless the world is
-        /// over capacity, when it scales them down to fit.</summary>
+        /// <summary>
+        /// Per-faction placed region counts, index-aligned with <paramref name="values"/>.
+        /// <para><b>Percent / SettledNormalized</b> (the default): every faction is GUARANTEED one region,
+        /// then the remaining claimed pool (<c>claimedTotal − factionCount</c>) is apportioned across the size
+        /// weights by the largest-remainder method and added on top. So a tiny (1×) faction beside two very-
+        /// large (16×) ones still lands at least one territory even when its exact share rounds below one —
+        /// the minimum-one clamp the owner specified. Sum = the claimed pool (≥ one per faction).</para>
+        /// <para><b>Count</b> returns the literal counts (scaled down proportionally only if they exceed the
+        /// planet); <b>PlanetAbsolute</b> maps each percent to regions. Both are apportioned so they sum
+        /// exactly and no faction is starved by rounding.</para>
+        /// </summary>
         public static int[] DistributeRegions(PlacementValueMode mode, PlacementPercentBasis basis, IList<float> values, int expectedRegions, float claimedFraction)
         {
             int n = values?.Count ?? 0;
             if (n == 0) return new int[0];
-            int total = TotalToPlace(mode, basis, values, expectedRegions, claimedFraction);
+            if (expectedRegions <= 0) return new int[n];
+
+            if (mode == PlacementValueMode.Percent && basis == PlacementPercentBasis.SettledNormalized)
+            {
+                int pool = PlacedTotal(expectedRegions, claimedFraction);
+                if (pool > expectedRegions) pool = expectedRegions;
+                int remainder = pool - n;                 // reserve one per faction
+                if (remainder < 0) remainder = 0;
+                int[] extra = Apportion(values, remainder);
+                var result = new int[n];
+                for (int i = 0; i < n; i++) result[i] = 1 + extra[i];   // guaranteed 1 + share of the rest
+                return result;
+            }
+
+            // Count / PlanetAbsolute: apportion the demand, capped at the planet.
+            int demand = DemandRegions(mode, basis, values, expectedRegions, claimedFraction);
+            int total = demand < expectedRegions ? demand : expectedRegions;
             return Apportion(values, total);
         }
 

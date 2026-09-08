@@ -109,13 +109,28 @@ namespace RegionsAndSocieties
             // aligned weight list once and run the SAME pure distribution the pie chart and worldgen use, so
             // the estimate, the pie and the generated world all agree.
             int regionBasis = actualRegions > 0 ? actualRegions : Placement.PlacementEstimates.ExpectedRegionCount(landTiles, target);
-            var valueMode = FactionPlacementSettings.placementValueMode;
+            // One combined relative-size model (the percent/count switch was dropped): shares self-scale to
+            // the land, normalised, with a guaranteed minimum of one region per faction.
+            const Placement.PlacementValueMode valueMode = Placement.PlacementValueMode.Percent;
             const Placement.PlacementPercentBasis percentBasis = Placement.PlacementPercentBasis.SettledNormalized;
             float claimedFraction = FactionPlacementSettings.claimedLandAreaPercent;
             var shareWeights = new List<float>(activeFactions.Count);
             foreach (var d in activeFactions) shareWeights.Add(FactionPlacementSettings.GetProfile(d).placementShare);
             int[] dist = Placement.PlacementShareRules.DistributeRegions(valueMode, percentBasis, shareWeights, regionBasis, claimedFraction);
             int demand = Placement.PlacementShareRules.DemandRegions(valueMode, percentBasis, shareWeights, regionBasis, claimedFraction);
+
+            // Total resulting factions = each active faction's base 1, plus its kin offshoots.
+            int totalFactions = 0, totalOffshoots = 0;
+            for (int i = 0; i < activeFactions.Count; i++)
+            {
+                var pf = FactionPlacementSettings.GetProfile(activeFactions[i]);
+                int rc = i < dist.Length ? dist[i] : 0;
+                int kc = FactionPlacementSettings.EffectiveEnableKin(pf, activeFactions[i])
+                    ? Placement.SubFactionRules.PlannedKinCount(rc, FactionPlacementSettings.EffectiveClusterCount(pf, activeFactions[i]), pf.clusterSize)
+                    : 1;
+                totalFactions += kc;
+                totalOffshoots += kc - 1;
+            }
             int placedTotal = 0; foreach (int v in dist) placedTotal += v;
             int wilderness = Placement.PlacementShareRules.WildernessRegions(regionBasis, dist);
 
@@ -123,7 +138,7 @@ namespace RegionsAndSocieties
             float contentW = inRect.width - PieStripW;
 
             // Global Map Region Parameters Panel
-            Rect globalBoxRect = new Rect(0f, 40f, contentW - 15f, 160f);
+            Rect globalBoxRect = new Rect(0f, 40f, contentW - 15f, 186f);
             Widgets.DrawMenuSection(globalBoxRect);
 
             Rect globalTitleRect = new Rect(10f, 44f, 300f, 22f);
@@ -162,19 +177,13 @@ namespace RegionsAndSocieties
             TooltipHandler.TipRegion(new Rect(10f, 68f, colWidth - 10f, 22f),
                 "The size the subdivision aims for, in tiles per region. Sparse biomes (desert, tundra, ice) scale up automatically to fewer, larger regions; the merge floor (regions smaller than half the target are merged away) derives from this.");
 
-            // Second Row: claimed land area (density). The Max Threat cap was dropped — hostility is now shown
-            // per faction (the coloured dot on each row) so the player caps threats by sizing them directly.
-            // The density knob drives the fill in percent mode; in count mode the counts are already absolute,
-            // so it is dimmed and marked unused rather than left looking live.
-            bool densityUsed = valueMode == Placement.PlacementValueMode.Percent;
+            // Second Row: claimed land area (density) — the single fill knob. The Max Threat cap was dropped;
+            // hostility is now shown per faction (the coloured dot on each row) so the player caps threats by
+            // sizing them directly.
             Rect occupLabelRect = new Rect(10f, 98f, 235f, 22f);
-            GUI.color = densityUsed ? Color.white : new Color(0.6f, 0.6f, 0.6f);
-            Widgets.Label(occupLabelRect, densityUsed
-                ? $"Claimed land area: {Mathf.RoundToInt(FactionPlacementSettings.claimedLandAreaPercent * 100f)}%"
-                : $"Claimed land area: {Mathf.RoundToInt(FactionPlacementSettings.claimedLandAreaPercent * 100f)}% (unused in count mode)");
-            GUI.color = Color.white;
+            Widgets.Label(occupLabelRect, $"Claimed land area: {Mathf.RoundToInt(FactionPlacementSettings.claimedLandAreaPercent * 100f)}%");
             TooltipHandler.TipRegion(occupLabelRect,
-                "In percent mode: the share of livable land the factions collectively claim — the single fill knob. Raise it for a busier world, lower it for a frontier. Ignored in region-count mode, where each faction's number is a literal count.");
+                "The share of livable land the factions collectively claim — the single fill knob. Raise it for a busier world, lower it for a frontier. The rest of the map is wilderness.");
             Rect occupSliderRect = new Rect(250f, 100f, colWidth - 255f, 18f);
             float tempOccup = Widgets.HorizontalSlider(occupSliderRect, FactionPlacementSettings.claimedLandAreaPercent, 0.10f, 0.90f, false, null, null, null, 0.01f);
             FactionPlacementSettings.claimedLandAreaPercent = tempOccup;
@@ -187,13 +196,28 @@ namespace RegionsAndSocieties
             string countPart = actualRegions > 0
                 ? $"Regions: <color=green>{actualRegions}</color> (this world)"
                 : $"Expected regions: <color=green>~{estMid}</color> <color=grey>(rough — varies with sea level)</color>";
-            Widgets.Label(estRect, landPart + "  |  " + countPart + $"  |  Claimed: <color=orange>{placedTotal}</color>  Wilderness: <color=grey>{wilderness}</color>");
+            Widgets.Label(estRect, landPart + "  |  " + countPart);
 
-            // Regional kin is now a per-faction toggle (each faction's card / the table's Kin column), so the
-            // old blanket "split scattered factions" checkbox is gone.
-            Rect kinHintRect = new Rect(10f, 162f, globalBoxRect.width - 20f, 22f);
-            GUI.color = new Color(0.7f, 0.7f, 0.7f);
-            Widgets.Label(kinHintRect, "Regional kin (whether a faction's clusters become separate kin factions) is set per faction in Advanced.");
+            // Total-factions readout: base factions + kin offshoots, so the player sees how the kin settings
+            // inflate the world's faction count against the 40-faction cap.
+            Rect kinHintRect = new Rect(10f, 160f, globalBoxRect.width - 20f, 22f);
+            GUI.color = totalFactions > 40 ? new Color(1f, 0.5f, 0.5f) : new Color(0.75f, 0.85f, 0.75f);
+            Widgets.Label(kinHintRect, $"Total factions: <b>{totalFactions}</b>  ({activeFactions.Count} base + {totalOffshoots} kin offshoots){(totalFactions > 40 ? "  — over the 40-faction cap; some kin will be truncated" : "")}");
+            GUI.color = Color.white;
+            TooltipHandler.TipRegion(kinHintRect,
+                "Every faction contributes 1, plus its regional-kin offshoots (set per faction in Advanced). Worldgen caps the world at 40 factions, so beyond that the last factions' kin are truncated.");
+
+            // Regions-claimed capacity readout, right below Total factions (green / yellow at 80% crowding /
+            // red over the planet's regions). Lives in the top card now so it reads with the other totals.
+            bool over = Placement.PlacementShareRules.IsOverCapacity(demand, regionBasis);
+            bool warn = Placement.PlacementShareRules.IsCrowdingWarning(demand, regionBasis);
+            Rect capRect = new Rect(10f, 184f, globalBoxRect.width - 20f, 22f);
+            GUI.color = over ? new Color(1f, 0.4f, 0.4f) : (warn ? new Color(1f, 0.85f, 0.3f) : new Color(0.6f, 0.85f, 0.6f));
+            Widgets.Label(capRect, over
+                ? $"Regions claimed: {demand} of ~{regionBasis} — OVER CAPACITY, placement scaled down to fit ({wilderness} wilderness)."
+                : warn
+                    ? $"Regions claimed: {demand} of ~{regionBasis} ({Mathf.RoundToInt(Placement.PlacementShareRules.CapacityFraction(demand, regionBasis) * 100f)}%) — crowded, tight borders ({wilderness} wilderness)."
+                    : $"Regions claimed: {demand} of ~{regionBasis} the planet supports  ·  {wilderness} left wilderness.");
             GUI.color = Color.white;
 
             // The faction editors lay out inside the narrowed content area; the pie strip owns the rest.
@@ -210,13 +234,13 @@ namespace RegionsAndSocieties
                 // The World Object Integration panel now scrolls WITH the faction editor instead of taking a
                 // fixed slab of the window, so the whole area below the global box is usable for tuning (#47).
                 if (FactionPlacementSettings.placementUiTable)
-                    DrawAdvancedTable(contentRect, 205f);
+                    DrawAdvancedTable(contentRect, 232f);
                 else
-                    DrawAdvancedCards(contentRect, 205f);
+                    DrawAdvancedCards(contentRect, 232f);
             }
             else
             {
-                DrawBasicRows(contentRect, 205f, dist, demand, regionBasis);
+                DrawBasicRows(contentRect, 232f, dist, demand, regionBasis);
             }
 
             // Right strip: value-mode + basis toggles, then the share pie and its legend.
@@ -237,56 +261,44 @@ namespace RegionsAndSocieties
         /// </summary>
         private void DrawBasicRows(Rect inRect, float top, int[] dist, int demand, int regionBasis)
         {
-            bool isCount = FactionPlacementSettings.placementValueMode == Placement.PlacementValueMode.Count;
-            string presetUnit = isCount ? " reg" : "";
+            // Preset header shows the relative multiplier (1×/2×/4×/8×/16×).
+            const string presetUnit = "×";
 
-            // Prose header — the meaning of the per-faction number depends on the value mode.
-            Rect headerRect = new Rect(0f, top, inRect.width - 15f, 22f);
-            GUI.color = new Color(0.75f, 0.75f, 0.75f);
-            Widgets.Label(headerRect, isCount
-                ? "Pick each faction's size — the exact number of regions it gets. Advanced = type any number."
-                : "Pick each faction's share of the land — it self-scales to the planet, so the world always fills. Advanced = type any number.");
-            GUI.color = Color.white;
-
-            // Column layout, shared by the header and every row.
-            const float colNameW = 150f, colBtnW = 62f;
-            float colPickX0 = 8f + colNameW + 6f;
-            // The raw computed-region count is hidden in basic (kept in Advanced and the pie); the kin column
-            // takes its place, so the row reads name → size presets → kin without a lonely number between.
-            float kinX = colPickX0 + 5 * colBtnW + 12f;
+            // Column layout, shared by the header band and every row. Labels live in the header so each row
+            // is just numbers (dot → name → presets → ≈regions → kin), keeping every line short.
+            const float colNameW = 205f, colBtnW = 62f;   // wide enough for "Civil outlander union" + the dot
+            // Preset buttons in each row start at (dot 8 + gap 18 → name 26 .. name+width) + 6; this x0 must
+            // match that exactly or the header labels drift off their columns.
+            float colPickX0 = 26f + (colNameW - 18f) + 6f;
+            // Kin column comes BEFORE the region column (left-to-right): checkbox, → kin count, then the
+            // region total with per-kin size in parentheses.
+            float kinCheckX = colPickX0 + 5 * colBtnW + 18f;   // kin checkbox
+            float kinNumX = kinCheckX + 26f;                   // kin faction count (→ N)
+            float regX = kinNumX + 44f;                        // ≈ regions "total (perKin kin)"
             var headerCats = new[] { Placement.ShareCategory.Tiny, Placement.ShareCategory.Small, Placement.ShareCategory.Medium, Placement.ShareCategory.Large, Placement.ShareCategory.VeryLarge };
 
-            // Column header row, a clear band below the prose.
+            // Column header band at the very top of the basic area, in a tall-enough strip that it never clips.
+            // (The capacity readout and the "Faction Relative Size" caption moved out — up to the top card and
+            // down to a footer respectively.)
             TextAnchor hdrAnchor = Text.Anchor;
             Text.Font = GameFont.Tiny;
             Text.Anchor = TextAnchor.LowerCenter;
             GUI.color = new Color(0.6f, 0.85f, 0.6f);
             for (int i = 0; i < headerCats.Length; i++)
-                Widgets.Label(new Rect(colPickX0 + i * colBtnW, top + 26f, colBtnW - 3f, 16f),
+                Widgets.Label(new Rect(colPickX0 + i * colBtnW, top + 4f, colBtnW - 3f, 18f),
                     $"{Placement.PlacementShareRules.CategoryToRegionCap(headerCats[i])}{presetUnit}");
             GUI.color = new Color(0.7f, 0.7f, 0.7f);
             Text.Anchor = TextAnchor.LowerLeft;
-            Widgets.Label(new Rect(kinX, top + 26f, 200f, 16f), "kin?  → factions");
+            Widgets.Label(new Rect(kinCheckX, top + 4f, 70f, 18f), "kin → #");
+            Widgets.Label(new Rect(regX, top + 4f, 120f, 18f), "≈reg (per kin)");
             GUI.color = Color.white;
             Text.Font = GameFont.Small;
             Text.Anchor = hdrAnchor;
 
-            // Capacity readout — green, yellow at 80% (crowding), red over the planet's regions (won't gen).
-            // In the normalised-percent basis demand is a fraction of the planet by construction, so it never
-            // goes over; the gate only bites in count mode or the planet-absolute basis.
-            bool over = Placement.PlacementShareRules.IsOverCapacity(demand, regionBasis);
-            bool warn = Placement.PlacementShareRules.IsCrowdingWarning(demand, regionBasis);
-            Rect capRect = new Rect(0f, top + 46f, inRect.width - 15f, 22f);
-            GUI.color = over ? new Color(1f, 0.4f, 0.4f) : (warn ? new Color(1f, 0.85f, 0.3f) : new Color(0.6f, 0.85f, 0.6f));
-            Widgets.Label(capRect, over
-                ? $"OVER CAPACITY: {demand} regions demanded vs ~{regionBasis} the planet supports — placement will be scaled down to fit. Reduce sizes or enlarge the planet."
-                : warn
-                    ? $"Crowding: {demand} of ~{regionBasis} regions demanded ({Mathf.RoundToInt(Placement.PlacementShareRules.CapacityFraction(demand, regionBasis) * 100f)}%) — little free space left, expect tight borders."
-                    : $"Regions claimed: {demand} of ~{regionBasis} the planet supports.");
-            GUI.color = Color.white;
-
             float rowH = 34f;
-            Rect outRect = new Rect(0f, top + 70f, inRect.width, inRect.height - (top + 70f) - 55f);
+            // Rows start below the header band; reserve room at the bottom for the size caption + Close button.
+            float rowsTop = top + 28f;
+            Rect outRect = new Rect(0f, rowsTop, inRect.width, inRect.height - rowsTop - 80f);
             Rect viewRect = new Rect(0f, 0f, inRect.width - 25f, activeFactions.Count * rowH);
 
             Widgets.BeginScrollView(outRect, ref scrollPosition, viewRect);
@@ -334,30 +346,32 @@ namespace RegionsAndSocieties
                     pickX += colBtnW;
                 }
 
-                // Computed regions this faction receives — used for the kin estimate; the raw number is shown
-                // in Advanced and the pie, not on this row.
+                // ≈ regions this faction receives under the current mode (matches the pie); guaranteed ≥ 1.
                 int est = fi < dist.Length ? dist[fi] : 0;
 
-                // Kin checkbox + the computed likely number of kin factions (regions ÷ cluster size).
+                // Kin checkbox + the kin-faction count (→ N) — drawn FIRST (left of the region column).
                 bool kinOn = FactionPlacementSettings.EffectiveEnableKin(profile, def);
                 bool kinBefore = kinOn;
-                Widgets.Checkbox(kinX, rowRect.y + 2f, ref kinOn, 22f);
+                Widgets.Checkbox(kinCheckX, rowRect.y + 2f, ref kinOn, 22f);
                 if (kinOn != kinBefore) profile.enableKinRaw = kinOn ? 1 : 0;
-                int kinCount = kinOn ? Placement.SubFactionRules.PlannedKinCount(FactionPlacementSettings.placementValueMode, profile.clusterSize, est) : 1;
+                int clustersCfg = FactionPlacementSettings.EffectiveClusterCount(profile, def);
+                int kinCount = kinOn ? Placement.SubFactionRules.PlannedKinCount(est, clustersCfg, profile.clusterSize) : 1;
                 bool actuallySplits = kinOn && kinCount >= 2;
-                GUI.color = actuallySplits ? Color.white : new Color(0.6f, 0.6f, 0.6f);
-                Widgets.Label(new Rect(kinX + 28f, rowRect.y + 3f, 150f, 24f),
-                    actuallySplits ? $"→ <color=cyan>{kinCount}</color> factions" : "one faction");
+                GUI.color = actuallySplits ? Color.white : new Color(0.55f, 0.55f, 0.55f);
+                Widgets.Label(new Rect(kinNumX, rowRect.y + 3f, 40f, 24f),
+                    actuallySplits ? $"→ <color=cyan>{kinCount}</color>" : "→ 1");
                 GUI.color = Color.white;
-                bool basicCount = FactionPlacementSettings.placementValueMode == Placement.PlacementValueMode.Count;
-                TooltipHandler.TipRegion(new Rect(kinX, rowRect.y, 180f, rowRect.height - 4f),
+                TooltipHandler.TipRegion(new Rect(kinCheckX, rowRect.y, 66f, rowRect.height - 4f),
                     actuallySplits
-                        ? (basicCount
-                            ? $"Kin on: this faction's {est} regions form ~{kinCount} clusters of up to {Placement.ClusteringRules.Snap(profile.clusterSize)} regions each, and each cluster becomes a kin faction."
-                            : $"Kin on: this faction breaks into {kinCount} clusters (the cluster number set in Advanced), and each cluster becomes a kin faction.")
+                        ? $"Kin on: this faction's ~{est} regions split into {kinCount} kin factions (up to {clustersCfg} clusters, each at least {profile.clusterSize} regions — set in Advanced)."
                         : kinOn
-                            ? "Kin is on, but this faction resolves to a single cluster, so it stays ONE faction. In count mode give it more regions or a smaller cluster size; in percent mode raise its cluster count (Advanced)."
+                            ? $"Kin is on, but this faction resolves to a single cluster (≈{est} regions, min {profile.clusterSize} per cluster), so it stays ONE faction. Give it more land or raise its cluster count (Advanced)."
                             : "Kin is off — this faction stays whole.");
+
+                // Region column: total regions, and when it splits, the per-kin faction size in parentheses.
+                int perKin = actuallySplits ? Mathf.Max(1, Mathf.RoundToInt((float)est / kinCount)) : est;
+                Widgets.Label(new Rect(regX, rowRect.y + 3f, 110f, 24f),
+                    actuallySplits ? $"<color=#A6FF9E>{est}</color> <color=grey>({perKin}/kin)</color>" : $"<color=#A6FF9E>{est}</color>");
 
                 Rect resetRect = new Rect(rowRect.xMax - 96f, rowRect.y + 3f, 88f, 22f);
                 if (Widgets.ButtonText(resetRect, "Reset"))
@@ -366,6 +380,12 @@ namespace RegionsAndSocieties
                 curY += rowH;
             }
             Widgets.EndScrollView();
+
+            // Caption below the chart (moved down from the top per review) — what the size buttons mean.
+            GUI.color = new Color(0.6f, 0.6f, 0.6f);
+            Widgets.Label(new Rect(0f, outRect.yMax + 4f, inRect.width - 15f, 22f),
+                "Faction Relative Size (Min 1) — each faction is guaranteed at least one region.");
+            GUI.color = Color.white;
         }
 
         /// <summary>
@@ -374,9 +394,9 @@ namespace RegionsAndSocieties
         /// </summary>
         private void DrawAdvancedCards(Rect inRect, float top)
         {
-            const float integrationH = 250f;
+            const float integrationH = 264f;
             Rect outRect = new Rect(0f, top, inRect.width, inRect.height - top - 55f);
-            Rect viewRect = new Rect(0f, 0f, inRect.width - 25f, integrationH + 6f + activeFactions.Count * 295f);
+            Rect viewRect = new Rect(0f, 0f, inRect.width - 25f, integrationH + 6f + activeFactions.Count * 250f);
 
             Widgets.BeginScrollView(outRect, ref scrollPosition, viewRect);
 
@@ -389,7 +409,7 @@ namespace RegionsAndSocieties
             {
                 var profile = FactionPlacementSettings.GetProfile(def);
 
-                Rect boxRect = new Rect(0f, curY, viewRect.width, 285f);
+                Rect boxRect = new Rect(0f, curY, viewRect.width, 240f);
                 Widgets.DrawMenuSection(boxRect);
 
                 Rect titleRect = new Rect(10f, curY + 10f, boxRect.width - 20f, 25f);
@@ -422,72 +442,77 @@ namespace RegionsAndSocieties
                 DrawWeightSlider(ref rightY, boxRect.width / 2f - 15f, boxRect.width / 2f + 5f, "Hunting (Forests/Wilds)", ref profile.huntingWeight, 0f, 5f);
                 DrawWeightSlider(ref rightY, boxRect.width / 2f - 15f, boxRect.width / 2f + 5f, "Margin (Desert/Tundra Edges)", ref profile.marginWeight, 0f, 5f);
 
-                // The per-faction placement number — meaning depends on the value mode (count = literal
-                // regions; percent = a share). Same stored field either way; the basic presets fill it too.
-                bool advIsCount = FactionPlacementSettings.placementValueMode == Placement.PlacementValueMode.Count;
-                string advLabel = advIsCount ? "Regions (target count):" : "Share of land (weight):";
-                float advMin = advIsCount ? 1f : 0f;
-                float advMax = 300f;
-                Rect shareRect = new Rect(10f, curY + 180f, boxRect.width - 20f, 24f);
-                Rect shareLabelRect = new Rect(shareRect.x, shareRect.y, 240f, 24f);
-                Widgets.Label(shareLabelRect, advLabel);
-                TooltipHandler.TipRegion(shareLabelRect, advIsCount
-                    ? "Literal number of regions this faction is given at world generation. The basic view's size presets (Tiny 3 … Very large 15) fill this in. The sum across all factions is capped at the planet's regions."
-                    : "This faction's relative weight in the split of the land. Weights need not sum to anything — they normalise across whoever is present, then fill the claimed area. The basic presets fill this in.");
-                float rcf = profile.placementShare;
-                int rc = Mathf.RoundToInt(rcf);
+                // The four kin/size knobs in a 2×2 grid so the card stays short. Left column x=10, right column
+                // starts at mid; each cell is a label with a 56-px numeric field at its right edge.
+                float halfW = boxRect.width / 2f - 15f;
+                float leftX = 10f, rightX = boxRect.width / 2f + 5f;
+                float rowAy = curY + 180f, rowBy = curY + 210f;
+                bool empireFixed = FactionPlacementSettings.IsEmpire(def);
+
+                // Row A left — Relative size (weight).
+                Rect shareLabelRect = new Rect(leftX, rowAy, halfW - 62f, 24f);
+                Widgets.Label(shareLabelRect, "Relative size (weight):");
+                TooltipHandler.TipRegion(shareLabelRect,
+                    "This faction's relative weight in the split of the land. Weights need not sum to anything — they normalise across whoever is present, then fill the claimed area. Every faction is guaranteed at least one region. The basic presets (1×/2×/4×/8×/16×) fill this in.");
+                int rc = Mathf.RoundToInt(profile.placementShare);
                 string rkey = def.defName + ":adv_reg";
                 if (!tableBuffers.TryGetValue(rkey, out var rbuf)) rbuf = rc.ToString();
-                Widgets.TextFieldNumeric(new Rect(shareRect.x + 250f, shareRect.y, 70f, 24f), ref rc, ref rbuf, advMin, advMax);
+                Widgets.TextFieldNumeric(new Rect(leftX + halfW - 56f, rowAy, 52f, 24f), ref rc, ref rbuf, 0f, 300f);
                 tableBuffers[rkey] = rbuf;
                 profile.placementShare = rc;
 
-                // Placement Turn Order is hidden by request — the stored value still tie-breaks seeding order
-                // at worldgen, but it is an implementation detail, not a knob most players want.
-
-                // Per-faction kin toggle (replaces the blanket switch). Kin = this faction's scattered
-                // territory is organised into regional groups; clustering (below) is a separate idea.
-                Rect kinRect = new Rect(10f, curY + 215f, boxRect.width - 20f, 24f);
+                // Row A right — Regional kin toggle.
+                Rect kinRect = new Rect(rightX, rowAy, halfW, 24f);
                 bool kinOn = FactionPlacementSettings.EffectiveEnableKin(profile, def);
                 bool kinBefore = kinOn;
-                Widgets.CheckboxLabeled(kinRect, "Regional kin (split scattered territory into N/S/E/W groups)", ref kinOn, placeCheckboxNearText: true);
+                Widgets.CheckboxLabeled(kinRect, "Split into regional kin", ref kinOn, placeCheckboxNearText: true);
                 if (kinOn != kinBefore) profile.enableKinRaw = kinOn ? 1 : 0;
                 TooltipHandler.TipRegion(kinRect,
-                    "When this faction's settlements scatter into separate clusters, organise them into regional kin groups " +
-                    "(north/south, or west/east/central) instead of one undifferentiated blob. A separate idea from clustering. " +
-                    "Default on for scattered low-tech factions (pirates, tribes, rough unions), off for the Empire and cohesive " +
-                    "civilisations — but you can turn it on for any faction.");
+                    "When on, this faction's territory is divided into geographically separate kin factions (loosely-related, not merged). " +
+                    "How many is set by the two knobs below. Default on for scattered low-tech factions (pirates, tribes, rough unions), off for cohesive civilisations.");
 
-                // #46 cluster size: any whole number 1..8, where 8 = 8+ (no limit) — how many territories may
-                // cluster together (the largest contiguous body). A soft maximum: the faction prefers ground
-                // where it cannot cluster and fills in against itself only when nothing else is left.
-                bool clCount = FactionPlacementSettings.placementValueMode == Placement.PlacementValueMode.Count;
-                Rect clusterRect = new Rect(10f, curY + 245f, boxRect.width - 20f, 24f);
-                Rect clusterLabelRect = new Rect(clusterRect.x, clusterRect.y, 240f, 24f);
-                Widgets.Label(clusterLabelRect, clCount ? "Cluster size (largest body, 0 = no limit):" : "Number of clusters (0/1 = one body):");
-                TooltipHandler.TipRegion(clusterLabelRect, clCount
-                    ? "COUNT mode: the largest contiguous body of territory this faction builds, in regions (0 = one contiguous nation). " +
-                      "A soft maximum: the faction prefers ground where it cannot cluster and only fills in against itself when nothing else is left. " +
-                      "With kin on, each body it forms becomes a kin faction. Defaults: pirates and the Empire 3, tribes 5, rough unions 7, everyone else no limit."
-                    : "PERCENT mode: how many separate clusters this faction breaks into (0/1 = one contiguous body). Its regions are split roughly evenly " +
-                      "across that many bodies, and with kin on each body becomes a kin faction. A separate idea from the faction's land share.");
+                // Row B left — Number of clusters (equal division / max kin). Empire is pinned to 1.
+                Rect clustersLabelRect = new Rect(leftX, rowBy, halfW - 62f, 24f);
+                bool zeroClusters = !empireFixed && FactionPlacementSettings.EffectiveClusterCount(profile, def) == 0;
+                GUI.color = empireFixed ? new Color(0.6f, 0.6f, 0.6f) : (zeroClusters ? new Color(1f, 0.7f, 0.3f) : Color.white);
+                Widgets.Label(clustersLabelRect, empireFixed ? "Clusters: 1 (Empire)" : "Number of clusters:");
+                GUI.color = Color.white;
+                TooltipHandler.TipRegion(clustersLabelRect,
+                    "How many kin factions this faction divides into (equal division) — the maximum kin cap. 0 = no cap: one cluster per 'minimum cluster size' worth of regions (with a minimum size of 1 that is EVERY region its own faction). Defaults: pirates 5, tribes 3, rough unions 2, cohesive 1. The Empire is always 1.");
+                if (!empireFixed)
+                {
+                    int nc = FactionPlacementSettings.EffectiveClusterCount(profile, def);
+                    string nkey = def.defName + ":adv_nc";
+                    if (!tableBuffers.TryGetValue(nkey, out var nbuf)) nbuf = nc.ToString();
+                    Widgets.TextFieldNumeric(new Rect(leftX + halfW - 56f, rowBy, 52f, 24f), ref nc, ref nbuf, 0f, 40f);
+                    tableBuffers[nkey] = nbuf;
+                    profile.numberOfClusters = nc;
+                }
+
+                // Row B right — Minimum cluster size (min regions per kin faction).
+                Rect minLabelRect = new Rect(rightX, rowBy, halfW - 62f, 24f);
+                Widgets.Label(minLabelRect, "Min cluster size:");
+                TooltipHandler.TipRegion(minLabelRect,
+                    "The fewest regions a cluster must have to become its own kin faction — clamps the division so tiny scraps don't each spawn a faction. Defaults: pirates 3, tribes 5, rough unions 7.");
                 int cl = Placement.ClusteringRules.Snap(profile.clusterSize);
                 string ckey = def.defName + ":adv_cl";
                 if (!tableBuffers.TryGetValue(ckey, out var cbuf)) cbuf = cl.ToString();
-                Widgets.TextFieldNumeric(new Rect(clusterRect.x + 250f, clusterRect.y, 60f, 24f), ref cl, ref cbuf, 0f, 99f);
+                Widgets.TextFieldNumeric(new Rect(rightX + halfW - 56f, rowBy, 52f, 24f), ref cl, ref cbuf, 1f, 99f);
                 tableBuffers[ckey] = cbuf;
-                profile.clusterSize = Placement.ClusteringRules.Snap(cl);
+                profile.clusterSize = cl;
 
-                curY += 295f;
+                curY += 250f;
             }
 
             Widgets.EndScrollView();
         }
 
-        // Column layout for the experimental table: x positions and widths, index-aligned with the headers.
-        private static readonly float[] TblX = { 4f, 134f, 182f, 230f, 278f, 326f, 374f, 424f, 476f, 524f, 568f };
-        private static readonly float[] TblW = { 126f, 44f, 44f, 44f, 44f, 44f, 44f, 48f, 44f, 40f, 56f };
-        private static readonly string[] TblHead = { "Faction", "Min", "Nut", "For", "Grz", "Hun", "Mrg", "Regns", "Clstr", "Kin", "" };
+        // Column layout for the table: x positions and widths, index-aligned with the headers. Spaced out with
+        // fuller names, and a "Clusters" column added beside "Min size" (indices: 0 Faction, 1-6 resource
+        // weights, 7 Size, 8 Clusters, 9 Min size, 10 Kin, 11 Reset).
+        private static readonly float[] TblX = { 4f, 160f, 214f, 268f, 322f, 376f, 430f, 486f, 540f, 596f, 652f, 686f };
+        private static readonly float[] TblW = { 150f, 50f, 50f, 50f, 50f, 50f, 50f, 50f, 50f, 50f, 30f, 56f };
+        private static readonly string[] TblHead = { "Faction", "Mineral", "Nutrition", "Forage", "Grazing", "Hunting", "Margin", "Size", "Clusters", "Min size", "Kin", "" };
 
         /// <summary>Experimental table layout for the advanced faction editor (#47): every faction a row,
         /// every tuning value a column, so a custom setup can be compared across factions at a glance.</summary>
@@ -506,7 +531,7 @@ namespace RegionsAndSocieties
             Text.Font = GameFont.Small;
             GUI.color = Color.white;
 
-            const float integrationH = 250f, rowH = 28f;
+            const float integrationH = 264f, rowH = 28f;
             Rect outRect = new Rect(0f, top + 24f, inRect.width, inRect.height - (top + 24f) - 55f);
             Rect viewRect = new Rect(0f, 0f, inRect.width - 25f, activeFactions.Count * rowH + 16f + integrationH);
             Widgets.BeginScrollView(outRect, ref tableScroll, viewRect);
@@ -530,29 +555,47 @@ namespace RegionsAndSocieties
                 NumCell(new Rect(TblX[4], cy, TblW[4], ch), def.defName + ":grz", ref profile.grazingWeight, 0f, 5f);
                 NumCell(new Rect(TblX[5], cy, TblW[5], ch), def.defName + ":hun", ref profile.huntingWeight, 0f, 5f);
                 NumCell(new Rect(TblX[6], cy, TblW[6], ch), def.defName + ":mrg", ref profile.marginWeight, 0f, 5f);
-                NumCell(new Rect(TblX[7], cy, TblW[7], ch), def.defName + ":shr", ref profile.placementShare, 1f, 300f);
+                NumCell(new Rect(TblX[7], cy, TblW[7], ch), def.defName + ":shr", ref profile.placementShare, 0f, 300f);
+
+                // Number of clusters (Empire pinned to 1, shown as a static label).
+                if (FactionPlacementSettings.IsEmpire(def))
+                {
+                    var pa = Text.Anchor; Text.Anchor = TextAnchor.MiddleCenter;
+                    GUI.color = new Color(0.6f, 0.6f, 0.6f);
+                    Widgets.Label(new Rect(TblX[8], cy, TblW[8], ch), "1");
+                    GUI.color = Color.white; Text.Anchor = pa;
+                }
+                else
+                {
+                    int ncv = FactionPlacementSettings.EffectiveClusterCount(profile, def);
+                    string nkey = def.defName + ":nc";
+                    if (!tableBuffers.TryGetValue(nkey, out var nbuf)) nbuf = ncv.ToString();
+                    Widgets.TextFieldNumeric(new Rect(TblX[8], cy, TblW[8], ch), ref ncv, ref nbuf, 0f, 40f);
+                    tableBuffers[nkey] = nbuf;
+                    profile.numberOfClusters = ncv;
+                }
 
                 int clv = Placement.ClusteringRules.Snap(profile.clusterSize);
                 string ckey = def.defName + ":cl";
                 if (!tableBuffers.TryGetValue(ckey, out var cbuf)) cbuf = clv.ToString();
-                Widgets.TextFieldNumeric(new Rect(TblX[8], cy, TblW[8], ch), ref clv, ref cbuf, 0f, 99f);
+                Widgets.TextFieldNumeric(new Rect(TblX[9], cy, TblW[9], ch), ref clv, ref cbuf, 1f, 99f);
                 tableBuffers[ckey] = cbuf;
-                profile.clusterSize = Placement.ClusteringRules.Snap(clv);
+                profile.clusterSize = clv;
 
                 bool kinOn = FactionPlacementSettings.EffectiveEnableKin(profile, def);
                 bool kb = kinOn;
-                Widgets.Checkbox(TblX[9] + 10f, curY + 3f, ref kinOn, 20f);
+                Widgets.Checkbox(TblX[10] + 6f, curY + 3f, ref kinOn, 20f);
                 if (kinOn != kb) profile.enableKinRaw = kinOn ? 1 : 0;
 
-                if (Widgets.ButtonText(new Rect(TblX[10], curY + 2f, TblW[10], rowH - 6f), "Reset"))
+                if (Widgets.ButtonText(new Rect(TblX[11], curY + 2f, TblW[11], rowH - 6f), "Reset"))
                 {
                     var dp = FactionPlacementSettings.GetDefaultProfile(def);
                     profile.mineralWeight = dp.mineralWeight; profile.nutritionWeight = dp.nutritionWeight;
                     profile.forageWeight = dp.forageWeight; profile.grazingWeight = dp.grazingWeight;
                     profile.huntingWeight = dp.huntingWeight; profile.marginWeight = dp.marginWeight;
                     profile.placementShare = dp.placementShare; profile.clusterSize = dp.clusterSize;
-                    profile.enableKinRaw = -1;
-                    foreach (var k in new[] { "min", "nut", "for", "grz", "hun", "mrg", "shr", "cl" }) tableBuffers.Remove(def.defName + ":" + k);
+                    profile.numberOfClusters = dp.numberOfClusters; profile.enableKinRaw = -1;
+                    foreach (var k in new[] { "min", "nut", "for", "grz", "hun", "mrg", "shr", "cl", "nc" }) tableBuffers.Remove(def.defName + ":" + k);
                 }
 
                 curY += rowH;
@@ -594,7 +637,7 @@ namespace RegionsAndSocieties
                                                 : FactionPlacementSettings.strictTerritorialOwnershipDefault;
             string strictWord = strictActive ? "<color=#7CFC7C>enabled</color>" : "<color=#FF7C7C>disabled</color>";
             Rect ownRect = new Rect(box.x + 10f, y, box.width - 20f, 22f);
-            Widgets.Label(ownRect, $"Strict territorial ownership is {strictWord} — change it in mod settings. (default enabled)");
+            Widgets.Label(ownRect, $"Strict territorial ownership is {strictWord} — change it in mod settings. (default off, for compatibility)");
             TooltipHandler.TipRegion(ownRect,
                 "Whether Regions & Societies governs where settlements and outposts may be built (buffers, supply range, footholds, region locks). " +
                 "Set it under Options → Mod Settings → Regions and Societies; it can be changed mid-game.");
@@ -603,18 +646,33 @@ namespace RegionsAndSocieties
             // World maturity: how many NON-PLAYER outposts and other holdings are pre-placed at world
             // generation. Off = none; Full = each territory's whole allowance (a ready-to-play, fully
             // settled world). Seeding is implied by maturity > 0 — no separate on/off switch.
+            // World maturity slider — label on its own line, slider full-width below it (the Off/Full end
+            // labels need the whole width or they clip against the caption).
             bool on = Integration.WorldObjectIntegrationSettings.masterEnabled;
-            Rect matLabelRect = new Rect(box.x + 10f, y, 235f, 22f);
+            Rect matLabelRect = new Rect(box.x + 10f, y, box.width - 20f, 22f);
             GUI.color = on ? Color.white : new Color(1f, 1f, 1f, 0.4f);
-            Widgets.Label(matLabelRect, $"NPC outposts and world objects: {Sizing.SeedingMaturityRules.Label(Integration.WorldObjectIntegrationSettings.seedingMaturity)}");
+            Widgets.Label(matLabelRect, $"NPC outposts & world objects to pre-place:  <b>{Sizing.SeedingMaturityRules.Label(Integration.WorldObjectIntegrationSettings.seedingMaturity)}</b>");
             GUI.color = Color.white;
-            Rect matSliderRect = new Rect(box.x + 255f, y + 2f, box.width - 275f, 18f);
-            float tempMat = Widgets.HorizontalSlider(matSliderRect, Integration.WorldObjectIntegrationSettings.seedingMaturity, 0f, 1f, false, null, "Off", "Full", 0.05f);
-            if (on) Integration.WorldObjectIntegrationSettings.seedingMaturity = tempMat;
             TooltipHandler.TipRegion(matLabelRect,
                 "How built-up a new world starts — how many non-player (NPC) outposts and other holdings are pre-placed around settlements at world generation. " +
                 "Off pre-places none; Full pre-places each territory's whole allowance — a ready-to-play, fully-settled world (e.g. a World Domination start). " +
                 "Requires a compatibility mod that builds the outposts. Stamped per world so a regenerate reproduces it.");
+            y += 30f;
+            // "Off"/"Full" drawn as our own flanking labels around a plain slider, so they can't clip against
+            // the card edges or the caption (the slider's built-in end labels hug the ends and overlapped).
+            var prevAnchor = Text.Anchor;
+            Text.Font = GameFont.Tiny;
+            GUI.color = new Color(0.7f, 0.7f, 0.7f);
+            Text.Anchor = TextAnchor.MiddleLeft;
+            Widgets.Label(new Rect(box.x + 12f, y, 34f, 18f), "Off");
+            Text.Anchor = TextAnchor.MiddleRight;
+            Widgets.Label(new Rect(box.xMax - 46f, y, 34f, 18f), "Full");
+            Text.Anchor = prevAnchor;
+            Text.Font = GameFont.Small;
+            GUI.color = Color.white;
+            Rect matSliderRect = new Rect(box.x + 52f, y + 1f, box.width - 104f, 18f);
+            float tempMat = Widgets.HorizontalSlider(matSliderRect, Integration.WorldObjectIntegrationSettings.seedingMaturity, 0f, 1f, false, null, null, null, 0.05f);
+            if (on) Integration.WorldObjectIntegrationSettings.seedingMaturity = tempMat;
             y += 30f;
 
             // Detected compatibility mods and the world objects each contributes. FRAMEWORK PREVIEW: no
@@ -750,17 +808,8 @@ namespace RegionsAndSocieties
         {
             float y = strip.y;
 
-            // Value-mode toggle (Percent ↔ Region count).
-            bool isCount = FactionPlacementSettings.placementValueMode == Placement.PlacementValueMode.Count;
-            Rect valRect = new Rect(strip.x, y, strip.width, 28f);
-            if (Widgets.ButtonText(valRect, isCount ? "Values: Region count" : "Values: Percent"))
-                FactionPlacementSettings.placementValueMode = isCount ? Placement.PlacementValueMode.Percent : Placement.PlacementValueMode.Count;
-            TooltipHandler.TipRegion(valRect,
-                "Percent (default): each faction's number is a share of the total land regions that self-scales — a small vanilla world still fills.\n\n" +
-                "Region count: each number is a literal target region count (exact control).");
-            y += 32f;
-
-            // Pie-view toggle (By faction ↔ By hostility).
+            // Pie-view toggle (By faction ↔ By hostility). The value-mode switch was dropped — sizes are
+            // always the combined relative-share model.
             Rect pieViewRect = new Rect(strip.x, y, strip.width, 28f);
             if (Widgets.ButtonText(pieViewRect, pieView == 0 ? "Pie: By faction" : "Pie: By hostility"))
                 pieView = pieView == 0 ? 1 : 0;
