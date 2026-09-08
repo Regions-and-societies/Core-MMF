@@ -1,10 +1,7 @@
 # 0.4.0 "Map & Placement" — publish screenshots
 
 Screenshot set to post with the 0.4.0 Workshop update / release, captured during the
-placement-dialog + mod-menu polish. Drop the PNGs in this folder (names below) before publishing.
-
-> Note: the four UI shots below were reviewed in-session but the image files could not be
-> extracted from chat automatically — save them here from the conversation before publishing.
+placement-dialog + mod-menu polish. All PNGs are present in this folder, ready to attach.
 
 ## The set (in suggested post order)
 
@@ -24,6 +21,5 @@ placement-dialog + mod-menu polish. Drop the PNGs in this folder (names below) b
    Caption: "Tune how large each biome's regions are — sparse biomes (ice, desert) default larger.
    Our values are the defaults; reset per-biome or all at once."
 
-## Already present
-- `c47a8997-image.png` — the World Objects integration card (framework preview of the detected-mods
-  table). Optional supporting shot.
+5. **`05-integration-card.png`** — the World Objects integration card (framework preview of the
+   detected-mods table). Optional supporting shot.
