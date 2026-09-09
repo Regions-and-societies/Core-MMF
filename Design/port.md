@@ -62,6 +62,39 @@ Gotchas baked into `PlacementEstimates`:
 - **`#54` RP2 acceptance matrix is still deferred** — re-run this table under RP2 at 30% + 100%,
   accept ±15% on the region estimate, and bake RP2's land fraction / tile curve if it diverges.
 
+## RP2 sea-level / planet-size handling (implemented 2026-09-08, #54 tail)
+
+`RealisticPlanetsProbe` (`Source/Integration`) reads RP2's world-shaping settings by reflection —
+RP2 is never hard-referenced, so the file is inert on the base edition and lives in BOTH editions.
+Confirmed field paths (decompiled from `Realistic_Planets_2.dll`, then read live via
+`inspect_csharp_field`):
+
+- **Planet size** = `Planets.Core.Planets_GameComponent.subcount` (static `int`, the "Planet Scale"
+  slider, range 5..11, default 10 — it sets `PlanetLayerSettingsDefOf.Surface.settings.subdivisions`,
+  i.e. the icosahedron subdivision level → tile count). NOT vanilla coverage. `PlacementEstimates.
+  EstimateTotalTilesRP2(subcount, coverage)` scales the vanilla tile curve by `(subcount/10)^2`.
+  CONFIRMED: an RP2 world at subcount 10 / 30% coverage generated exactly 119,904 tiles — the same as
+  the vanilla 30% anchor — so 10 is the baseline and the vanilla curve holds there.
+- **Sea level** = `Planets.Core.Planets_GameComponent.seaLevel` (static enum `Planets.WorldGen.SeaLevel`
+  = {Low, SlightlyLow, Normal, SlightlyHigh, High}, read as its 0..4 ordinal; Normal = 2, the vanilla-
+  like middle). RP2's worldbuilder multiplier is Low 0.5 … High 1.5 (higher = more ocean = less land).
+  `PlacementEstimates.LandFractionForSeaLevel(ordinal)` maps it to a land fraction. The per-level
+  fractions are FIRST-GUESS (Normal = 0.5); one Normal seed read 43.3% land, but land fraction swings
+  widely by seed, so the #54 matrix (several seeds per level) is what bakes the real medians.
+
+Both are read only in the placement dialog's pre-gen branch (`Dialog_FactionPlacementSettings` ~L90).
+Rainfall + axial tilt were intentionally left out (they are already vanilla/MMF sliders, not RP2-
+unique) — a possible 0.5.0+ refinement, not part of this.
+
+## About.xml is XML — escape "&" in the description (learned the hard way, 2026-09-08)
+
+The `<description>` is parsed as XML, so a raw `&` (e.g. a changelog header "Map & Placement") throws
+`error parsing EntityName` and RimWorld loads the mod with DEFAULT metadata — effectively dropping it.
+The C# build and the release deploy never parse About.xml, so it ships undetected (it did, in v0.4.0,
+on BOTH editions). Use `&amp;`. `&` inside an XML comment is fine (not entity-parsed). Steam
+`steam_description.txt` (BBCode) and `Learning/*.md` (Markdown) are NOT XML — raw `&` is fine there.
+Validate after editing About.xml: PowerShell `[xml](Get-Content <file> -Raw)` throws on a malformed one.
+
 ## Placement value model (#47)
 
 - Each faction's stored `placementShare` is read per the global `placementValueMode`: **Percent**
