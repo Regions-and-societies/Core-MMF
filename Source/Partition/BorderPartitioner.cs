@@ -772,6 +772,16 @@ namespace RegionsAndSocieties.Partition
                 if (container.Count < 2 * NarrowNeckMinLobe) { result.Add(container); continue; }
                 var members = new HashSet<int>(container);
 
+                // The only tiles whose removal can split a CONNECTED container are its cut vertices
+                // (articulation points). One Tarjan pass (O(V+E)) finds them all, so the O(V) flood
+                // below runs only on real candidates instead of on every tile — an O(V^2*logV) -> ~O(V+E)
+                // win on the large single-biome containers, with an identical result: a non-cut tile
+                // would flood to comps.Count < 2 and be skipped anyway. A disconnected piece (a rare
+                // leftover of a 3+-way cut, where every tile trivially "separates" the standing lobes)
+                // keeps the exhaustive scan, so its behaviour is unchanged. (#60)
+                var cutVertices = ArticulationPoints(grid, members, out int componentCount);
+                bool gateOnCuts = componentCount == 1;
+
                 int neck = -1;
                 List<int> keep = null, spin = null;
                 foreach (int t in container)
@@ -783,6 +793,7 @@ namespace RegionsAndSocieties.Partition
                     int same = 0;
                     for (int i = 0; i < nb.Count; i++) if (members.Contains(nb[i].tileId)) same++;
                     if (same < 2 || same > 5) continue;
+                    if (gateOnCuts && !cutVertices.Contains(t)) continue;   // #60: only a cut vertex can split a connected container
 
                     var comps = FloodComponentsExcluding(grid, members, t, floodNb);
                     if (comps.Count < 2) continue;
@@ -803,6 +814,104 @@ namespace RegionsAndSocieties.Partition
             }
             for (; wi < work.Count; wi++) result.Add(work[wi]);   // guard tripped: keep the rest whole
             return result;
+        }
+
+        /// <summary>In-container neighbours of <paramref name="t"/> (its hex neighbours that are in
+        /// <paramref name="members"/>), returned as a fresh small list. <paramref name="tmp"/> is a reused
+        /// scratch buffer for the grid call.</summary>
+        private static List<int> InMemberNeighbors(WorldGrid grid, int t, HashSet<int> members, List<PlanetTile> tmp)
+        {
+            tmp.Clear();
+            grid.GetTileNeighbors(t, tmp);
+            var list = new List<int>(6);
+            for (int i = 0; i < tmp.Count; i++)
+            {
+                int nid = tmp[i].tileId;
+                if (members.Contains(nid)) list.Add(nid);
+            }
+            return list;
+        }
+
+        /// <summary>
+        /// Cut vertices (articulation points) of the container subgraph over <paramref name="members"/>
+        /// under hex adjacency, by an ITERATIVE Tarjan DFS — O(V+E), no recursion so a several-thousand-tile
+        /// container can't blow the stack. A vertex is a cut vertex iff removing it increases the number of
+        /// connected components; for a CONNECTED container that is exactly "removing it produces &gt;= 2
+        /// components", the fire condition <see cref="SplitContainersAtNecks"/> tests with a full flood — so
+        /// gating that flood on this set changes nothing but the work done (#60). Also reports the component
+        /// count via <paramref name="componentCount"/> so the caller can fall back to the exhaustive scan on a
+        /// disconnected piece, where the equivalence does not hold. The cut SET is independent of DFS/root
+        /// order, so no sort is needed for determinism.
+        /// </summary>
+        private static HashSet<int> ArticulationPoints(WorldGrid grid, HashSet<int> members, out int componentCount)
+        {
+            var cuts = new HashSet<int>();
+            var disc = new Dictionary<int, int>(members.Count);
+            var low = new Dictionary<int, int>(members.Count);
+            var childCount = new Dictionary<int, int>(members.Count);
+            var neighOf = new Dictionary<int, List<int>>(members.Count);
+            var tmp = new List<PlanetTile>();
+            int timer = 0, components = 0;
+
+            // Explicit DFS stack (node / its parent in the DFS tree / cursor into its neighbour list).
+            var stkNode = new Stack<int>();
+            var stkParent = new Stack<int>();
+            var stkIdx = new Stack<int>();
+
+            foreach (int root in members)
+            {
+                if (disc.ContainsKey(root)) continue;
+                components++;
+
+                disc[root] = low[root] = ++timer;
+                childCount[root] = 0;
+                neighOf[root] = InMemberNeighbors(grid, root, members, tmp);
+                stkNode.Push(root); stkParent.Push(-1); stkIdx.Push(0);
+
+                while (stkNode.Count > 0)
+                {
+                    int u = stkNode.Peek();
+                    int parent = stkParent.Peek();
+                    int idx = stkIdx.Peek();
+                    var un = neighOf[u];
+
+                    if (idx < un.Count)
+                    {
+                        stkIdx.Pop(); stkIdx.Push(idx + 1);   // advance this frame's cursor
+                        int v = un[idx];
+                        if (v == parent) continue;            // simple graph: skip the one edge back to parent
+                        if (disc.ContainsKey(v))
+                        {
+                            if (disc[v] < low[u]) low[u] = disc[v];   // back edge
+                        }
+                        else
+                        {
+                            childCount[u] = childCount[u] + 1;        // tree edge: u gains a DFS child, descend
+                            disc[v] = low[v] = ++timer;
+                            childCount[v] = 0;
+                            neighOf[v] = InMemberNeighbors(grid, v, members, tmp);
+                            stkNode.Push(v); stkParent.Push(u); stkIdx.Push(0);
+                        }
+                    }
+                    else
+                    {
+                        stkNode.Pop(); stkParent.Pop(); stkIdx.Pop();   // u is finished
+                        if (parent != -1)
+                        {
+                            if (low[u] < low[parent]) low[parent] = low[u];
+                            // A non-root parent is a cut vertex if a child's subtree reaches no higher than it.
+                            if (parent != root && low[u] >= disc[parent]) cuts.Add(parent);
+                        }
+                        else if (childCount[u] >= 2)
+                        {
+                            cuts.Add(u);   // the DFS-tree root is a cut vertex iff it has >= 2 children
+                        }
+                    }
+                }
+            }
+
+            componentCount = components;
+            return cuts;
         }
 
         /// <summary>Connected components (hex adjacency) of <paramref name="members"/> with <paramref
