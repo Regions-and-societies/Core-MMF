@@ -72,15 +72,20 @@ Confirmed field paths (decompiled from `Realistic_Planets_2.dll`, then read live
 - **Planet size** = `Planets.Core.Planets_GameComponent.subcount` (static `int`, the "Planet Scale"
   slider, range 5..11, default 10 — it sets `PlanetLayerSettingsDefOf.Surface.settings.subdivisions`,
   i.e. the icosahedron subdivision level → tile count). NOT vanilla coverage. `PlacementEstimates.
-  EstimateTotalTilesRP2(subcount, coverage)` scales the vanilla tile curve by `(subcount/10)^2`.
-  CONFIRMED: an RP2 world at subcount 10 / 30% coverage generated exactly 119,904 tiles — the same as
-  the vanilla 30% anchor — so 10 is the baseline and the vanilla curve holds there.
+  EstimateTotalTilesRP2(subcount, coverage)` = vanilla curve × **3.0^(subcount − 10)**. CALIBRATED
+  2026-09-08 (seed biomemix, 30% coverage): subcount 5/8/10 = 488 / 13,323 / 119,904 — a clean ×3.0
+  per step (119904/9 = 13323 exactly; subcount 10 = the vanilla 30% anchor). The tile count grows
+  EXPONENTIALLY with Planet Scale — an earlier (subcount/10)^2 guess was ~60× off at subcount 5. To
+  RE-MEASURE: set `devQuicktestSubcount` in the RP2 mod-settings XML, -quicktest, read the `CALIB:` line.
 - **Sea level** = `Planets.Core.Planets_GameComponent.seaLevel` (static enum `Planets.WorldGen.SeaLevel`
-  = {Low, SlightlyLow, Normal, SlightlyHigh, High}, read as its 0..4 ordinal; Normal = 2, the vanilla-
-  like middle). RP2's worldbuilder multiplier is Low 0.5 … High 1.5 (higher = more ocean = less land).
-  `PlacementEstimates.LandFractionForSeaLevel(ordinal)` maps it to a land fraction. The per-level
-  fractions are FIRST-GUESS (Normal = 0.5); one Normal seed read 43.3% land, but land fraction swings
-  widely by seed, so the #54 matrix (several seeds per level) is what bakes the real medians.
+  = {Low, SlightlyLow, Normal, SlightlyHigh, High}, read as its 0..4 ordinal; Normal = 2). Higher = more
+  ocean = less land. `PlacementEstimates.LandFractionForSeaLevel(ordinal)` = **{0.62, 0.56, 0.50, 0.37,
+  0.23}**, CALIBRATED 2026-09-08 from a controlled biomemix sweep (Low 72.5% / Normal 58.6% / High 27.2%
+  at subcount 10, 30%): Normal anchored to the cross-seed mean 0.50 (two Normal seeds: 43.3%, 58.6%), the
+  measured spread applied, "slightly" levels interpolated. Land fraction still swings widely by seed, so
+  it stays the "rough" pre-gen number; more seeds per level would refine it. RE-MEASURE via
+  `devQuicktestSeaLevel` in the RP2 XML, same `CALIB:` channel. (Both dev overrides are RP2-only, off in
+  normal play.)
 
 Both are read only in the placement dialog's pre-gen branch (`Dialog_FactionPlacementSettings` ~L90).
 Rainfall + axial tilt were intentionally left out (they are already vanilla/MMF sliders, not RP2-
