@@ -14,7 +14,7 @@ namespace PopulationCapRulesTests
         public static int Main()
         {
             Section("caps and targets by tier");
-            Check("a tierless holding has no cap", PopulationCapRules.MaxPopulation(SettlementTier.None, 30f, 1f) == 0);
+            Check("a tierless holding has no cap", PopulationCapRules.MaxPopulation(SettlementTier.Homestead, 30f, 1f) == 0);
             Check("a village caps above zero", PopulationCapRules.MaxPopulation(SettlementTier.Village, 30f, 1f) > 0);
             Check("caps rise with tier", PopulationCapRules.MaxPopulation(SettlementTier.Metropolis, 30f, 1f)
                 > PopulationCapRules.MaxPopulation(SettlementTier.Village, 30f, 1f));

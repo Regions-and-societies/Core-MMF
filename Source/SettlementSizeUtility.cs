@@ -53,21 +53,21 @@ namespace RegionsAndSocieties.Sizing
         }
 
         /// <summary>
-        /// The tier of a world object, or <see cref="SettlementTier.None"/> when it has none —
+        /// The tier of a world object, or <see cref="SettlementTier.Homestead"/> when it has none —
         /// non-settlements, factionless objects, and everything when tiers are switched off. Only
         /// settlements carry a structural tier; outposts and camps are production/forward holdings,
         /// not rungs of the population pyramid.
         /// </summary>
         public static SettlementTier TierOf(WorldObject obj)
         {
-            if (obj == null) return SettlementTier.None;
-            if (!WorldObjectIntegrationSettings.SettlementTiersActive) return SettlementTier.None;
-            if (WorldObjectClassifier.Classify(obj) != WorldObjectKind.Settlement) return SettlementTier.None;
-            if (obj.Faction == null) return SettlementTier.None;
+            if (obj == null) return SettlementTier.Homestead;
+            if (!WorldObjectIntegrationSettings.SettlementTiersActive) return SettlementTier.Homestead;
+            if (WorldObjectClassifier.Classify(obj) != WorldObjectKind.Settlement) return SettlementTier.Homestead;
+            if (obj.Faction == null) return SettlementTier.Homestead;
 
             List<WorldObject> ranked = RankedSettlements(obj.Faction);
             int rank = ranked.IndexOf(obj);
-            if (rank < 0) return SettlementTier.None;
+            if (rank < 0) return SettlementTier.Homestead;
 
             return TierPyramidRules.TierForRank(rank, TierPyramidRules.TierCounts(ranked.Count));
         }
@@ -321,7 +321,7 @@ namespace RegionsAndSocieties.Sizing
         /// </summary>
         public static WorldObject LargestTieredObjectAt(int tileId, out SettlementTier tier)
         {
-            tier = SettlementTier.None;
+            tier = SettlementTier.Homestead;
             WorldObject best = null;
 
             if (Find.WorldObjects == null) return null;
@@ -333,7 +333,7 @@ namespace RegionsAndSocieties.Sizing
                 if (obj == null || obj.Tile.tileId != tileId) continue;
 
                 SettlementTier candidate = TierOf(obj);
-                if (candidate == SettlementTier.None) continue;
+                if (candidate == SettlementTier.Homestead) continue;
 
                 if (best == null || (int)candidate > (int)tier)
                 {

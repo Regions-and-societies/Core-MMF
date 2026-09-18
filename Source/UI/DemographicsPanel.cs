@@ -61,7 +61,7 @@ namespace RegionsAndSocieties.UI
                 // them. The colonist count is authoritative and is never overridden here.
                 if (population > 0)
                 {
-                    DistrictTier tier = DistrictRules.TierForPopulation(population, mapEdge);
+                    SettlementTier tier = DistrictRules.TierForPopulation(population, mapEdge);
                     int districts = DistrictRules.DistrictsForPopulation(population, mapEdge);
                     float share = DistrictRules.SettledShareOfTile(districts, mapEdge);
                     int tileTotal = DistrictRules.TilePopulation(population);

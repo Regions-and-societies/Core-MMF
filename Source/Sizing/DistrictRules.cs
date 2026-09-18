@@ -1,16 +1,5 @@
 namespace RegionsAndSocieties.Sizing
 {
-    /// <summary>The settled size of a place, from a lone homestead to a metropolis, measured in
-    /// districts rather than in head count (#69).</summary>
-    public enum DistrictTier
-    {
-        Homestead,
-        Village,
-        Town,
-        City,
-        Metropolis
-    }
-
     /// <summary>
     /// How a settlement occupies its world tile (#69). A tile is ~374 local maps of ground
     /// (<see cref="WorldScaleRules"/>), but people do not spread evenly across 23 km²: they cluster,
@@ -94,22 +83,18 @@ namespace RegionsAndSocieties.Sizing
             return rings;
         }
 
-        /// <summary>Rings a tier occupies: Homestead 0 through Metropolis 4.</summary>
-        public static int RingsForTier(DistrictTier tier)
+        /// <summary>Rings a tier occupies: Homestead 0 through Metropolis 4. The rung index and the
+        /// ring count are the same number, which is why the ladder is exactly five rungs long and why
+        /// dropping a rung shortens both together.</summary>
+        public static int RingsForTier(SettlementTier tier)
         {
-            switch (tier)
-            {
-                case DistrictTier.Homestead: return 0;
-                case DistrictTier.Village: return 1;
-                case DistrictTier.Town: return 2;
-                case DistrictTier.City: return 3;
-                case DistrictTier.Metropolis: return 4;
-                default: return 0;
-            }
+            int rung = (int)tier;
+            if (rung < 0) return 0;
+            return rung > TierPyramidRules.MaxTier ? TierPyramidRules.MaxTier : rung;
         }
 
         /// <summary>Districts a tier occupies: 1, 7, 19, 37, 61.</summary>
-        public static int DistrictsForTier(DistrictTier tier)
+        public static int DistrictsForTier(SettlementTier tier)
         {
             return DistrictsInRings(RingsForTier(tier));
         }
@@ -127,7 +112,7 @@ namespace RegionsAndSocieties.Sizing
 
         /// <summary>The settled population of a tier: 100 / 700 / 1,900 / 3,700 / 6,100 at the default
         /// map size. Excludes hinterland; see <see cref="TilePopulation"/>.</summary>
-        public static int PopulationForTier(DistrictTier tier, int mapEdgeCells)
+        public static int PopulationForTier(SettlementTier tier, int mapEdgeCells)
         {
             return RoundToInt(DistrictsForTier(tier) * PeoplePerDistrict(mapEdgeCells));
         }
@@ -165,12 +150,12 @@ namespace RegionsAndSocieties.Sizing
 
         /// <summary>The tier a settled population reads as. Below one full district it is a homestead;
         /// otherwise the highest tier whose settled population it has reached.</summary>
-        public static DistrictTier TierForPopulation(int population, int mapEdgeCells)
+        public static SettlementTier TierForPopulation(int population, int mapEdgeCells)
         {
-            DistrictTier result = DistrictTier.Homestead;
-            for (int t = (int)DistrictTier.Metropolis; t >= 0; t--)
+            SettlementTier result = SettlementTier.Homestead;
+            for (int t = (int)SettlementTier.Metropolis; t >= 0; t--)
             {
-                var tier = (DistrictTier)t;
+                var tier = (SettlementTier)t;
                 if (population >= PopulationForTier(tier, mapEdgeCells)) { result = tier; break; }
             }
             return result;
@@ -223,15 +208,15 @@ namespace RegionsAndSocieties.Sizing
         /// below a real city. <paramref name="developedFraction"/> is built ground over map ground;
         /// <paramref name="wealthMultiplier"/> is 1 for an ordinary build and above 1 for a rich one.
         /// </summary>
-        public static DistrictTier TierFromDevelopment(float developedFraction, float wealthMultiplier)
+        public static SettlementTier TierFromDevelopment(float developedFraction, float wealthMultiplier)
         {
-            if (developedFraction <= 0f) return DistrictTier.Homestead;
+            if (developedFraction <= 0f) return SettlementTier.Homestead;
             float score = developedFraction * (wealthMultiplier <= 0f ? 1f : wealthMultiplier);
-            if (score >= MetropolisDevelopment) return DistrictTier.Metropolis;
-            if (score >= CityDevelopment) return DistrictTier.City;
-            if (score >= TownDevelopment) return DistrictTier.Town;
-            if (score >= VillageDevelopment) return DistrictTier.Village;
-            return DistrictTier.Homestead;
+            if (score >= MetropolisDevelopment) return SettlementTier.Metropolis;
+            if (score >= CityDevelopment) return SettlementTier.City;
+            if (score >= TownDevelopment) return SettlementTier.Town;
+            if (score >= VillageDevelopment) return SettlementTier.Village;
+            return SettlementTier.Homestead;
         }
 
         /// <summary>
@@ -241,7 +226,7 @@ namespace RegionsAndSocieties.Sizing
         /// modelled share; the hinterland its usual share of the total. Developing the colony raises
         /// the tier, which adds suburbs around the player rather than declaring them short of people.
         /// </summary>
-        public static int PlayerTilePopulation(int colonistCount, DistrictTier tier, int mapEdgeCells)
+        public static int PlayerTilePopulation(int colonistCount, SettlementTier tier, int mapEdgeCells)
         {
             if (colonistCount < 0) colonistCount = 0;
             int surrounding = DistrictsForTier(tier) - 1;
@@ -252,7 +237,7 @@ namespace RegionsAndSocieties.Sizing
 
         /// <summary>The share of the player's tile population that is actually on screen — the
         /// reconciliation line, so the gap is stated rather than hidden.</summary>
-        public static float RenderedShare(int colonistCount, DistrictTier tier, int mapEdgeCells)
+        public static float RenderedShare(int colonistCount, SettlementTier tier, int mapEdgeCells)
         {
             int total = PlayerTilePopulation(colonistCount, tier, mapEdgeCells);
             if (total <= 0) return 0f;

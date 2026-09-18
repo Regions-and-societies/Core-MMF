@@ -15,13 +15,14 @@ namespace RegionsAndSocieties.Sizing
     /// </summary>
     public enum SettlementTier
     {
-        /// <summary>Not a population centre at all, or too small to register. Carries no tier effects.</summary>
-        None = 0,
+        /// <summary>The smallest rung: a lone homestead, one district of people. Also what an
+        /// unranked holding reads as, and what everything reads as while the settlement-tier feature
+        /// is switched off. Carries no tier-imposed population cap.</summary>
+        Homestead = 0,
         Village = 1,       // T1
         Town = 2,          // T2
         City = 3,          // T3
-        MajorCity = 4,     // T4
-        Metropolis = 5     // T5 — the capital tier; a faction needs 15 settlements to afford one
+        Metropolis = 4     // T4 — the capital tier; a faction needs 10 settlements to afford one
     }
 
     public static class SettlementTierExtensions
@@ -33,9 +34,8 @@ namespace RegionsAndSocieties.Sizing
                 case SettlementTier.Village: return "village";
                 case SettlementTier.Town: return "town";
                 case SettlementTier.City: return "city";
-                case SettlementTier.MajorCity: return "major city";
                 case SettlementTier.Metropolis: return "metropolis";
-                default: return "settlement";
+                default: return "homestead";
             }
         }
 
@@ -47,9 +47,8 @@ namespace RegionsAndSocieties.Sizing
                 case SettlementTier.Village: return "Village";
                 case SettlementTier.Town: return "Town";
                 case SettlementTier.City: return "City";
-                case SettlementTier.MajorCity: return "Major city";
                 case SettlementTier.Metropolis: return "Metropolis";
-                default: return "Settlement";
+                default: return "Homestead";
             }
         }
 

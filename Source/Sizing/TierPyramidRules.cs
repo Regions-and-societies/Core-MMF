@@ -17,8 +17,8 @@ namespace RegionsAndSocieties.Sizing
     /// </summary>
     public static class TierPyramidRules
     {
-        /// <summary>Highest tier index the game supports. Tier 5 is <see cref="SettlementTier.Metropolis"/>.</summary>
-        public const int MaxTier = 5;
+        /// <summary>Highest tier index the game supports. Tier 4 is <see cref="SettlementTier.Metropolis"/>.</summary>
+        public const int MaxTier = 4;
 
         /// <summary>Minimum settlements to afford a capital of this tier: the triangular number T(T+1)/2.</summary>
         public static int TerritoriesForTier(int tier)
@@ -45,7 +45,7 @@ namespace RegionsAndSocieties.Sizing
 
         /// <summary>
         /// How many settlements sit at each tier for a faction of <paramref name="settlementCount"/>.
-        /// Indexed by tier: result[1..5] is the count at tiers 1..5; result[0] is unused (0).
+        /// Indexed by tier: result[1..4] is the count at tiers 1..4; result[0] is unused (0).
         ///
         /// One capital at the max affordable tier, the minimal staircase beneath it
         /// (tier t gets <c>maxTier - t + 1</c>), and all leftovers at T1. The result always satisfies
@@ -71,11 +71,11 @@ namespace RegionsAndSocieties.Sizing
         /// The tier of the settlement at <paramref name="protectionRank"/> (0 = most protected), given
         /// the per-tier <paramref name="counts"/> from <see cref="TierCounts"/>. The most-protected
         /// settlements take the highest tiers; the capital is rank 0. Returns
-        /// <see cref="SettlementTier.None"/> for a rank past the last settlement.
+        /// <see cref="SettlementTier.Homestead"/> for a rank past the last settlement.
         /// </summary>
         public static SettlementTier TierForRank(int protectionRank, int[] counts)
         {
-            if (counts == null || protectionRank < 0) return SettlementTier.None;
+            if (counts == null || protectionRank < 0) return SettlementTier.Homestead;
 
             int threshold = 0;
             for (int t = MaxTier; t >= 1; t--)
@@ -83,7 +83,7 @@ namespace RegionsAndSocieties.Sizing
                 threshold += counts[t];
                 if (protectionRank < threshold) return (SettlementTier)t;
             }
-            return SettlementTier.None;
+            return SettlementTier.Homestead;
         }
     }
 }

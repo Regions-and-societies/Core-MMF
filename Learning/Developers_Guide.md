@@ -350,7 +350,7 @@ public interface ISeedingPolicy
 | `mineralsFraction` | `float` | How mineable the tile reads, 0..1. |
 | `coastal` | `bool` | Tile touches water. |
 | `distanceToAnchor` | `float` | Normalised 0 (capital core) → 1 (province edge). |
-| `anchorTier` | `SettlementTier` | The anchoring settlement's tier; `None` means no anchor context (choice degrades to terrain only). |
+| `anchorTier` | `SettlementTier` | The anchoring settlement's tier; `Homestead` means no anchor context (choice degrades to terrain only). |
 | `techLevel` | `int` | Anchor faction's `TechLevel` ordinal (2 Neolithic … 7 Archotech). |
 | `permanentEnemy` | `bool` | Anchor faction is a permanent enemy (pirates/hostiles). |
 
@@ -536,6 +536,13 @@ is readable on the world map before settling, and it already reflects whatever a
 
 ## District model (0.5.0)
 
+**The tier ladder is `SettlementTier`, one ladder, not two.** Districts hang off the same enum the
+settlement-size system already used: `Homestead` (0 rings, 1 district), `Village` (1, 7), `Town` (2, 19),
+`City` (3, 37), `Metropolis` (4, 61). The rung index and the ring count are the same number. `MajorCity`
+was dropped and the old `None` became `Homestead`, so an unranked holding, or anything at all while the
+settlement-tier feature is off, reads as the smallest real rung rather than as an absence.
+
+
 New in 0.5.0 (#69). A tile is ~374 local maps of ground, but people do not spread evenly over 23 km²:
 they cluster, with farmland around them. The settled part of a tile is therefore a **hex cluster of
 districts**, one district being exactly one local map, growing outward in rings — the arrangement
@@ -566,16 +573,16 @@ works out at about 1 person/km² around a homestead and 78/km² around a metropo
 | Member | Signature | Notes |
 |---|---|---|
 | `DistrictsInRings` / `RingsForDistricts` | `int (int)` | The ring geometry, 1 + 3k(k+1). Saturates rather than overflowing. |
-| `DistrictsForTier` / `RingsForTier` | `int (DistrictTier)` | 1, 7, 19, 37, 61. |
+| `DistrictsForTier` / `RingsForTier` | `int (SettlementTier)` | 1, 7, 19, 37, 61. |
 | `PeoplePerDistrict` | `float (int mapEdgeCells)` | Build density × district area. |
 | `PopulationForTier` / `TierForPopulation` | | Tier and population, each from the other. |
 | `DistrictsForPopulation` | `int (int population, int mapEdgeCells[, int ringCap])` | Capped at the ring cap so tile totals stay explainable. |
 | `DistrictsForPopulationUncapped` | `int (int, int)` | The true built extent, which the radius maths needs. |
 | `SettledShareOfTile` | `float (int districts, int mapEdgeCells)` | Fraction of the tile built on. |
 | `HinterlandPopulation` / `TilePopulation` | `int (int settledPopulation)` | Outlying farms, and the tile total. |
-| `TierFromDevelopment` | `DistrictTier (float developedFraction, float wealthMultiplier)` | **Tier from built area and wealth, never from head count.** |
-| `PlayerTilePopulation` | `int (int colonistCount, DistrictTier, int mapEdgeCells)` | The player-tile rule, below. |
-| `RenderedShare` | `float (int, DistrictTier, int)` | How much of the tile is actually on screen. |
+| `TierFromDevelopment` | `SettlementTier (float developedFraction, float wealthMultiplier)` | **Tier from built area and wealth, never from head count.** |
+| `PlayerTilePopulation` | `int (int colonistCount, SettlementTier, int mapEdgeCells)` | The player-tile rule, below. |
+| `RenderedShare` | `float (int, SettlementTier, int)` | How much of the tile is actually on screen. |
 | `BuiltRadiusDistricts` / `BuiltRadiusTiles` | | Radius of the built cluster; grows as the **square root** of population. |
 
 ### The player-tile rule
@@ -595,7 +602,7 @@ reading these endpoints should honour them:
 int mapEdge = Find.World?.info?.initialMapSize.x ?? WorldScaleRules.DefaultMapEdgeCells;
 
 // A developed, wealthy quarter-map colony reads as a Town...
-DistrictTier tier = DistrictRules.TierFromDevelopment(developedFraction: 0.25f, wealthMultiplier: 1.5f);
+SettlementTier tier = DistrictRules.TierFromDevelopment(developedFraction: 0.25f, wealthMultiplier: 1.5f);
 
 // ...so 40 colonists on screen sit at the centre of a tile of ~2,300 people:
 int tileTotal = DistrictRules.PlayerTilePopulation(40, tier, mapEdge);

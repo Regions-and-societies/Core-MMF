@@ -25,8 +25,7 @@ namespace RegionsAndSocieties.Sizing
                 case SettlementTier.Village: return 2;
                 case SettlementTier.Town: return 3;
                 case SettlementTier.City: return 4;
-                case SettlementTier.MajorCity: return 5;
-                case SettlementTier.Metropolis: return 6;
+                case SettlementTier.Metropolis: return 5;
                 default: return 0;
             }
         }

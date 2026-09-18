@@ -25,11 +25,11 @@ namespace DistrictRulesTests
             Check("inverse round-trips on exact counts", DistrictRules.RingsForDistricts(DistrictRules.DistrictsInRings(3)) == 3);
 
             Section("tier to districts");
-            Check("Homestead 1", DistrictRules.DistrictsForTier(DistrictTier.Homestead) == 1);
-            Check("Village 7", DistrictRules.DistrictsForTier(DistrictTier.Village) == 7);
-            Check("Town 19", DistrictRules.DistrictsForTier(DistrictTier.Town) == 19);
-            Check("City 37", DistrictRules.DistrictsForTier(DistrictTier.City) == 37);
-            Check("Metropolis 61", DistrictRules.DistrictsForTier(DistrictTier.Metropolis) == 61);
+            Check("Homestead 1", DistrictRules.DistrictsForTier(SettlementTier.Homestead) == 1);
+            Check("Village 7", DistrictRules.DistrictsForTier(SettlementTier.Village) == 7);
+            Check("Town 19", DistrictRules.DistrictsForTier(SettlementTier.Town) == 19);
+            Check("City 37", DistrictRules.DistrictsForTier(SettlementTier.City) == 37);
+            Check("Metropolis 61", DistrictRules.DistrictsForTier(SettlementTier.Metropolis) == 61);
 
             Section("people per district — the measured playtest density");
             // 1,600 people/km2 x 0.0625 km2 = 100 on a default map.
@@ -40,18 +40,18 @@ namespace DistrictRulesTests
             Check("a nonsense map size yields nothing", DistrictRules.PeoplePerDistrict(0) == 0f);
 
             Section("tier populations");
-            Check("Homestead ~100", Near(DistrictRules.PopulationForTier(DistrictTier.Homestead, Default), 100, 2));
-            Check("Village ~700", Near(DistrictRules.PopulationForTier(DistrictTier.Village, Default), 700, 5));
-            Check("Town ~1,900", Near(DistrictRules.PopulationForTier(DistrictTier.Town, Default), 1900, 10));
-            Check("City ~3,700", Near(DistrictRules.PopulationForTier(DistrictTier.City, Default), 3700, 20));
-            Check("Metropolis ~6,100", Near(DistrictRules.PopulationForTier(DistrictTier.Metropolis, Default), 6100, 30));
+            Check("Homestead ~100", Near(DistrictRules.PopulationForTier(SettlementTier.Homestead, Default), 100, 2));
+            Check("Village ~700", Near(DistrictRules.PopulationForTier(SettlementTier.Village, Default), 700, 5));
+            Check("Town ~1,900", Near(DistrictRules.PopulationForTier(SettlementTier.Town, Default), 1900, 10));
+            Check("City ~3,700", Near(DistrictRules.PopulationForTier(SettlementTier.City, Default), 3700, 20));
+            Check("Metropolis ~6,100", Near(DistrictRules.PopulationForTier(SettlementTier.Metropolis, Default), 6100, 30));
 
             Section("population back to tier and districts");
-            Check("50 people is a homestead", DistrictRules.TierForPopulation(50, Default) == DistrictTier.Homestead);
-            Check("700 is a village", DistrictRules.TierForPopulation(700, Default) == DistrictTier.Village);
-            Check("2,000 is a town", DistrictRules.TierForPopulation(2000, Default) == DistrictTier.Town);
-            Check("4,000 is a city", DistrictRules.TierForPopulation(4000, Default) == DistrictTier.City);
-            Check("50,000 tops out at metropolis", DistrictRules.TierForPopulation(50000, Default) == DistrictTier.Metropolis);
+            Check("50 people is a homestead", DistrictRules.TierForPopulation(50, Default) == SettlementTier.Homestead);
+            Check("700 is a village", DistrictRules.TierForPopulation(700, Default) == SettlementTier.Village);
+            Check("2,000 is a town", DistrictRules.TierForPopulation(2000, Default) == SettlementTier.Town);
+            Check("4,000 is a city", DistrictRules.TierForPopulation(4000, Default) == SettlementTier.City);
+            Check("50,000 tops out at metropolis", DistrictRules.TierForPopulation(50000, Default) == SettlementTier.Metropolis);
             Check("tier is monotonic in population",
                 (int)DistrictRules.TierForPopulation(300, Default) <= (int)DistrictRules.TierForPopulation(3000, Default));
             Check("250 people needs 3 districts", DistrictRules.DistrictsForPopulation(250, Default) == 3);
@@ -76,33 +76,33 @@ namespace DistrictRulesTests
                 Near(DistrictRules.HinterlandDensityPerKm2(6100, 61, Default), 78f, 5f));
 
             Section("the player's tier comes from development, not head count");
-            Check("an undeveloped map is a homestead", DistrictRules.TierFromDevelopment(0.01f, 1f) == DistrictTier.Homestead);
-            Check("a quarter-developed rich map is a town", DistrictRules.TierFromDevelopment(0.25f, 1.5f) == DistrictTier.Town);
+            Check("an undeveloped map is a homestead", DistrictRules.TierFromDevelopment(0.01f, 1f) == SettlementTier.Homestead);
+            Check("a quarter-developed rich map is a town", DistrictRules.TierFromDevelopment(0.25f, 1.5f) == SettlementTier.Town);
             Check("wealth promotes a given footprint",
                 (int)DistrictRules.TierFromDevelopment(0.3f, 2.5f) > (int)DistrictRules.TierFromDevelopment(0.3f, 1f));
-            Check("a fully built rich map is a metropolis", DistrictRules.TierFromDevelopment(1f, 1.5f) == DistrictTier.Metropolis);
-            Check("nothing built is a homestead whatever the wealth", DistrictRules.TierFromDevelopment(0f, 10f) == DistrictTier.Homestead);
+            Check("a fully built rich map is a metropolis", DistrictRules.TierFromDevelopment(1f, 1.5f) == SettlementTier.Metropolis);
+            Check("nothing built is a homestead whatever the wealth", DistrictRules.TierFromDevelopment(0f, 10f) == SettlementTier.Homestead);
             Check("absent wealth data is treated as ordinary, not as zero",
                 DistrictRules.TierFromDevelopment(0.5f, 0f) == DistrictRules.TierFromDevelopment(0.5f, 1f));
 
             Section("the player's count is authoritative and never penalised");
             // 40 colonists at Town: 40 on the rendered map + 18 surrounding districts x 100, + hinterland.
-            int town40 = DistrictRules.PlayerTilePopulation(40, DistrictTier.Town, Default);
+            int town40 = DistrictRules.PlayerTilePopulation(40, SettlementTier.Town, Default);
             Check("40 colonists in a town tile reads ~2,300", Near(town40, 2300, 30));
             Check("the colonists are added, never replaced by a modelled number",
-                DistrictRules.PlayerTilePopulation(40, DistrictTier.Homestead, Default) >= 40);
+                DistrictRules.PlayerTilePopulation(40, SettlementTier.Homestead, Default) >= 40);
             Check("a lone homestead tile is the colony plus its own countryside",
-                DistrictRules.PlayerTilePopulation(40, DistrictTier.Homestead, Default) == DistrictRules.TilePopulation(40));
+                DistrictRules.PlayerTilePopulation(40, SettlementTier.Homestead, Default) == DistrictRules.TilePopulation(40));
             Check("promotion adds suburbs rather than demanding more colonists",
-                DistrictRules.PlayerTilePopulation(40, DistrictTier.City, Default) > town40);
+                DistrictRules.PlayerTilePopulation(40, SettlementTier.City, Default) > town40);
             Check("more colonists always means more people, at a fixed tier",
-                DistrictRules.PlayerTilePopulation(80, DistrictTier.Town, Default) > town40);
+                DistrictRules.PlayerTilePopulation(80, SettlementTier.Town, Default) > town40);
             Check("an empty colony still has its surrounding districts",
-                DistrictRules.PlayerTilePopulation(0, DistrictTier.Town, Default) > 0);
-            Check("a negative count is treated as none", DistrictRules.PlayerTilePopulation(-5, DistrictTier.Town, Default)
-                == DistrictRules.PlayerTilePopulation(0, DistrictTier.Town, Default));
-            Check("the rendered share is small but stated", DistrictRules.RenderedShare(40, DistrictTier.Town, Default) > 0f
-                && DistrictRules.RenderedShare(40, DistrictTier.Town, Default) < 0.05f);
+                DistrictRules.PlayerTilePopulation(0, SettlementTier.Town, Default) > 0);
+            Check("a negative count is treated as none", DistrictRules.PlayerTilePopulation(-5, SettlementTier.Town, Default)
+                == DistrictRules.PlayerTilePopulation(0, SettlementTier.Town, Default));
+            Check("the rendered share is small but stated", DistrictRules.RenderedShare(40, SettlementTier.Town, Default) > 0f
+                && DistrictRules.RenderedShare(40, SettlementTier.Town, Default) < 0.05f);
             // The reconciliation the whole model exists for: a developed colony is close to one district.
             Check("a fully built map is within ~2.5x of one district's modelled population",
                 DistrictRules.PeoplePerDistrict(Default) / 40f < 3f);
