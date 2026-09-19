@@ -24,17 +24,17 @@ namespace RegionsAndSocieties.Sizing
         {
             switch (kind)
             {
-                case WorldObjectKind.Settlement: return SettlementTier.City;
-                case WorldObjectKind.Outpost: return SettlementTier.Town;
+                case WorldObjectKind.Settlement: return SettlementTier.Town;
+                case WorldObjectKind.Outpost: return SettlementTier.Village;
                 default: return SettlementTier.Homestead;
             }
         }
 
         public static SettlementTier FromPopulation(int population)
         {
-            if (population >= SettlementSizeRules.CityMinPopulation) return SettlementTier.City;
             if (population >= SettlementSizeRules.TownMinPopulation) return SettlementTier.Town;
             if (population >= SettlementSizeRules.VillageMinPopulation) return SettlementTier.Village;
+            if (population >= SettlementSizeRules.HamletMinPopulation) return SettlementTier.Hamlet;
             return SettlementTier.Homestead;
         }
 
@@ -59,14 +59,14 @@ namespace RegionsAndSocieties.Sizing
         public static SettlementTier FromLevel(int level, int maxLevel)
         {
             if (level <= 0 || maxLevel <= 0) return SettlementTier.Homestead;
-            if (level >= maxLevel) return SettlementTier.City;
-            if (maxLevel == 1) return SettlementTier.City;
+            if (level >= maxLevel) return SettlementTier.Town;
+            if (maxLevel == 1) return SettlementTier.Town;
 
             float fraction = (level - 1f) / (maxLevel - 1f);
 
-            if (fraction >= 2f / 3f) return SettlementTier.City;
-            if (fraction >= 1f / 3f) return SettlementTier.Town;
-            return SettlementTier.Village;
+            if (fraction >= 2f / 3f) return SettlementTier.Town;
+            if (fraction >= 1f / 3f) return SettlementTier.Village;
+            return SettlementTier.Hamlet;
         }
 
         /// <summary>

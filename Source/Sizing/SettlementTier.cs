@@ -18,11 +18,11 @@ namespace RegionsAndSocieties.Sizing
         /// <summary>The smallest rung: a lone homestead, one district of people. Also what an
         /// unranked holding reads as, and what everything reads as while the settlement-tier feature
         /// is switched off. Carries no tier-imposed population cap.</summary>
-        Homestead = 0,
-        Village = 1,       // T1
-        Town = 2,          // T2
-        City = 3,          // T3
-        Metropolis = 4     // T4 — the capital tier; a faction needs 10 settlements to afford one
+        Homestead = 0,     // T0 — a lone holding; it costs 1 settlement to field one
+        Hamlet = 1,        // T1 — 3
+        Village = 2,       // T2 — 6
+        Town = 3,          // T3 — 10
+        City = 4           // T4 — the capital tier; a faction needs 15 settlements to afford one
     }
 
     public static class SettlementTierExtensions
@@ -31,10 +31,10 @@ namespace RegionsAndSocieties.Sizing
         {
             switch (tier)
             {
+                case SettlementTier.Hamlet: return "hamlet";
                 case SettlementTier.Village: return "village";
                 case SettlementTier.Town: return "town";
                 case SettlementTier.City: return "city";
-                case SettlementTier.Metropolis: return "metropolis";
                 default: return "homestead";
             }
         }
@@ -44,10 +44,10 @@ namespace RegionsAndSocieties.Sizing
         {
             switch (tier)
             {
+                case SettlementTier.Hamlet: return "Hamlet";
                 case SettlementTier.Village: return "Village";
                 case SettlementTier.Town: return "Town";
                 case SettlementTier.City: return "City";
-                case SettlementTier.Metropolis: return "Metropolis";
                 default: return "Homestead";
             }
         }

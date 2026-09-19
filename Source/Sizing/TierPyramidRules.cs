@@ -17,14 +17,21 @@ namespace RegionsAndSocieties.Sizing
     /// </summary>
     public static class TierPyramidRules
     {
-        /// <summary>Highest tier index the game supports. Tier 4 is <see cref="SettlementTier.Metropolis"/>.</summary>
+        /// <summary>Highest tier index the game supports. Tier 4 is <see cref="SettlementTier.City"/>.</summary>
         public const int MaxTier = 4;
 
-        /// <summary>Minimum settlements to afford a capital of this tier: the triangular number T(T+1)/2.</summary>
+        /// <summary>
+        /// Minimum settlements to afford a capital of this tier: the triangular number of the rung
+        /// above it, (T+1)(T+2)/2 — so 1, 3, 6, 10, 15 for Homestead through City.
+        ///
+        /// <para>Rung 0 costs one settlement rather than none, because a homestead is itself a
+        /// settlement. That is also what puts the capital tier back at 15 after the ladder lost a
+        /// rung to the Hamlet rename.</para>
+        /// </summary>
         public static int TerritoriesForTier(int tier)
         {
-            if (tier <= 0) return 0;
-            return tier * (tier + 1) / 2;
+            if (tier < 0) return 0;
+            return (tier + 1) * (tier + 2) / 2;
         }
 
         /// <summary>
@@ -35,7 +42,7 @@ namespace RegionsAndSocieties.Sizing
         public static int MaxCapitalTier(int settlementCount)
         {
             int tier = 0;
-            for (int t = 1; t <= MaxTier; t++)
+            for (int t = 0; t <= MaxTier; t++)
             {
                 if (TerritoriesForTier(t) <= settlementCount) tier = t;
                 else break;
@@ -45,7 +52,7 @@ namespace RegionsAndSocieties.Sizing
 
         /// <summary>
         /// How many settlements sit at each tier for a faction of <paramref name="settlementCount"/>.
-        /// Indexed by tier: result[1..4] is the count at tiers 1..4; result[0] is unused (0).
+        /// Indexed by tier: result[0..4] is the count at each rung, homesteads included.
         ///
         /// One capital at the max affordable tier, the minimal staircase beneath it
         /// (tier t gets <c>maxTier - t + 1</c>), and all leftovers at T1. The result always satisfies
@@ -57,13 +64,13 @@ namespace RegionsAndSocieties.Sizing
             if (settlementCount <= 0) return counts;
 
             int top = MaxCapitalTier(settlementCount);
-            for (int t = 1; t <= top; t++)
+            for (int t = 0; t <= top; t++)
             {
-                counts[t] = top - t + 1;   // T1 gets `top`, the capital tier gets 1
+                counts[t] = top - t + 1;   // T0 gets `top + 1`, the capital tier gets 1
             }
 
             int leftover = settlementCount - TerritoriesForTier(top);
-            counts[1] += leftover;         // extras widen the base ("build from the lower tiers")
+            counts[0] += leftover;         // extras widen the base ("build from the lower tiers")
             return counts;
         }
 
@@ -78,7 +85,7 @@ namespace RegionsAndSocieties.Sizing
             if (counts == null || protectionRank < 0) return SettlementTier.Homestead;
 
             int threshold = 0;
-            for (int t = MaxTier; t >= 1; t--)
+            for (int t = MaxTier; t >= 0; t--)
             {
                 threshold += counts[t];
                 if (protectionRank < threshold) return (SettlementTier)t;

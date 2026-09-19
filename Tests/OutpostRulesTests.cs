@@ -17,25 +17,25 @@ namespace OutpostRulesTests
         {
             Section("outpost allowance ladder (Tier 1 = 2, +1 per tier)");
             Check("a homestead anchors no outposts", OutpostAllowanceRules.OutpostAllowance(SettlementTier.Homestead) == 0);
-            Check("Village allows 2", OutpostAllowanceRules.OutpostAllowance(SettlementTier.Village) == 2);
-            Check("Town allows 3", OutpostAllowanceRules.OutpostAllowance(SettlementTier.Town) == 3);
-            Check("City allows 4", OutpostAllowanceRules.OutpostAllowance(SettlementTier.City) == 4);
-            Check("Metropolis allows 5", OutpostAllowanceRules.OutpostAllowance(SettlementTier.Metropolis) == 5);
+            Check("Village allows 2", OutpostAllowanceRules.OutpostAllowance(SettlementTier.Hamlet) == 2);
+            Check("Town allows 3", OutpostAllowanceRules.OutpostAllowance(SettlementTier.Village) == 3);
+            Check("City allows 4", OutpostAllowanceRules.OutpostAllowance(SettlementTier.Town) == 4);
+            Check("Metropolis allows 5", OutpostAllowanceRules.OutpostAllowance(SettlementTier.City) == 5);
             Check("each tier allows exactly one more than the last",
-                OutpostAllowanceRules.OutpostAllowance(SettlementTier.Town) - OutpostAllowanceRules.OutpostAllowance(SettlementTier.Village) == 1
-                && OutpostAllowanceRules.OutpostAllowance(SettlementTier.City) - OutpostAllowanceRules.OutpostAllowance(SettlementTier.Town) == 1
-                && OutpostAllowanceRules.OutpostAllowance(SettlementTier.Metropolis) - OutpostAllowanceRules.OutpostAllowance(SettlementTier.City) == 1);
+                OutpostAllowanceRules.OutpostAllowance(SettlementTier.Village) - OutpostAllowanceRules.OutpostAllowance(SettlementTier.Hamlet) == 1
+                && OutpostAllowanceRules.OutpostAllowance(SettlementTier.Town) - OutpostAllowanceRules.OutpostAllowance(SettlementTier.Village) == 1
+                && OutpostAllowanceRules.OutpostAllowance(SettlementTier.City) - OutpostAllowanceRules.OutpostAllowance(SettlementTier.Town) == 1);
 
             Section("remaining allowance never goes negative");
-            Check("an empty Village territory has room for 2", OutpostAllowanceRules.RemainingAllowance(SettlementTier.Village, 0) == 2);
-            Check("a Village with one outpost has room for 1", OutpostAllowanceRules.RemainingAllowance(SettlementTier.Village, 1) == 1);
-            Check("a Village at its allowance has no room", OutpostAllowanceRules.RemainingAllowance(SettlementTier.Village, 2) == 0);
-            Check("a territory over its allowance takes no more (never negative)", OutpostAllowanceRules.RemainingAllowance(SettlementTier.Village, 5) == 0);
+            Check("an empty Village territory has room for 2", OutpostAllowanceRules.RemainingAllowance(SettlementTier.Hamlet, 0) == 2);
+            Check("a Village with one outpost has room for 1", OutpostAllowanceRules.RemainingAllowance(SettlementTier.Hamlet, 1) == 1);
+            Check("a Village at its allowance has no room", OutpostAllowanceRules.RemainingAllowance(SettlementTier.Hamlet, 2) == 0);
+            Check("a territory over its allowance takes no more (never negative)", OutpostAllowanceRules.RemainingAllowance(SettlementTier.Hamlet, 5) == 0);
 
             Section("allowance flows from a tier classified out of population");
             // A tribal settlement (~50 pop) classifies as Town, so its territory allows three outposts.
             SettlementTier townTier = SettlementSizeEvaluator.Classify(WorldObjectKind.Settlement, 50);
-            Check("a ~50-pop settlement is a Town", townTier == SettlementTier.Town);
+            Check("a ~50-pop settlement is a Town", townTier == SettlementTier.Village);
             Check("...and a Town territory allows 3 outposts", OutpostAllowanceRules.OutpostAllowance(townTier) == 3);
 
             Section("archetype follows the dominant terrain signal");
@@ -70,66 +70,69 @@ namespace OutpostRulesTests
             // A fertile tile at a capital's core: a tribal capital farms it; an industrial capital makes
             // it a civic post instead.
             Check("tribal capital core, fertile -> Farming",
-                OutpostArchetypeRules.Choose(Features(plantDensity: 0.7f, hilliness: 0, distanceToAnchor: 0.1f, anchorTier: SettlementTier.Town, techLevel: 2)) == OutpostArchetype.Farming);
+                OutpostArchetypeRules.Choose(Features(plantDensity: 0.7f, hilliness: 0, distanceToAnchor: 0.1f, anchorTier: SettlementTier.Village, techLevel: 2)) == OutpostArchetype.Farming);
             Check("industrial capital core, fertile -> a civic post, not a farm",
-                OutpostArchetypeRules.Choose(Features(plantDensity: 0.7f, hilliness: 0, distanceToAnchor: 0.1f, anchorTier: SettlementTier.City, techLevel: 4)) != OutpostArchetype.Farming);
+                OutpostArchetypeRules.Choose(Features(plantDensity: 0.7f, hilliness: 0, distanceToAnchor: 0.1f, anchorTier: SettlementTier.Town, techLevel: 4)) != OutpostArchetype.Farming);
 
             // The periphery is for extraction and defence, not civic work.
             Check("industrial frontier mountains -> Mining",
-                OutpostArchetypeRules.Choose(Features(hilliness: 3, plantDensity: 0.3f, distanceToAnchor: 0.9f, anchorTier: SettlementTier.City, techLevel: 4)) == OutpostArchetype.Mining);
+                OutpostArchetypeRules.Choose(Features(hilliness: 3, plantDensity: 0.3f, distanceToAnchor: 0.9f, anchorTier: SettlementTier.Town, techLevel: 4)) == OutpostArchetype.Mining);
 
             // Faction gate: a tribe cannot field the industrial-tech posts.
             Check("tribal frontier mountains -> Mining (never an industrial post)",
-                OutpostArchetypeRules.Choose(Features(hilliness: 3, plantDensity: 0.3f, distanceToAnchor: 0.9f, anchorTier: SettlementTier.Town, techLevel: 2)) == OutpostArchetype.Mining);
+                OutpostArchetypeRules.Choose(Features(hilliness: 3, plantDensity: 0.3f, distanceToAnchor: 0.9f, anchorTier: SettlementTier.Village, techLevel: 2)) == OutpostArchetype.Mining);
 
             // Raiders read the land differently: salvage in the interior, fortlets on the frontier, never civic.
             Check("pirate frontier -> Defensive",
-                OutpostArchetypeRules.Choose(Features(plantDensity: 0.3f, distanceToAnchor: 0.9f, anchorTier: SettlementTier.City, techLevel: 4, permanentEnemy: true)) == OutpostArchetype.Defensive);
+                OutpostArchetypeRules.Choose(Features(plantDensity: 0.3f, distanceToAnchor: 0.9f, anchorTier: SettlementTier.Town, techLevel: 4, permanentEnemy: true)) == OutpostArchetype.Defensive);
             Check("pirate core -> Scavenging, not a civic post",
-                OutpostArchetypeRules.Choose(Features(plantDensity: 0.7f, hilliness: 0, distanceToAnchor: 0.1f, anchorTier: SettlementTier.City, techLevel: 4, permanentEnemy: true)) == OutpostArchetype.Scavenging);
+                OutpostArchetypeRules.Choose(Features(plantDensity: 0.7f, hilliness: 0, distanceToAnchor: 0.1f, anchorTier: SettlementTier.Town, techLevel: 4, permanentEnemy: true)) == OutpostArchetype.Scavenging);
 
-            Section("tier pyramid — triangular thresholds");
-            Check("T1 needs 1 territory", TierPyramidRules.TerritoriesForTier(1) == 1);
-            Check("T2 needs 3", TierPyramidRules.TerritoriesForTier(2) == 3);
-            Check("T3 needs 6", TierPyramidRules.TerritoriesForTier(3) == 6);
-            Check("T4 needs 10", TierPyramidRules.TerritoriesForTier(4) == 10);
-            Check("T5 needs 15", TierPyramidRules.TerritoriesForTier(5) == 15);
+            Section("tier pyramid — triangular thresholds, and a homestead costs one settlement");
+            Check("T0 (homestead) needs 1 settlement, not zero", TierPyramidRules.TerritoriesForTier(0) == 1);
+            Check("T1 (hamlet) needs 3", TierPyramidRules.TerritoriesForTier(1) == 3);
+            Check("T2 (village) needs 6", TierPyramidRules.TerritoriesForTier(2) == 6);
+            Check("T3 (town) needs 10", TierPyramidRules.TerritoriesForTier(3) == 10);
+            Check("T4 (city, the capital tier) needs 15", TierPyramidRules.TerritoriesForTier(4) == 15);
+            Check("a negative rung costs nothing rather than going negative", TierPyramidRules.TerritoriesForTier(-2) == 0);
 
             Section("max capital tier a settlement count affords");
-            Check("0 settlements → tier 0", TierPyramidRules.MaxCapitalTier(0) == 0);
-            Check("1 → T1", TierPyramidRules.MaxCapitalTier(1) == 1);
-            Check("2 → still T1 (T2 needs 3)", TierPyramidRules.MaxCapitalTier(2) == 1);
-            Check("3 → T2", TierPyramidRules.MaxCapitalTier(3) == 2);
-            Check("5 → still T2", TierPyramidRules.MaxCapitalTier(5) == 2);
-            Check("6 → T3", TierPyramidRules.MaxCapitalTier(6) == 3);
-            Check("9 → still T3 (T4 needs 10)", TierPyramidRules.MaxCapitalTier(9) == 3);
-            Check("10 → T4", TierPyramidRules.MaxCapitalTier(10) == 4);
+            Check("1 settlement → a homestead capital", TierPyramidRules.MaxCapitalTier(1) == 0);
+            Check("2 → still a homestead (a hamlet needs 3)", TierPyramidRules.MaxCapitalTier(2) == 0);
+            Check("3 → T1 hamlet", TierPyramidRules.MaxCapitalTier(3) == 1);
+            Check("5 → still T1", TierPyramidRules.MaxCapitalTier(5) == 1);
+            Check("6 → T2 village", TierPyramidRules.MaxCapitalTier(6) == 2);
+            Check("9 → still T2", TierPyramidRules.MaxCapitalTier(9) == 2);
+            Check("10 → T3 town", TierPyramidRules.MaxCapitalTier(10) == 3);
+            Check("14 → still T3 (a city needs 15)", TierPyramidRules.MaxCapitalTier(14) == 3);
+            Check("15 → T4 city", TierPyramidRules.MaxCapitalTier(15) == 4);
             Check("100 → capped at T4", TierPyramidRules.MaxCapitalTier(100) == 4);
 
             Section("tier counts — bottom-heavy staircase, each tier one wider");
-            Check("N=10 is the exact 4-3-2-1 pyramid", CountsAre(TierPyramidRules.TierCounts(10), 4, 3, 2, 1));
-            Check("N=3 → 2 villages under 1 town", CountsAre(TierPyramidRules.TierCounts(3), 2, 1, 0, 0));
-            Check("N=1 → a lone village", CountsAre(TierPyramidRules.TierCounts(1), 1, 0, 0, 0));
-            Check("N=11 → the extra widens the base, not a second apex", CountsAre(TierPyramidRules.TierCounts(11), 5, 3, 2, 1));
+            Check("N=15 is the exact 5-4-3-2-1 pyramid", CountsAre(TierPyramidRules.TierCounts(15), 5, 4, 3, 2, 1));
+            Check("N=3 → 2 homesteads under 1 hamlet", CountsAre(TierPyramidRules.TierCounts(3), 2, 1, 0, 0, 0));
+            Check("N=1 → a lone homestead", CountsAre(TierPyramidRules.TierCounts(1), 1, 0, 0, 0, 0));
+            Check("N=16 → the extra widens the base, not a second apex", CountsAre(TierPyramidRules.TierCounts(16), 6, 4, 3, 2, 1));
             Check("counts always sum to N", Sum(TierPyramidRules.TierCounts(23)) == 23 && Sum(TierPyramidRules.TierCounts(7)) == 7);
             Check("every tier is at least one wider than the one above", ValidPyramid(TierPyramidRules.TierCounts(23)) && ValidPyramid(TierPyramidRules.TierCounts(15)) && ValidPyramid(TierPyramidRules.TierCounts(2)));
 
             Section("tier by protection rank — the capital is rank 0");
-            var p10 = TierPyramidRules.TierCounts(10);
-            Check("most protected is the Metropolis capital", TierPyramidRules.TierForRank(0, p10) == SettlementTier.Metropolis);
-            Check("ranks 1-2 are Cities", TierPyramidRules.TierForRank(1, p10) == SettlementTier.City && TierPyramidRules.TierForRank(2, p10) == SettlementTier.City);
-            Check("ranks 3-5 are Towns", TierPyramidRules.TierForRank(3, p10) == SettlementTier.Town && TierPyramidRules.TierForRank(5, p10) == SettlementTier.Town);
-            Check("ranks 6-9 are Villages", TierPyramidRules.TierForRank(6, p10) == SettlementTier.Village && TierPyramidRules.TierForRank(9, p10) == SettlementTier.Village);
-            Check("a rank past the last settlement falls back to homestead", TierPyramidRules.TierForRank(10, p10) == SettlementTier.Homestead);
+            var p15 = TierPyramidRules.TierCounts(15);
+            Check("most protected is the City capital", TierPyramidRules.TierForRank(0, p15) == SettlementTier.City);
+            Check("ranks 1-2 are Towns", TierPyramidRules.TierForRank(1, p15) == SettlementTier.Town && TierPyramidRules.TierForRank(2, p15) == SettlementTier.Town);
+            Check("ranks 3-5 are Villages", TierPyramidRules.TierForRank(3, p15) == SettlementTier.Village && TierPyramidRules.TierForRank(5, p15) == SettlementTier.Village);
+            Check("ranks 6-9 are Hamlets", TierPyramidRules.TierForRank(6, p15) == SettlementTier.Hamlet && TierPyramidRules.TierForRank(9, p15) == SettlementTier.Hamlet);
+            Check("ranks 10-14 are Homesteads", TierPyramidRules.TierForRank(10, p15) == SettlementTier.Homestead && TierPyramidRules.TierForRank(14, p15) == SettlementTier.Homestead);
+            Check("a rank past the last settlement falls back to homestead too", TierPyramidRules.TierForRank(15, p15) == SettlementTier.Homestead);
 
             Console.WriteLine();
             Console.WriteLine(failures == 0 ? "ALL OUTPOST-RULE TESTS PASSED" : failures + " OUTPOST-RULE TEST(S) FAILED");
             return failures == 0 ? 0 : 1;
         }
 
-        private static bool CountsAre(int[] c, int t1, int t2, int t3, int t4)
+        private static bool CountsAre(int[] c, int t0, int t1, int t2, int t3, int t4)
         {
-            return c[1] == t1 && c[2] == t2 && c[3] == t3 && c[4] == t4;
+            return c[0] == t0 && c[1] == t1 && c[2] == t2 && c[3] == t3 && c[4] == t4;
         }
 
         private static int Sum(int[] c)
@@ -141,7 +144,7 @@ namespace OutpostRulesTests
 
         private static bool ValidPyramid(int[] c)
         {
-            for (int t = 1; t < TierPyramidRules.MaxTier; t++)
+            for (int t = 0; t < TierPyramidRules.MaxTier; t++)
             {
                 if (c[t + 1] > 0 && c[t] < c[t + 1] + 1) return false;
             }

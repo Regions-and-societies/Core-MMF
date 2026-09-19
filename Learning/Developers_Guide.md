@@ -537,9 +537,9 @@ is readable on the world map before settling, and it already reflects whatever a
 ## District model (0.5.0)
 
 **The tier ladder is `SettlementTier`, one ladder, not two.** Districts hang off the same enum the
-settlement-size system already used: `Homestead` (0 rings, 1 district), `Village` (1, 7), `Town` (2, 19),
-`City` (3, 37), `Metropolis` (4, 61). The rung index and the ring count are the same number. `MajorCity`
-was dropped and the old `None` became `Homestead`, so an unranked holding, or anything at all while the
+settlement-size system already used: `Homestead` (0 rings, 1 district), `Hamlet` (1, 7), `Village` (2, 19),
+`Town` (3, 37), `City` (4, 61). The rung index and the ring count are the same number. `MajorCity` and `Metropolis`
+were dropped and the old `None` became `Homestead`, so an unranked holding, or anything at all while the
 settlement-tier feature is off, reads as the smallest real rung rather than as an absence.
 
 
@@ -558,13 +558,13 @@ RimWorld's hex tiles already imply. Namespace `RegionsAndSocieties.Sizing`, clas
 numbers, and a district holds **100 people** at the measured build density on a default map (400 on a
 500x500 one, because a district is one local map and rescales with it).
 
-| Tier | Districts | Settled population | Share of tile |
-|---|---|---|---|
-| `Homestead` | 1 | 100 | 0.3% |
-| `Village` | 7 | 700 | 1.9% |
-| `Town` | 19 | 1,900 | 5.1% |
-| `City` | 37 | 3,700 | 9.9% |
-| `Metropolis` | 61 | 6,100 | 16.3% |
+| Tier | Districts | Settled population | Share of tile | Supporting settlements |
+|---|---|---|---|---|
+| `Homestead` | 1 | 100 | 0.3% | 1 |
+| `Hamlet` | 7 | 700 | 1.9% | 3 |
+| `Village` | 19 | 1,900 | 5.1% | 6 |
+| `Town` | 37 | 3,700 | 9.9% | 10 |
+| `City` | 61 | 6,100 | 16.3% | 15 |
 
 Every tier leaves most of the tile as hinterland, which is what makes suburbs and farmland real rather
 than a fudge. Hinterland holds a further quarter of the settled population (`HinterlandShare`), which

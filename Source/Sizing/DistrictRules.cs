@@ -56,10 +56,10 @@ namespace RegionsAndSocieties.Sizing
 
         // Tier thresholds for classifying a player's settlement by how developed it is, rather than
         // by head count (which RimWorld's engine caps far below a real city).
-        public const float VillageDevelopment = 0.05f;
-        public const float TownDevelopment = 0.20f;
-        public const float CityDevelopment = 0.45f;
-        public const float MetropolisDevelopment = 0.75f;
+        public const float HamletDevelopment = 0.05f;
+        public const float VillageDevelopment = 0.20f;
+        public const float TownDevelopment = 0.45f;
+        public const float CityDevelopment = 0.75f;
 
         // -- ring geometry -----------------------------------------------------
 
@@ -83,7 +83,7 @@ namespace RegionsAndSocieties.Sizing
             return rings;
         }
 
-        /// <summary>Rings a tier occupies: Homestead 0 through Metropolis 4. The rung index and the
+        /// <summary>Rings a tier occupies: Homestead 0 through City 4. The rung index and the
         /// ring count are the same number, which is why the ladder is exactly five rungs long and why
         /// dropping a rung shortens both together.</summary>
         public static int RingsForTier(SettlementTier tier)
@@ -153,7 +153,7 @@ namespace RegionsAndSocieties.Sizing
         public static SettlementTier TierForPopulation(int population, int mapEdgeCells)
         {
             SettlementTier result = SettlementTier.Homestead;
-            for (int t = (int)SettlementTier.Metropolis; t >= 0; t--)
+            for (int t = (int)SettlementTier.City; t >= 0; t--)
             {
                 var tier = (SettlementTier)t;
                 if (population >= PopulationForTier(tier, mapEdgeCells)) { result = tier; break; }
@@ -212,10 +212,10 @@ namespace RegionsAndSocieties.Sizing
         {
             if (developedFraction <= 0f) return SettlementTier.Homestead;
             float score = developedFraction * (wealthMultiplier <= 0f ? 1f : wealthMultiplier);
-            if (score >= MetropolisDevelopment) return SettlementTier.Metropolis;
             if (score >= CityDevelopment) return SettlementTier.City;
             if (score >= TownDevelopment) return SettlementTier.Town;
             if (score >= VillageDevelopment) return SettlementTier.Village;
+            if (score >= HamletDevelopment) return SettlementTier.Hamlet;
             return SettlementTier.Homestead;
         }
 

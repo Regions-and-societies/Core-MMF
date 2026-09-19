@@ -28,10 +28,10 @@ namespace RegionsAndSocieties.Sizing
         // out-grow Village on headcount alone. Players running Empire climb through the tiers on
         // their colonies' upgrade levels instead; see SettlementSizeEvaluator.FromLevel.
 
-        public const int VillageMinPopulation = 1;
-        public const int TownMinPopulation = 40;
-        public const int CityMinPopulation = 80;
-        public const int MetropolisMinPopulation = 240;
+        public const int HamletMinPopulation = 1;
+        public const int VillageMinPopulation = 40;
+        public const int TownMinPopulation = 80;
+        public const int CityMinPopulation = 240;
 
         /// <summary>
         /// Residents per dwelling, so a dwelling count can stand in for an unknown population.
@@ -43,10 +43,10 @@ namespace RegionsAndSocieties.Sizing
         {
             switch (tier)
             {
+                case SettlementTier.Hamlet: return HamletMinPopulation;
                 case SettlementTier.Village: return VillageMinPopulation;
                 case SettlementTier.Town: return TownMinPopulation;
                 case SettlementTier.City: return CityMinPopulation;
-                case SettlementTier.Metropolis: return MetropolisMinPopulation;
                 default: return 0;
             }
         }
@@ -64,10 +64,10 @@ namespace RegionsAndSocieties.Sizing
         {
             switch (tier)
             {
+                case SettlementTier.Hamlet: return VillageMinPopulation;
                 case SettlementTier.Village: return TownMinPopulation;
                 case SettlementTier.Town: return CityMinPopulation;
-                case SettlementTier.City: return MetropolisMinPopulation;
-                case SettlementTier.Metropolis: return 700;
+                case SettlementTier.City: return 700;
                 default: return 0;
             }
         }
@@ -89,10 +89,10 @@ namespace RegionsAndSocieties.Sizing
         {
             switch (tier)
             {
-                case SettlementTier.Village: return 1.00f;
-                case SettlementTier.Town: return 1.35f;
-                case SettlementTier.City: return 1.75f;
-                case SettlementTier.Metropolis: return 2.80f;
+                case SettlementTier.Hamlet: return 1.00f;
+                case SettlementTier.Village: return 1.35f;
+                case SettlementTier.Town: return 1.75f;
+                case SettlementTier.City: return 2.80f;
                 default: return 1f;
             }
         }
@@ -105,10 +105,10 @@ namespace RegionsAndSocieties.Sizing
         {
             switch (tier)
             {
+                case SettlementTier.Hamlet: return 1;
                 case SettlementTier.Village: return 1;
-                case SettlementTier.Town: return 1;
-                case SettlementTier.City: return 2;
-                case SettlementTier.Metropolis: return 4;
+                case SettlementTier.Town: return 2;
+                case SettlementTier.City: return 4;
                 default: return 0;
             }
         }

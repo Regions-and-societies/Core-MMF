@@ -266,7 +266,7 @@ namespace RegionsAndSocieties.Sizing
                     if (f > maxTech) maxTech = f;
                 }
             }
-            int refMax = PopulationCapRules.MaxPopulation(SettlementTier.Metropolis,
+            int refMax = PopulationCapRules.MaxPopulation(SettlementTier.City,
                 WorldObjectIntegrationSettings.populationCapMultiplier, maxTech);
             cachedReferenceMax = refMax > 0 ? refMax : 1;
             referenceVersion = PopulationDensityUtility.CacheVersion;

@@ -58,9 +58,18 @@ namespace RegionsAndSocieties.Sizing
         /// </summary>
         public static int MaxPopulation(SettlementTier tier, float multiplier, float techFactor)
         {
-            int territories = TierPyramidRules.TerritoriesForTier((int)tier);
-            if (territories <= 0 || multiplier <= 0f || techFactor <= 0f) return 0;
-            return Mathf_RoundToInt(territories * multiplier * techFactor);
+            // The cap basis is the tier's OWN triangular number, t(t+1)/2 — which is 0 at Homestead,
+            // and 0 is what "no tier-imposed cap" means (#71).
+            //
+            // Deliberately NOT TierPyramidRules.TerritoriesForTier. That answers a different question —
+            // how many settlements a faction must field to AFFORD a capital of this tier — and it starts
+            // at 1, because a homestead is itself a settlement. The two formulas were the same until the
+            // ladder lost a rung; sharing one here would silently give every untiered holding a cap and
+            // stop the #71 fallback ever firing.
+            int rung = (int)tier;
+            int basis = rung <= 0 ? 0 : rung * (rung + 1) / 2;
+            if (basis <= 0 || multiplier <= 0f || techFactor <= 0f) return 0;
+            return Mathf_RoundToInt(basis * multiplier * techFactor);
         }
 
         /// <summary>The size a settlement of this tier drifts toward: two-thirds of its cap.</summary>
