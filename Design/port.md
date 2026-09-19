@@ -157,12 +157,19 @@ Validate after editing About.xml: PowerShell `[xml](Get-Content <file> -Raw)` th
 
 ## 0.5.0 world-scale and district work (2026-09-18/19)
 
-**Ported so far:** `release/0.5.0` exists in both editions. Core-MMF tip carries #67 world scale, #69
-district model, #70 square-root reach and #71 the population-seeding fix; Core-RP2 has the same four
-applied by patch (tip `3e8bb6e`), all sixteen touched files byte-identical.
+**Port strategy (decided 2026-09-19):** Core-MMF is the **lead edition** for 0.5.0. Land the whole
+milestone in Core-MMF first, then port to Core-RP2 in a **single pass once 0.5.0 is finished** — not
+feature-by-feature. What has landed is tracked in **Core-RP2#12**; append to that issue as each feature
+lands so the eventual port is mechanical.
 
-**NOT ported yet:** `feature/issue-77` (the tier ladder collapse, the homestead..city rename, occupancy,
-terrain build time, the district pin, and the Workshop infographic). It is unmerged in Core-MMF too.
+**Ported so far:** `release/0.5.0` exists in both editions. Core-RP2 (tip `3e8bb6e`) carries #67 world
+scale, #69 district model, #70 square-root reach and #71 the population-seeding fix, applied by patch,
+all sixteen touched files byte-identical.
+
+**Landed in Core-MMF `release/0.5.0`, NOT yet ported** (all queued on Core-RP2#12):
+- **#77** — tier ladder collapse, homestead..city rename, occupancy, terrain build time, district pin,
+  generalist sector, Workshop infographic. Merge `848519a`.
+- **#55** — CP registration hook for faction placement profiles & archetypes. Merge `a352b56`.
 
 ### The one conflict that fires every time
 
