@@ -164,6 +164,52 @@ namespace DistrictRulesTests
             Check("a metropolis paints ~100 tiles, not ~70,000",
                 (3f * rMetro * (rMetro + 1f) + 1f) < 200f);
 
+            Section("occupancy — the nominal figure is a target, not a ceiling");
+            // PopulationForTier is every district built to the measured density, on ordinary ground,
+            // at exactly 100% occupancy. Real places sit either side of it.
+            int nominalCity = DistrictRules.PopulationForTier(SettlementTier.City, Default);
+            Check("at nominal land and occupancy, it is the nominal figure",
+                DistrictRules.PopulationAt(SettlementTier.City, Default, 1f, 1f) == nominalCity);
+            Check("half the ground buildable, half the people",
+                Near(DistrictRules.PopulationAt(SettlementTier.City, Default, 0.5f, 1f), nominalCity / 2, 2));
+            Check("crowding multiplies on top of land",
+                Near(DistrictRules.PopulationAt(SettlementTier.City, Default, 0.5f, 1.5f), (int)(nominalCity * 0.75f), 3));
+            Check("unbuildable ground holds nobody", DistrictRules.PopulationAt(SettlementTier.City, Default, 0f, 1.5f) == 0);
+            Check("empty of people holds nobody", DistrictRules.PopulationAt(SettlementTier.City, Default, 1f, 0f) == 0);
+
+            // The crowding ceiling is the growth model's own constant, not a second opinion.
+            Check("the ceiling is the birthrate stagnation ratio",
+                DistrictRules.MaxOccupancy == BirthrateRules.BirthStagnationRatio);
+            Check("a city tops out ~50% above nominal",
+                Near(DistrictRules.MaxPopulationForTier(SettlementTier.City, Default), (int)(nominalCity * 1.5f), 3));
+            Check("occupancy cannot be pushed past the ceiling",
+                DistrictRules.PopulationAt(SettlementTier.City, Default, 1f, 99f)
+                == DistrictRules.MaxPopulationForTier(SettlementTier.City, Default));
+            Check("buildable fraction cannot exceed whole ground",
+                DistrictRules.PopulationAt(SettlementTier.City, Default, 5f, 1f) == nominalCity);
+
+            Section("occupancy read back, and named");
+            Check("nominal population reads as 100% occupancy",
+                Near(DistrictRules.OccupancyOf(nominalCity, SettlementTier.City, Default, 1f), 1f, 0.01f));
+            Check("half the people on half the ground is still full",
+                Near(DistrictRules.OccupancyOf(nominalCity / 2, SettlementTier.City, Default, 0.5f), 1f, 0.02f));
+            Check("nobody is zero, not a divide by zero",
+                DistrictRules.OccupancyOf(0, SettlementTier.City, Default, 1f) == 0f);
+            Check("unbuildable ground reports zero rather than infinity",
+                DistrictRules.OccupancyOf(500, SettlementTier.City, Default, 0f) == 0f);
+
+            Check("an almost empty district is a ruin candidate",
+                DistrictRules.OccupancyBand(0.05f) == DistrictOccupancy.Ruined);
+            Check("thinly settled is sparse", DistrictRules.OccupancyBand(0.4f) == DistrictOccupancy.Sparse);
+            Check("comfortable is nominal", DistrictRules.OccupancyBand(0.95f) == DistrictOccupancy.Nominal);
+            Check("a little over is crowded", DistrictRules.OccupancyBand(1.1f) == DistrictOccupancy.Crowded);
+            Check("well over is overcrowded", DistrictRules.OccupancyBand(1.45f) == DistrictOccupancy.Overcrowded);
+            Check("the bands run in order across the whole range",
+                (int)DistrictRules.OccupancyBand(0f) < (int)DistrictRules.OccupancyBand(0.4f)
+                && (int)DistrictRules.OccupancyBand(0.4f) < (int)DistrictRules.OccupancyBand(1f)
+                && (int)DistrictRules.OccupancyBand(1f) < (int)DistrictRules.OccupancyBand(1.2f)
+                && (int)DistrictRules.OccupancyBand(1.2f) < (int)DistrictRules.OccupancyBand(1.5f));
+
             Console.WriteLine();
             if (failures == 0) { Console.WriteLine("ALL DISTRICT TESTS PASSED"); return 0; }
             Console.WriteLine(failures + " DISTRICT TEST(S) FAILED");

@@ -1,5 +1,16 @@
 namespace RegionsAndSocieties.Sizing
 {
+    /// <summary>How full a settled place is against its nominal population (#69): the single axis that
+    /// runs from a district falling to ruin, through comfortable, to overcrowded.</summary>
+    public enum DistrictOccupancy
+    {
+        Ruined,
+        Sparse,
+        Nominal,
+        Crowded,
+        Overcrowded
+    }
+
     /// <summary>
     /// How a settlement occupies its world tile (#69). A tile is ~374 local maps of ground
     /// (<see cref="WorldScaleRules"/>), but people do not spread evenly across 23 km²: they cluster,
@@ -159,6 +170,79 @@ namespace RegionsAndSocieties.Sizing
                 if (population >= PopulationForTier(tier, mapEdgeCells)) { result = tier; break; }
             }
             return result;
+        }
+
+        // -- how full a place actually is --------------------------------------
+
+        /// <summary>
+        /// How much of a district's ground can actually be built on. 1 means ordinary land; a district
+        /// on mountains, marsh or shoreline holds fewer people for the same area. Multiplies the
+        /// nominal population, so it answers "effective land use" rather than crowding.
+        /// </summary>
+        public const float DefaultBuildableFraction = 1f;
+
+        /// <summary>
+        /// The most a place can be crowded before births stop entirely. <b>Not a new number</b>: it is
+        /// <see cref="BirthrateRules.BirthStagnationRatio"/>, the ceiling the growth model already
+        /// clamps to, so the district model and the population model cannot disagree about how full
+        /// "full" is. Raising it to 2.0 is a change to that constant, and it changes growth behaviour
+        /// as well as capacity.
+        /// </summary>
+        public static float MaxOccupancy { get { return BirthrateRules.BirthStagnationRatio; } }
+
+        /// <summary>Below this share of nominal, a district reads as abandoned and is a candidate to
+        /// fall to ruin. The low end of the same axis overcrowding sits at the top of.</summary>
+        public const float RuinedOccupancy = 0.15f;
+
+        /// <summary>Below this, a district is standing but thinly settled.</summary>
+        public const float SparseOccupancy = 0.60f;
+
+        /// <summary>Above nominal but bearable; past this it reads as overcrowded.</summary>
+        public const float CrowdedOccupancy = 1.25f;
+
+        /// <summary>
+        /// The population a tier holds at a given land quality and crowding.
+        ///
+        /// <para><see cref="PopulationForTier"/> is the <b>nominal</b> figure: every district built to
+        /// the measured comfortable density, on ordinary ground, at exactly 100% occupancy. Real places
+        /// sit either side of it. A city on broken ground with half its area buildable holds half as
+        /// many; the same city crowded to 150% holds half again more.</para>
+        /// </summary>
+        public static int PopulationAt(SettlementTier tier, int mapEdgeCells, float buildableFraction, float occupancy)
+        {
+            float nominal = PopulationForTier(tier, mapEdgeCells);
+            float land = buildableFraction < 0f ? 0f : (buildableFraction > 1f ? 1f : buildableFraction);
+            float crowd = occupancy < 0f ? 0f : (occupancy > MaxOccupancy ? MaxOccupancy : occupancy);
+            return RoundToInt(nominal * land * crowd);
+        }
+
+        /// <summary>The most a tier can hold: every district built, on ordinary ground, crowded to the
+        /// point where births stop. The honest ceiling, against the nominal target.</summary>
+        public static int MaxPopulationForTier(SettlementTier tier, int mapEdgeCells)
+        {
+            return PopulationAt(tier, mapEdgeCells, DefaultBuildableFraction, MaxOccupancy);
+        }
+
+        /// <summary>How full a place is, as a share of its nominal population. 1 is comfortable, above
+        /// 1 is crowded, near 0 is abandoned. Returns 0 when the tier could hold nobody.</summary>
+        public static float OccupancyOf(int population, SettlementTier tier, int mapEdgeCells, float buildableFraction)
+        {
+            float nominal = PopulationForTier(tier, mapEdgeCells);
+            float land = buildableFraction < 0f ? 0f : (buildableFraction > 1f ? 1f : buildableFraction);
+            float capacity = nominal * land;
+            if (capacity <= 0f || population <= 0) return 0f;
+            return population / capacity;
+        }
+
+        /// <summary>The band an occupancy falls in, so consumers can speak about a place in words
+        /// rather than ratios: ruin candidates at the bottom, overcrowding pressure at the top.</summary>
+        public static DistrictOccupancy OccupancyBand(float occupancy)
+        {
+            if (occupancy < RuinedOccupancy) return DistrictOccupancy.Ruined;
+            if (occupancy < SparseOccupancy) return DistrictOccupancy.Sparse;
+            if (occupancy <= 1f) return DistrictOccupancy.Nominal;
+            if (occupancy <= CrowdedOccupancy) return DistrictOccupancy.Crowded;
+            return DistrictOccupancy.Overcrowded;
         }
 
         // -- the tile as a whole -----------------------------------------------

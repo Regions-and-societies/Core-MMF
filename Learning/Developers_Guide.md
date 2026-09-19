@@ -558,13 +558,20 @@ RimWorld's hex tiles already imply. Namespace `RegionsAndSocieties.Sizing`, clas
 numbers, and a district holds **100 people** at the measured build density on a default map (400 on a
 500x500 one, because a district is one local map and rescales with it).
 
-| Tier | Districts | Settled population | Share of tile | Supporting settlements |
-|---|---|---|---|---|
-| `Homestead` | 1 | 100 | 0.3% | 1 |
-| `Hamlet` | 7 | 700 | 1.9% | 3 |
-| `Village` | 19 | 1,900 | 5.1% | 6 |
-| `Town` | 37 | 3,700 | 9.9% | 10 |
-| `City` | 61 | 6,100 | 16.3% | 15 |
+| Tier | Districts | Nominal population | At 150% crowding | Share of tile | Supporting settlements |
+|---|---|---|---|---|---|
+| `Homestead` | 1 | 100 | 150 | 0.3% | 1 |
+| `Hamlet` | 7 | 700 | 1,050 | 1.9% | 3 |
+| `Village` | 19 | 1,900 | 2,850 | 5.1% | 6 |
+| `Town` | 37 | 3,700 | 5,550 | 9.9% | 10 |
+| `City` | 61 | 6,100 | 9,150 | 16.3% | 15 |
+
+**The nominal column is a target, not a cap.** It is every district built to the measured density, on
+ordinary ground, at exactly 100% occupancy. Real places sit either side: `PopulationAt(tier, mapEdge,
+buildableFraction, occupancy)` scales it by how much of the ground can be built on and by how crowded the
+place is. The crowding ceiling is `BirthrateRules.BirthStagnationRatio` (1.5), the same constant the growth
+model clamps to, so the two cannot disagree about how full "full" is. `OccupancyOf` reads the ratio back and
+`OccupancyBand` names it: Ruined, Sparse, Nominal, Crowded, Overcrowded.
 
 Every tier leaves most of the tile as hinterland, which is what makes suburbs and farmland real rather
 than a fudge. Hinterland holds a further quarter of the settled population (`HinterlandShare`), which
