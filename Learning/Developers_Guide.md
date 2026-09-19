@@ -576,10 +576,24 @@ overcrowding pressure.
 
 **Terrain is build time, not capacity.** Hostile ground does not shrink a district. Even a city occupies
 only a sixth of its tile, so mountains and marsh rarely make the area impossible - they make it slower to
-develop. `BuildDaysForToil(toil)` takes `BiomeHabitabilityRules.Toil`, which is 1 on open ground and
-already tech-aware, and returns days per district: 5 on open ground, 10 for an industrial society in a
-swamp, 20 for a tribe in the same swamp, capped at 50. A settlement on bad ground ends up smaller because
-it never finished building, not because its districts hold fewer people.
+develop. `BuildDaysFor(mountainShare, marshShare)` returns days per district:
+
+| Ground | Speed factor | Days per district |
+|---|---|---|
+| Open country | 1.0 | 5.0 |
+| Mountains | 0.75 | 6.7 |
+| Marsh | 0.50 | 10.0 |
+| Mountainous marsh | 0.375 | 13.3 |
+
+Mountains cost little because you excavate the unwanted rock and what is left counts as walls. Marsh costs
+double because the cost is paid on every trip: marsh inherits `WaterShallowBase` at `pathCost` 30 against
+soil’s 2, so at a human’s ~13 ticks a cell a marsh cell costs 43 against soil’s 15, and a marshy tile is
+roughly half marsh by area.
+
+**It is deliberately not tech-scaled.** Vanilla has no power tools: a tribe mines rock as fast as an
+industrial society does, and neither drains a swamp. That is why this does not reuse
+`BiomeHabitabilityRules.Toil`, which carries a tech exponent because it answers how punishing ground is to
+live on, not to build on. A settlement on bad ground ends up smaller because it never finished building.
 
 Every tier leaves most of the tile as hinterland, which is what makes suburbs and farmland real rather
 than a fudge. Hinterland holds a further quarter of the settled population (`HinterlandShare`), which

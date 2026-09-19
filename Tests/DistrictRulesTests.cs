@@ -213,20 +213,30 @@ namespace DistrictRulesTests
             Section("terrain is build time, not capacity");
             // Even a city occupies only a sixth of its tile, so hostile ground rarely makes the area
             // impossible - it makes it slower to develop. A district always means the same thing.
-            Check("open ground builds at the base rate",
-                Near(DistrictRules.BuildDaysForToil(1f), DistrictRules.BaseBuildDays, 0.01f));
-            Check("an industrial society in a swamp (toil 0.5) takes twice as long",
-                Near(DistrictRules.BuildDaysForToil(0.5f), DistrictRules.BaseBuildDays * 2f, 0.01f));
-            Check("a tribe in the same swamp (toil 0.25) takes four times as long",
-                Near(DistrictRules.BuildDaysForToil(0.25f), DistrictRules.BaseBuildDays * 4f, 0.01f));
+            Check("open country builds at the base rate",
+                Near(DistrictRules.BuildDaysFor(0f, 0f), DistrictRules.BaseBuildDays, 0.01f));
+            Check("mountains cost about a quarter more time",
+                Near(DistrictRules.BuildDaysFor(1f, 0f), DistrictRules.BaseBuildDays / 0.75f, 0.01f));
+            Check("marsh costs double, because the cost is paid every trip",
+                Near(DistrictRules.BuildDaysFor(0f, 1f), DistrictRules.BaseBuildDays * 2f, 0.01f));
+            Check("mountainous marsh compounds to ~13 days, not 20",
+                Near(DistrictRules.BuildDaysFor(1f, 1f), 13.33f, 0.05f));
+            Check("the two factors compound rather than add",
+                Near(DistrictRules.BuildSpeedFactor(1f, 1f), 0.375f, 0.001f));
+            Check("partial ground is proportionate",
+                Near(DistrictRules.BuildSpeedFactor(0.5f, 0f), 0.875f, 0.001f)
+                && Near(DistrictRules.BuildSpeedFactor(0f, 0.5f), 0.75f, 0.001f));
             Check("worse ground is never faster",
-                DistrictRules.BuildDaysForToil(0.25f) > DistrictRules.BuildDaysForToil(0.5f)
-                && DistrictRules.BuildDaysForToil(0.5f) > DistrictRules.BuildDaysForToil(1f));
-            Check("even hopeless ground finishes eventually rather than never",
-                DistrictRules.BuildDaysForToil(0f) == DistrictRules.MaxBuildDays
-                && DistrictRules.BuildDaysForToil(0.0001f) == DistrictRules.MaxBuildDays);
-            Check("toil above 1 cannot beat open ground",
-                Near(DistrictRules.BuildDaysForToil(5f), DistrictRules.BaseBuildDays, 0.01f));
+                DistrictRules.BuildDaysFor(1f, 1f) > DistrictRules.BuildDaysFor(0f, 1f)
+                && DistrictRules.BuildDaysFor(0f, 1f) > DistrictRules.BuildDaysFor(0f, 0f));
+            Check("shares outside 0..1 are clamped rather than inverting the maths",
+                DistrictRules.BuildDaysFor(-3f, -3f) == DistrictRules.BuildDaysFor(0f, 0f)
+                && DistrictRules.BuildDaysFor(9f, 9f) == DistrictRules.BuildDaysFor(1f, 1f));
+            Check("nothing exceeds the cap", DistrictRules.BuildDaysFor(1f, 1f) <= DistrictRules.MaxBuildDays);
+            // Vanilla has no power tools: a tribe mines rock as fast as an industrial society, so build
+            // time must not carry a tech term the way BiomeHabitabilityRules.Toil does.
+            Check("build time takes no tech argument at all",
+                typeof(DistrictRules).GetMethod("BuildDaysFor").GetParameters().Length == 2);
             Check("ruin is slower than building, which is what stops it flapping",
                 DistrictRules.BaseRuinDays > DistrictRules.BaseBuildDays);
 

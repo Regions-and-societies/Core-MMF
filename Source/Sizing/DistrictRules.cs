@@ -224,21 +224,59 @@ namespace RegionsAndSocieties.Sizing
         }
 
         /// <summary>
-        /// Days to add one district on ground of this <paramref name="toil"/>, which is
-        /// <c>BiomeHabitabilityRules.Toil</c>: 1 on open ground, falling as movement difficulty rises,
-        /// and already tech-aware, so an industrial society drives a road through a swamp faster than a
-        /// tribe does. Passed as a plain number so this layer stays free of the placement layer.
-        ///
-        /// <para>This is where terrain lives. A tribe in a swamp (toil 0.25) takes four times as long
-        /// per district as the same tribe on open ground, and ends up smaller not because its districts
-        /// hold fewer people but because it never finished building them.</para>
+        /// Build-speed multiplier for mountainous ground. Rock is a mild obstacle in RimWorld, not a
+        /// serious one: you excavate the unwanted rock and what is left counts as walls, so a mountain
+        /// district costs about a quarter more time rather than being impractical.
         /// </summary>
-        public static float BuildDaysForToil(float toil)
+        public const float MountainBuildFactor = 0.75f;
+
+        /// <summary>
+        /// Build-speed multiplier for marshy ground, and the slower of the two because the cost is
+        /// paid on every trip rather than once.
+        ///
+        /// <para>Taken from the game's own terrain data. Marsh inherits <c>WaterShallowBase</c> at
+        /// <c>pathCost</c> 30 against soil's 2, so at a human's ~13 ticks per cell a marsh cell costs
+        /// 43 ticks against soil's 15. A marshy tile is roughly half marsh by area, which averages to
+        /// 29 ticks a cell — near enough half speed.</para>
+        /// </summary>
+        public const float MarshBuildFactor = 0.50f;
+
+        /// <summary>
+        /// How fast a settlement can build on this ground, 1 being open country. Each share is how much
+        /// of the district is that kind of ground, and the two compound: fully mountainous marsh is
+        /// 0.75 x 0.50 = 0.375, so about 13 days a district against 5.
+        ///
+        /// <para><b>Deliberately not tech-scaled.</b> Vanilla has no power tools: a tribe mines rock at
+        /// the same rate an industrial society does, and neither drains a swamp. This is why it does not
+        /// reuse <c>BiomeHabitabilityRules.Toil</c>, which carries a tech exponent because it answers a
+        /// different question — how punishing the ground is to live on, not to build on.</para>
+        /// </summary>
+        public static float BuildSpeedFactor(float mountainShare, float marshShare)
         {
-            if (toil <= 0f) return MaxBuildDays;
-            float clamped = toil > 1f ? 1f : toil;
-            float days = BaseBuildDays / clamped;
+            float mountain = Clamp01(mountainShare);
+            float marsh = Clamp01(marshShare);
+            float f = (1f - mountain * (1f - MountainBuildFactor)) * (1f - marsh * (1f - MarshBuildFactor));
+            return f < 0f ? 0f : f;
+        }
+
+        /// <summary>
+        /// Days to add one district on this ground. 5 on open country, ~6.7 in the mountains, 10 in
+        /// marsh, ~13.3 in mountainous marsh, capped at <see cref="MaxBuildDays"/>.
+        ///
+        /// <para>This is where terrain lives. A settlement on bad ground ends up smaller because it
+        /// never finished building, not because its districts hold fewer people.</para>
+        /// </summary>
+        public static float BuildDaysFor(float mountainShare, float marshShare)
+        {
+            float speed = BuildSpeedFactor(mountainShare, marshShare);
+            if (speed <= 0f) return MaxBuildDays;
+            float days = BaseBuildDays / speed;
             return days > MaxBuildDays ? MaxBuildDays : days;
+        }
+
+        private static float Clamp01(float v)
+        {
+            return v < 0f ? 0f : (v > 1f ? 1f : v);
         }
 
         /// <summary>The most a tier can hold: every district built, on ordinary ground, crowded to the
