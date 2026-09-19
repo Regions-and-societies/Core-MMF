@@ -110,7 +110,57 @@ The countryside is the floor; settlements are concentrations on top. Two rules k
 The demographic pressure field then has two layers: **discrete settlement sources** (culled by
 reach, as now) over a **continuous biome-weighted countryside floor** (sampled, never a source).
 
-## 5. Where it lives in the code
+## 5. Temporal model — one stored number, a derived target, a closed-form curve
+
+The wilderness surface and the region demographics are a *snapshot*: what the world holds given
+current conditions. Making it **change over time** — cities growing by attraction, the countryside
+draining into them — is the dynamic layer #58 owns. The state contract it must honour (decided
+2026-09-19):
+
+**Three quantities, only one stored.**
+
+- **Baseline** — the seed-derived composition (`SampleTile`, and the wilderness surface of §2). A
+  pure function of (seed, biome, ambient faction); **recomputed for free**, never stored. Stable
+  because biome is static.
+- **Target** — the equilibrium the place is pulled toward *right now*: the attraction-pressure
+  aggregate of its surroundings ("instant total pressure"). **Moves** as the world changes;
+  **recomputed on read**, never stored.
+- **Current** — the actual state now, chasing the target. **The one thing scribed**, and only for
+  places that have moved off baseline — the sparse-delta pattern `RegionDemographicsStress` already
+  uses.
+
+Any two of {baseline, current, stress} are derivable from the third; the minimal state is one
+stored number, not three.
+
+**The curve is the gap, not a stored value.** A first-order relaxation
+
+    current += (target − current) × rate × elapsed
+
+makes velocity *implicit*: `(target − current) × rate`. Far from target → fast; approaching →
+automatic deceleration; at target → still. The S-shaped approach real populations show, with no
+stored velocity or acceleration.
+
+**Churn is lazy and closed-form, never ticked daily.** Store `(current, lastUpdatedTick)`; integrate
+forward only when the place is read:
+
+    current(now) = target + (current_old − target) × exp(−rate × elapsedTicks)
+
+Opening a region panel after three in-game years evaluates that once, O(1), and the three years of
+churn have "happened." The 49,000 tiles are never ticked — each catches up when observed (the
+async-materialised-population idea).
+
+**The rate carries the life, not a second-order term.** True momentum / overshoot (a gold-rush town
+blowing past equilibrium and correcting) needs velocity as real stored state and loses the closed
+form — deliberately **out of scope**. Accelerative *feel* comes instead from a **demographic-driven
+rate**: growth from the age structure (#6 `BirthrateRules`), migration from the attraction gap, and
+the agreed "5-year residual ghost" (dynamics-design 0.3.0) for inertia. A young, high-attraction
+city grows fast and eases in; an old saturated one crawls — varying speed, still one stored number
+in closed form.
+
+**What this scribes:** per diverged place, `current` (a population and a small composition delta) +
+`lastUpdatedTick`. Nothing else. An untouched place stores nothing and reads from baseline.
+
+## 6. Where it lives in the code
 
 Keep the repo's pure-rules convention (pure in, scalars out, unit-tested against the doubles):
 
@@ -122,8 +172,11 @@ Keep the repo's pure-rules convention (pure in, scalars out, unit-tested against
 - **Wire:** `PopulationDensityUtility` gains the surface as its baseline layer (replacing/absorbing
   the tiny natural-pocket step), and the demographic field (`RegionDemographicsUtility` /
   `SynapseRegionManager`) reads it as the countryside floor beneath settlement sources.
+- **Temporal (§5, #58):** a pure `TemporalRules` — `relax(current, target, rate, elapsed)` in closed
+  form — and a scribed `(current, lastUpdatedTick)` per diverged place, fast-forwarded on read. The
+  target is the attraction aggregate; the rate reads #6 `BirthrateRules` and the attraction gap.
 
-## 6. Open questions / tuning plan
+## 7. Open questions / tuning plan
 
 Prototype in `Design/sim` before committing constants:
 
@@ -136,8 +189,10 @@ Prototype in `Design/sim` before committing constants:
   the precompute cost — it should be *cheaper* than discrete sources, not another 22 s.
 - **Determinism**: seed → surface must be stable across reload and independent of world-object
   churn (unlike the current cache, which refreshes on every settlement change).
+- **Temporal rate (§5)**: what `rate` makes a boomtown fill in a legible number of in-game years
+  without feeling instant or geological; tune in the sim against the closed-form curve.
 
-## 7. Sequencing
+## 8. Sequencing
 
 This precedes #58. Order:
 
