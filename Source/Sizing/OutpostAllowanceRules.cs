@@ -16,17 +16,16 @@ namespace RegionsAndSocieties.Sizing
     {
         /// <summary>
         /// Outposts a territory anchored by a settlement of this tier may hold.
-        /// None 0, Village 2, Town 3, City 4, Major City 5, Metropolis 6 ("T1 = 2 outposts, +1 per tier").
+        /// Homestead 0, Hamlet 2, Village 3, Town 4, City 5, Metropolis 6 ("T1 = 2 outposts, +1 per tier").
         /// </summary>
         public static int OutpostAllowance(SettlementTier tier)
         {
             switch (tier)
             {
-                case SettlementTier.Village: return 2;
-                case SettlementTier.Town: return 3;
-                case SettlementTier.City: return 4;
-                case SettlementTier.MajorCity: return 5;
-                case SettlementTier.Metropolis: return 6;
+                case SettlementTier.Hamlet: return 2;
+                case SettlementTier.Village: return 3;
+                case SettlementTier.Town: return 4;
+                case SettlementTier.City: return 5;
                 default: return 0;
             }
         }

@@ -15,6 +15,7 @@ Contents:
 - [Region-count estimates](#region-count-estimates-040) — the shared "≈ N regions" maths
 - [World scale](#world-scale-050) — how much ground one world tile is, in the player's own maps
 - [District model](#district-model-050) — how a settlement occupies its tile, and the player-tile rule
+- [Demographic influence and reach](#demographic-influence-and-reach-050) — how far a settlement colours the land around it
 - [Demographic providers](#demographic-providers) — contribute a demographics component to ownership
 - [Territory-claim hook](#territory-claim-hook) — consume the contested-settlement event
 - [Ownership vocabulary](#ownership-vocabulary) — tiers, thresholds and placement rules
@@ -350,7 +351,7 @@ public interface ISeedingPolicy
 | `mineralsFraction` | `float` | How mineable the tile reads, 0..1. |
 | `coastal` | `bool` | Tile touches water. |
 | `distanceToAnchor` | `float` | Normalised 0 (capital core) → 1 (province edge). |
-| `anchorTier` | `SettlementTier` | The anchoring settlement's tier; `None` means no anchor context (choice degrades to terrain only). |
+| `anchorTier` | `SettlementTier` | The anchoring settlement's tier; `Homestead` means no anchor context (choice degrades to terrain only). |
 | `techLevel` | `int` | Anchor faction's `TechLevel` ordinal (2 Neolithic … 7 Archotech). |
 | `permanentEnemy` | `bool` | Anchor faction is a permanent enemy (pirates/hostiles). |
 
@@ -536,6 +537,27 @@ is readable on the world map before settling, and it already reflects whatever a
 
 ## District model (0.5.0)
 
+**Core owns the geometry; the living layer is an expansion.** What is documented here — the rings, the
+ladder, occupancy, build time — is the arithmetic, and it is all core. Districts as *places*, with their own
+demographics, a build-and-ruin lifecycle, one economic sector each, structures and unrest, live in
+[Districts-EP](https://github.com/Regions-and-societies/Districts-EP) and are built on the public members
+below. Core never instantiates a district: 374 of them across 119,904 tiles is ~45 million, so every answer
+here is closed-form.
+
+**A district is a fixed piece of ground, not the player’s map.** `WorldScaleRules.DistrictAreaKm2` is
+pinned at 0.0625 km² (the ground a 250x250 map covers) and `DistrictsPerTile` at ~374, so every figure below
+is the same for every player. Tying a district to the live map size made the ladder mean different things
+for different people: at 500x500 a city covered **65% of its tile** instead of a sixth, which removes the
+hinterland the model depends on. What size map someone plays on is a fact about their map
+(`MapsPerTile(mapEdgeCells)`), not an input to the simulation.
+
+**The tier ladder is `SettlementTier`, one ladder, not two.** Districts hang off the same enum the
+settlement-size system already used: `Homestead` (0 rings, 1 district), `Hamlet` (1, 7), `Village` (2, 19),
+`Town` (3, 37), `City` (4, 61). The rung index and the ring count are the same number. `MajorCity` and `Metropolis`
+were dropped and the old `None` became `Homestead`, so an unranked holding, or anything at all while the
+settlement-tier feature is off, reads as the smallest real rung rather than as an absence.
+
+
 New in 0.5.0 (#69). A tile is ~374 local maps of ground, but people do not spread evenly over 23 km²:
 they cluster, with farmland around them. The settled part of a tile is therefore a **hex cluster of
 districts**, one district being exactly one local map, growing outward in rings — the arrangement
@@ -548,16 +570,45 @@ RimWorld's hex tiles already imply. Namespace `RegionsAndSocieties.Sizing`, clas
 ```
 
 `X` is the rendered map; ring 1 adds the six neighbours. District counts are the centered hexagonal
-numbers, and a district holds **100 people** at the measured build density on a default map (400 on a
-500x500 one, because a district is one local map and rescales with it).
+numbers, and a district holds **100 people** at the measured build density — fixed, because a district is a fixed
+piece of ground.
 
-| Tier | Districts | Settled population | Share of tile |
-|---|---|---|---|
-| `Homestead` | 1 | 100 | 0.3% |
-| `Village` | 7 | 700 | 1.9% |
-| `Town` | 19 | 1,900 | 5.1% |
-| `City` | 37 | 3,700 | 9.9% |
-| `Metropolis` | 61 | 6,100 | 16.3% |
+| Tier | Districts | Nominal population | At 150% crowding | Share of tile | Supporting settlements |
+|---|---|---|---|---|---|
+| `Homestead` | 1 | 100 | 150 | 0.3% | 1 |
+| `Hamlet` | 7 | 700 | 1,050 | 1.9% | 3 |
+| `Village` | 19 | 1,900 | 2,850 | 5.1% | 6 |
+| `Town` | 37 | 3,700 | 5,550 | 9.9% | 10 |
+| `City` | 61 | 6,100 | 9,150 | 16.3% | 15 |
+
+**The nominal column is a target, not a cap.** It is every district built to the measured density at
+exactly 100% occupancy. Real places sit either side of it, and crowding is the axis they sit on:
+`PopulationAt(tier, mapEdge, occupancy)` scales it. The ceiling is `BirthrateRules.BirthStagnationRatio`
+(1.5), the same constant the growth model clamps to, so the two cannot disagree about how full "full" is.
+`OccupancyOf` reads the ratio back and `OccupancyBand` names it: Ruined, Sparse, Nominal, Crowded,
+Overcrowded. The bottom band is what marks a district as a candidate to fall to ruin; the top band is
+overcrowding pressure.
+
+**Terrain is build time, not capacity.** Hostile ground does not shrink a district. Even a city occupies
+only a sixth of its tile, so mountains and marsh rarely make the area impossible - they make it slower to
+develop. `BuildDaysFor(mountainShare, marshShare)` returns days per district:
+
+| Ground | Speed factor | Days per district |
+|---|---|---|
+| Open country | 1.0 | 5.0 |
+| Mountains | 0.75 | 6.7 |
+| Marsh | 0.50 | 10.0 |
+| Mountainous marsh | 0.375 | 13.3 |
+
+Mountains cost little because you excavate the unwanted rock and what is left counts as walls. Marsh costs
+double because the cost is paid on every trip: marsh inherits `WaterShallowBase` at `pathCost` 30 against
+soil’s 2, so at a human’s ~13 ticks a cell a marsh cell costs 43 against soil’s 15, and a marshy tile is
+roughly half marsh by area.
+
+**It is deliberately not tech-scaled.** Vanilla has no power tools: a tribe mines rock as fast as an
+industrial society does, and neither drains a swamp. That is why this does not reuse
+`BiomeHabitabilityRules.Toil`, which carries a tech exponent because it answers how punishing ground is to
+live on, not to build on. A settlement on bad ground ends up smaller because it never finished building.
 
 Every tier leaves most of the tile as hinterland, which is what makes suburbs and farmland real rather
 than a fudge. Hinterland holds a further quarter of the settled population (`HinterlandShare`), which
@@ -566,16 +617,16 @@ works out at about 1 person/km² around a homestead and 78/km² around a metropo
 | Member | Signature | Notes |
 |---|---|---|
 | `DistrictsInRings` / `RingsForDistricts` | `int (int)` | The ring geometry, 1 + 3k(k+1). Saturates rather than overflowing. |
-| `DistrictsForTier` / `RingsForTier` | `int (DistrictTier)` | 1, 7, 19, 37, 61. |
+| `DistrictsForTier` / `RingsForTier` | `int (SettlementTier)` | 1, 7, 19, 37, 61. |
 | `PeoplePerDistrict` | `float (int mapEdgeCells)` | Build density × district area. |
 | `PopulationForTier` / `TierForPopulation` | | Tier and population, each from the other. |
 | `DistrictsForPopulation` | `int (int population, int mapEdgeCells[, int ringCap])` | Capped at the ring cap so tile totals stay explainable. |
 | `DistrictsForPopulationUncapped` | `int (int, int)` | The true built extent, which the radius maths needs. |
 | `SettledShareOfTile` | `float (int districts, int mapEdgeCells)` | Fraction of the tile built on. |
 | `HinterlandPopulation` / `TilePopulation` | `int (int settledPopulation)` | Outlying farms, and the tile total. |
-| `TierFromDevelopment` | `DistrictTier (float developedFraction, float wealthMultiplier)` | **Tier from built area and wealth, never from head count.** |
-| `PlayerTilePopulation` | `int (int colonistCount, DistrictTier, int mapEdgeCells)` | The player-tile rule, below. |
-| `RenderedShare` | `float (int, DistrictTier, int)` | How much of the tile is actually on screen. |
+| `TierFromDevelopment` | `SettlementTier (float developedFraction, float wealthMultiplier)` | **Tier from built area and wealth, never from head count.** |
+| `PlayerTilePopulation` | `int (int colonistCount, SettlementTier, int mapEdgeCells)` | The player-tile rule, below. |
+| `RenderedShare` | `float (int, SettlementTier, int)` | How much of the tile is actually on screen. |
 | `BuiltRadiusDistricts` / `BuiltRadiusTiles` | | Radius of the built cluster; grows as the **square root** of population. |
 
 ### The player-tile rule
@@ -595,7 +646,7 @@ reading these endpoints should honour them:
 int mapEdge = Find.World?.info?.initialMapSize.x ?? WorldScaleRules.DefaultMapEdgeCells;
 
 // A developed, wealthy quarter-map colony reads as a Town...
-DistrictTier tier = DistrictRules.TierFromDevelopment(developedFraction: 0.25f, wealthMultiplier: 1.5f);
+SettlementTier tier = DistrictRules.TierFromDevelopment(developedFraction: 0.25f, wealthMultiplier: 1.5f);
 
 // ...so 40 colonists on screen sit at the centre of a tile of ~2,300 people:
 int tileTotal = DistrictRules.PlayerTilePopulation(40, tier, mapEdge);
@@ -733,10 +784,69 @@ Predicates: `MinSeparation(WorldObjectKind a, WorldObjectKind b)`, `RequiresSupp
 Namespace `RegionsAndSocieties.Sizing`.
 
 ```csharp
-public enum SettlementTier { None = 0, Village = 1, Town = 2, City = 3, MajorCity = 4, Metropolis = 5 }
+public enum SettlementTier { Homestead = 0, Hamlet = 1, Village = 2, Town = 3, City = 4 }
 ```
 
+Changed in 0.5.0 (#77). `MajorCity` and `Metropolis` were dropped and `None` became `Homestead`, so the
+ladder is five rungs of plain English and the top rung describes what it actually holds. **`Homestead` is
+both the smallest real rung and what an unranked holding reads as** — including everything, while the
+settlement-tier feature is switched off — so there is no "no tier" value to test for any more.
+
+The rung index doubles as the district ring count, which is what keeps the settlement ladder and the
+district geometry from drifting apart:
+
+| Tier | Rings | Districts | Nominal population | Supporting settlements |
+|---|---|---|---|---|
+| `Homestead` | 0 | 1 | 100 | 1 |
+| `Hamlet` | 1 | 7 | 700 | 3 |
+| `Village` | 2 | 19 | 1,900 | 6 |
+| `Town` | 3 | 37 | 3,700 | 10 |
+| `City` | 4 | 61 | 6,100 | 15 |
+
+**Two different triangular numbers, deliberately.** `TierPyramidRules.TerritoriesForTier` answers "how many
+settlements must a faction hold to afford a capital of this tier" and is `(T+1)(T+2)/2` — 1, 3, 6, 10, 15 —
+because a homestead is itself a settlement. `PopulationCapRules` uses the tier's own triangular number,
+`T(T+1)/2`, which is **0 at Homestead**, and 0 is what "no tier-imposed cap" means. Sharing one formula
+between them would give every untiered holding a cap and silently shrink every NPC settlement.
+
 The tier is **derived, never stored**, so it cannot go stale, and it means the same thing for a vanilla settlement, an Empire colony, or a VOE outpost — adapters feed it through `TryGetLevel` and population. Extensions: `Label()`, `LabelCapitalized()`, `IsAtLeast(SettlementTier other)`, `Max(SettlementTier b)`.
+
+---
+
+## Demographic influence and reach (0.5.0)
+
+New in 0.5.0 (#70). How far a settlement colours the demographics of the land around it.
+
+**The reach grows as the square root of population**, because built area is proportional to population and
+radius goes as the square root of area. Gravity models of settlement influence use the same relation. What
+it replaced was linear in population and measured in tiles, so a 150-person settlement projected pressure
+~150 tiles and the reach-based culling in the region aggregation could never actually fire.
+
+```csharp
+float reach = DistrictRules.InfluenceRadiusTiles(population, influenceMultiplier);
+```
+
+| Tier | Population | Built radius (tiles) | Reach at the default multiplier |
+|---|---|---|---|
+| `Hamlet` | 700 | 0.08 | 2.0 |
+| `Village` | 1,900 | 0.13 | 3.3 |
+| `Town` | 3,700 | 0.18 | 4.6 |
+| `City` | 6,100 | 0.23 | 5.9 |
+
+The setting is `WorldObjectIntegrationSettings.demographicInfluence`: **dimensionless**, how far influence
+carries beyond the settlement's own built edge, default 26, range 4 to 80. It scribes under a new key so an
+old saved value cannot carry its old meaning into the new formula. `MinInfluenceTiles` (1.5) is the floor,
+so a hamlet still colours the countryside around it.
+
+**Pressure is exactly zero beyond the reach, and must stay that way.** The region aggregation culls sources
+by reach, so a non-zero tail would make every source relevant to every tile again and undo the culling this
+exists to enable. Population living out in the open country is modelled by `DistrictRules.HinterlandPopulation`
+instead, not by stretching every settlement's reach.
+
+`DemographicsRules.FalloffModel` still shapes the curve (Linear, Smoothstep, Logarithmic, Exponential,
+InverseSquare). With a square-root reach, `InverseSquare` becomes a genuine gravity model and is the better
+default, but changing it alongside the reach would make border-blend behaviour impossible to attribute, so
+it is left for the tuning pass (#30).
 
 ---
 

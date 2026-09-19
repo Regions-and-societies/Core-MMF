@@ -57,6 +57,27 @@
     <laborTier>Secondary</laborTier>
   </RegionsAndSocieties.Economy.EconomicSectorDef>
 
+  <!--
+    The generalist is the DEFAULT a district holds until something specialises it, and most districts on
+    a frontier planet never do. It works the land, cuts a little wood, digs a little stone and makes what
+    it needs, all badly: broad output, low efficiency, and no dependency on anybody else.
+
+    It is what makes specialisation a TRADE rather than a free upgrade. A homestead of one district cannot
+    be a pure mine, because it has to feed itself; a settlement only specialises a district once it has
+    enough others to cover what that district stops producing. Nothing needs to force "every settlement
+    must have a farm" — the generalist default does it.
+
+    A root rather than a sub-sector, because doing a bit of everything is a different way to work, not a
+    sub-category of farming.
+  -->
+  <RegionsAndSocieties.Economy.EconomicSectorDef>
+    <defName>RS_Generalist</defName><label>mixed work</label>
+    <description>No specialty: subsistence farming, a woodlot, a stone pit and whatever else the place needs. Produces a little of everything and depends on nobody.</description>
+    <laborTier>Illiterate</laborTier>
+    <inputs><li>RS_BiomeFertility</li></inputs>
+    <outputs><li>FoodRaw</li><li>WoodLog</li><li>Steel</li></outputs>
+  </RegionsAndSocieties.Economy.EconomicSectorDef>
+
   <!-- ============================== AGRICULTURE ============================== -->
 
   <RegionsAndSocieties.Economy.EconomicSectorDef>

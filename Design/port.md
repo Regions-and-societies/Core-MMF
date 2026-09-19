@@ -154,3 +154,46 @@ Validate after editing About.xml: PowerShell `[xml](Get-Content <file> -Raw)` th
 - The R&S `rt_*` MCP tools (partition audit, placement probe, share report) were **not reachable
   via `execute_game_tool` this session**; the worldgen log is the reliable data channel. Debug
   actions are the durable headless trigger when the reflection tools are unavailable.
+
+## 0.5.0 world-scale and district work (2026-09-18/19)
+
+**Ported so far:** `release/0.5.0` exists in both editions. Core-MMF tip carries #67 world scale, #69
+district model, #70 square-root reach and #71 the population-seeding fix; Core-RP2 has the same four
+applied by patch (tip `3e8bb6e`), all sixteen touched files byte-identical.
+
+**NOT ported yet:** `feature/issue-77` (the tier ladder collapse, the homestead..city rename, occupancy,
+terrain build time, the district pin, and the Workshop infographic). It is unmerged in Core-MMF too.
+
+### The one conflict that fires every time
+
+`Tests/run-tests.sh`. Every new pure suite is inserted at the same anchor (the birthrate block), so two
+branches touching it always collide there, and so does every port. Plain `git am` fails on it; **use
+`git am -3`**, and resolve by keeping BOTH sides — the hunks are always two different suites being added,
+never a real disagreement. The same is true merging feature branches into `release/0.5.0`.
+
+`Learning/Developers_Guide.md` collides the same way and for the same reason: both sides add a
+table-of-contents line and a section. Keep both.
+
+### Port recipe
+
+```bash
+cd Core-MMF && git format-patch -q -o <dir> <base>..<branch> --no-merges
+cd ../Core-RP2 && git am -3 <dir>/*.patch      # resolve run-tests.sh by keeping both sides
+bash Tests/run-tests.sh && dotnet build Source/RegionsAndSocieties.csproj
+```
+
+Then confirm the editions did not drift:
+
+```bash
+cd Core-MMF
+for f in $(git diff --name-only <base>..release/0.5.0); do
+  git show "release/0.5.0:$f" | diff -q --strip-trailing-cr - <(git -C ../Core-RP2 show "release/0.5.0:$f") >/dev/null || echo "DIFF $f"
+done
+```
+
+### RP2 has one less thing to worry about now
+
+The district model used to scale with the player's map size, which would have interacted with RP2's planet
+size and sea level. It no longer does: a district is pinned at 0.0625 km2 and 374 to a tile for everyone
+(#77). RP2's `subcount` and `seaLevel` still matter for the **pre-generation region-count estimate** only,
+which is the existing `RealisticPlanetsProbe` path and is unchanged by any of this work.

@@ -1041,15 +1041,6 @@ namespace RegionsAndSocieties.Demographics
             return s != null ? PopulationDensityUtility.GetSettlementPopulation(s) : 0;
         }
 
-        /// <summary>
-        /// The map edge the player is actually playing at, in cells (#67). Falls back to RimWorld's
-        /// default before a world exists.
-        /// </summary>
-        private static int MapEdgeCells()
-        {
-            int edge = Find.World?.info != null ? Find.World.info.initialMapSize.x : 0;
-            return edge > 0 ? edge : Sizing.WorldScaleRules.DefaultMapEdgeCells;
-        }
 
         /// <summary>
         /// #70: a settlement's influence radius in tiles, growing as the SQUARE ROOT of its population.
@@ -1058,8 +1049,7 @@ namespace RegionsAndSocieties.Demographics
         /// </summary>
         private static float InfluenceReach(int population)
         {
-            return Sizing.DistrictRules.InfluenceRadiusTiles(population, MapEdgeCells(),
-                WorldObjectIntegrationSettings.demographicInfluence);
+            return Sizing.DistrictRules.InfluenceRadiusTiles(population, WorldObjectIntegrationSettings.demographicInfluence);
         }
 
         /// <summary>

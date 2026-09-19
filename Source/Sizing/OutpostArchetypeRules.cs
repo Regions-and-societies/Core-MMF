@@ -32,7 +32,7 @@ namespace RegionsAndSocieties.Sizing
     /// The tile facts the archetype choice reads, as plain numbers so the rule needs no <c>Find</c>, no
     /// <c>WorldGrid</c>, no Unity. The seeding facade fills this from the world; the rule decides. The
     /// position/faction fields (#18) are optional: when no anchor was resolved (<see cref="anchorTier"/>
-    /// left <see cref="SettlementTier.None"/>), the choice degrades to terrain only, the pre-#18 behaviour.
+    /// left <see cref="SettlementTier.Homestead"/>), the choice degrades to terrain only, the pre-#18 behaviour.
     /// </summary>
     public struct TileFeatures
     {
@@ -54,7 +54,7 @@ namespace RegionsAndSocieties.Sizing
         /// <summary>Normalised distance from the province's anchor settlement: 0 at the capital core,
         /// 1 at the province edge.</summary>
         public float distanceToAnchor;
-        /// <summary>The tier of the settlement anchoring this province. <see cref="SettlementTier.None"/>
+        /// <summary>The tier of the settlement anchoring this province. <see cref="SettlementTier.Homestead"/>
         /// means no anchor context — the choice falls back to terrain only.</summary>
         public SettlementTier anchorTier;
         /// <summary>The anchor faction's tech level (RimWorld TechLevel ordinal: 2 Neolithic .. 7 Archotech).</summary>
@@ -94,7 +94,7 @@ namespace RegionsAndSocieties.Sizing
         public static OutpostArchetype Choose(TileFeatures f)
         {
             // No anchor resolved for this province -> terrain only (pre-#18 behaviour, the degrade path).
-            if (f.anchorTier == SettlementTier.None)
+            if (f.anchorTier == SettlementTier.Homestead)
                 return ChooseTerrainOnly(f);
             return ChooseWeighted(f);
         }

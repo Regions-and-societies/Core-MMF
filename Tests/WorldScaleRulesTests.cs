@@ -45,8 +45,15 @@ namespace WorldScaleRulesTests
             Check("250x250 -> 19.3 per side", Near(WorldScaleRules.GridSide(250), 19.34f, 0.05f));
             Check("500x500 -> 9.7 per side", Near(WorldScaleRules.GridSide(500), 9.67f, 0.05f));
             Check("grid side squared is maps per tile", Near(WorldScaleRules.GridSide(250) * WorldScaleRules.GridSide(250), WorldScaleRules.MapsPerTile(250), 0.1f));
-            Check("districts across = grid side (one district is one map)", WorldScaleRules.DistrictsAcrossTile(250) == WorldScaleRules.GridSide(250));
-            Check("district area = map area", WorldScaleRules.DistrictAreaKm2(250) == WorldScaleRules.MapAreaKm2(250));
+            // A district is a FIXED piece of ground, pinned to the reference map, so none of these
+            // move when the player runs a different map size. That is the #77 pin: tying a district to
+            // a player setting put a city on 65% of its tile at 500x500.
+            Check("a district is the reference map's ground, always",
+                WorldScaleRules.DistrictAreaKm2 == WorldScaleRules.MapAreaKm2(WorldScaleRules.ReferenceMapEdgeCells));
+            Check("districts across a tile is the reference grid side",
+                WorldScaleRules.DistrictsAcrossTile == WorldScaleRules.GridSide(WorldScaleRules.ReferenceMapEdgeCells));
+            Check("districts per tile is ~374, fixed", Near(WorldScaleRules.DistrictsPerTile, 374f, 1f));
+            Check("the reference is the default map size", WorldScaleRules.ReferenceMapEdgeCells == WorldScaleRules.DefaultMapEdgeCells);
             Check("a nonsense edge has no grid", WorldScaleRules.GridSide(0) == 0f);
 
             Section("the sentence the player reads");

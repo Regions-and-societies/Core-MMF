@@ -24,25 +24,24 @@ namespace RegionsAndSocieties.Sizing
         {
             switch (kind)
             {
-                case WorldObjectKind.Settlement: return SettlementTier.MajorCity;
-                case WorldObjectKind.Outpost: return SettlementTier.Town;
-                default: return SettlementTier.None;
+                case WorldObjectKind.Settlement: return SettlementTier.Town;
+                case WorldObjectKind.Outpost: return SettlementTier.Village;
+                default: return SettlementTier.Homestead;
             }
         }
 
         public static SettlementTier FromPopulation(int population)
         {
-            if (population >= SettlementSizeRules.MajorCityMinPopulation) return SettlementTier.MajorCity;
-            if (population >= SettlementSizeRules.CityMinPopulation) return SettlementTier.City;
             if (population >= SettlementSizeRules.TownMinPopulation) return SettlementTier.Town;
             if (population >= SettlementSizeRules.VillageMinPopulation) return SettlementTier.Village;
-            return SettlementTier.None;
+            if (population >= SettlementSizeRules.HamletMinPopulation) return SettlementTier.Hamlet;
+            return SettlementTier.Homestead;
         }
 
         /// <summary>Dwellings standing in for an unknown population.</summary>
         public static SettlementTier FromDwellings(int dwellings)
         {
-            if (dwellings <= 0) return SettlementTier.None;
+            if (dwellings <= 0) return SettlementTier.Homestead;
             return FromPopulation(dwellings * SettlementSizeRules.ResidentsPerDwelling);
         }
 
@@ -53,21 +52,21 @@ namespace RegionsAndSocieties.Sizing
         /// Empire colony levels and VOE outpost levels without either being named here — and for
         /// any future mod that exposes a level at all.
         ///
-        /// Major City is reserved for a fully upgraded holding. Reaching the top of a mod's own
+        /// City is reserved for a fully upgraded holding. Reaching the top of a mod's own
         /// progression is the clearest statement it can make about size, so it is the one thing
         /// that earns the top tier outright.
         /// </summary>
         public static SettlementTier FromLevel(int level, int maxLevel)
         {
-            if (level <= 0 || maxLevel <= 0) return SettlementTier.None;
-            if (level >= maxLevel) return SettlementTier.MajorCity;
-            if (maxLevel == 1) return SettlementTier.MajorCity;
+            if (level <= 0 || maxLevel <= 0) return SettlementTier.Homestead;
+            if (level >= maxLevel) return SettlementTier.Town;
+            if (maxLevel == 1) return SettlementTier.Town;
 
             float fraction = (level - 1f) / (maxLevel - 1f);
 
-            if (fraction >= 2f / 3f) return SettlementTier.City;
-            if (fraction >= 1f / 3f) return SettlementTier.Town;
-            return SettlementTier.Village;
+            if (fraction >= 2f / 3f) return SettlementTier.Town;
+            if (fraction >= 1f / 3f) return SettlementTier.Village;
+            return SettlementTier.Hamlet;
         }
 
         /// <summary>
@@ -85,7 +84,7 @@ namespace RegionsAndSocieties.Sizing
         public static SettlementTier Classify(WorldObjectKind kind, int population, int dwellings, int level, int maxLevel)
         {
             SettlementTier ceiling = MaxTierFor(kind);
-            if (ceiling == SettlementTier.None) return SettlementTier.None;
+            if (ceiling == SettlementTier.Homestead) return SettlementTier.Homestead;
 
             SettlementTier byHeadcount = population > 0
                 ? FromPopulation(population)

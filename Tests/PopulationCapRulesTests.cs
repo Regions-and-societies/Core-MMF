@@ -14,14 +14,14 @@ namespace PopulationCapRulesTests
         public static int Main()
         {
             Section("caps and targets by tier");
-            Check("a tierless holding has no cap", PopulationCapRules.MaxPopulation(SettlementTier.None, 30f, 1f) == 0);
-            Check("a village caps above zero", PopulationCapRules.MaxPopulation(SettlementTier.Village, 30f, 1f) > 0);
-            Check("caps rise with tier", PopulationCapRules.MaxPopulation(SettlementTier.Metropolis, 30f, 1f)
-                > PopulationCapRules.MaxPopulation(SettlementTier.Village, 30f, 1f));
+            Check("a tierless holding has no cap", PopulationCapRules.MaxPopulation(SettlementTier.Homestead, 30f, 1f) == 0);
+            Check("a village caps above zero", PopulationCapRules.MaxPopulation(SettlementTier.Hamlet, 30f, 1f) > 0);
+            Check("caps rise with tier", PopulationCapRules.MaxPopulation(SettlementTier.City, 30f, 1f)
+                > PopulationCapRules.MaxPopulation(SettlementTier.Hamlet, 30f, 1f));
             Check("the target is two-thirds of the cap",
-                Near(PopulationCapRules.TargetPopulation(SettlementTier.City, 30f, 1f),
-                     (int)Math.Round(PopulationCapRules.MaxPopulation(SettlementTier.City, 30f, 1f) * 2f / 3f), 1));
-            Check("a nonsense multiplier caps at nothing", PopulationCapRules.MaxPopulation(SettlementTier.City, 0f, 1f) == 0);
+                Near(PopulationCapRules.TargetPopulation(SettlementTier.Town, 30f, 1f),
+                     (int)Math.Round(PopulationCapRules.MaxPopulation(SettlementTier.Town, 30f, 1f) * 2f / 3f), 1));
+            Check("a nonsense multiplier caps at nothing", PopulationCapRules.MaxPopulation(SettlementTier.Town, 0f, 1f) == 0);
 
             Section("seeding — the #71 contract");
             // The bug: an untiered settlement has capacity 0, and seeding read that as an empty settlement.

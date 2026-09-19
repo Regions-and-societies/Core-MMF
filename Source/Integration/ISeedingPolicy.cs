@@ -28,7 +28,7 @@ namespace RegionsAndSocieties.Integration
         bool IsActive { get; }
 
         /// <summary>The base number of this kind to seed around an anchor of the given tier, BEFORE the
-        /// world-maturity scale is applied. Zero (or a <see cref="SettlementTier.None"/> anchor) seeds none.</summary>
+        /// world-maturity scale is applied. Zero (or a <see cref="SettlementTier.Homestead"/> anchor) seeds none.</summary>
         int Allowance(SettlementTier anchorTier);
 
         /// <summary>Optional per-tile suitability gate on top of the terrain/ownership filters the driver
