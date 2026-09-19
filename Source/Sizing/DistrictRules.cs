@@ -174,12 +174,16 @@ namespace RegionsAndSocieties.Sizing
 
         // -- how full a place actually is --------------------------------------
 
-        /// <summary>
-        /// How much of a district's ground can actually be built on. 1 means ordinary land; a district
-        /// on mountains, marsh or shoreline holds fewer people for the same area. Multiplies the
-        /// nominal population, so it answers "effective land use" rather than crowding.
-        /// </summary>
-        public const float DefaultBuildableFraction = 1f;
+        /// <summary>Days to build one district on ordinary ground. 5 days is RimWorld's
+        /// <c>GenDate.TicksPerTwelfth</c>, the nearest thing it has to a week.</summary>
+        public const float BaseBuildDays = 5f;
+
+        /// <summary>Days for one empty district to fall to ruin. Slower than building on purpose: the
+        /// asymmetry is what stops a settlement flapping between building and ruining.</summary>
+        public const float BaseRuinDays = 10f;
+
+        /// <summary>The slowest a district can be to build, however hostile the ground.</summary>
+        public const float MaxBuildDays = BaseBuildDays * 10f;
 
         /// <summary>
         /// The most a place can be crowded before births stop entirely. <b>Not a new number</b>: it is
@@ -204,34 +208,53 @@ namespace RegionsAndSocieties.Sizing
         /// The population a tier holds at a given land quality and crowding.
         ///
         /// <para><see cref="PopulationForTier"/> is the <b>nominal</b> figure: every district built to
-        /// the measured comfortable density, on ordinary ground, at exactly 100% occupancy. Real places
-        /// sit either side of it. A city on broken ground with half its area buildable holds half as
-        /// many; the same city crowded to 150% holds half again more.</para>
+        /// the measured comfortable density, at exactly 100% occupancy. Real places sit either side of
+        /// it, and crowding is the axis they sit on.</para>
+        ///
+        /// <para>Hostile ground does <b>not</b> shrink a district. Even a city occupies only a sixth of
+        /// its tile, so terrain rarely makes the area impossible — it makes it slower and costlier to
+        /// develop. Mountains and marsh therefore lengthen <see cref="BuildDaysForToil"/> instead of
+        /// reducing capacity, which keeps a district meaning one thing everywhere.</para>
         /// </summary>
-        public static int PopulationAt(SettlementTier tier, int mapEdgeCells, float buildableFraction, float occupancy)
+        public static int PopulationAt(SettlementTier tier, int mapEdgeCells, float occupancy)
         {
             float nominal = PopulationForTier(tier, mapEdgeCells);
-            float land = buildableFraction < 0f ? 0f : (buildableFraction > 1f ? 1f : buildableFraction);
             float crowd = occupancy < 0f ? 0f : (occupancy > MaxOccupancy ? MaxOccupancy : occupancy);
-            return RoundToInt(nominal * land * crowd);
+            return RoundToInt(nominal * crowd);
+        }
+
+        /// <summary>
+        /// Days to add one district on ground of this <paramref name="toil"/>, which is
+        /// <c>BiomeHabitabilityRules.Toil</c>: 1 on open ground, falling as movement difficulty rises,
+        /// and already tech-aware, so an industrial society drives a road through a swamp faster than a
+        /// tribe does. Passed as a plain number so this layer stays free of the placement layer.
+        ///
+        /// <para>This is where terrain lives. A tribe in a swamp (toil 0.25) takes four times as long
+        /// per district as the same tribe on open ground, and ends up smaller not because its districts
+        /// hold fewer people but because it never finished building them.</para>
+        /// </summary>
+        public static float BuildDaysForToil(float toil)
+        {
+            if (toil <= 0f) return MaxBuildDays;
+            float clamped = toil > 1f ? 1f : toil;
+            float days = BaseBuildDays / clamped;
+            return days > MaxBuildDays ? MaxBuildDays : days;
         }
 
         /// <summary>The most a tier can hold: every district built, on ordinary ground, crowded to the
         /// point where births stop. The honest ceiling, against the nominal target.</summary>
         public static int MaxPopulationForTier(SettlementTier tier, int mapEdgeCells)
         {
-            return PopulationAt(tier, mapEdgeCells, DefaultBuildableFraction, MaxOccupancy);
+            return PopulationAt(tier, mapEdgeCells, MaxOccupancy);
         }
 
         /// <summary>How full a place is, as a share of its nominal population. 1 is comfortable, above
         /// 1 is crowded, near 0 is abandoned. Returns 0 when the tier could hold nobody.</summary>
-        public static float OccupancyOf(int population, SettlementTier tier, int mapEdgeCells, float buildableFraction)
+        public static float OccupancyOf(int population, SettlementTier tier, int mapEdgeCells)
         {
             float nominal = PopulationForTier(tier, mapEdgeCells);
-            float land = buildableFraction < 0f ? 0f : (buildableFraction > 1f ? 1f : buildableFraction);
-            float capacity = nominal * land;
-            if (capacity <= 0f || population <= 0) return 0f;
-            return population / capacity;
+            if (nominal <= 0f || population <= 0) return 0f;
+            return population / nominal;
         }
 
         /// <summary>The band an occupancy falls in, so consumers can speak about a place in words

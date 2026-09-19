@@ -168,14 +168,13 @@ namespace DistrictRulesTests
             // PopulationForTier is every district built to the measured density, on ordinary ground,
             // at exactly 100% occupancy. Real places sit either side of it.
             int nominalCity = DistrictRules.PopulationForTier(SettlementTier.City, Default);
-            Check("at nominal land and occupancy, it is the nominal figure",
-                DistrictRules.PopulationAt(SettlementTier.City, Default, 1f, 1f) == nominalCity);
-            Check("half the ground buildable, half the people",
-                Near(DistrictRules.PopulationAt(SettlementTier.City, Default, 0.5f, 1f), nominalCity / 2, 2));
-            Check("crowding multiplies on top of land",
-                Near(DistrictRules.PopulationAt(SettlementTier.City, Default, 0.5f, 1.5f), (int)(nominalCity * 0.75f), 3));
-            Check("unbuildable ground holds nobody", DistrictRules.PopulationAt(SettlementTier.City, Default, 0f, 1.5f) == 0);
-            Check("empty of people holds nobody", DistrictRules.PopulationAt(SettlementTier.City, Default, 1f, 0f) == 0);
+            Check("at nominal occupancy, it is the nominal figure",
+                DistrictRules.PopulationAt(SettlementTier.City, Default, 1f) == nominalCity);
+            Check("half full, half the people",
+                Near(DistrictRules.PopulationAt(SettlementTier.City, Default, 0.5f), nominalCity / 2, 2));
+            Check("crowded to 150% holds half again more",
+                Near(DistrictRules.PopulationAt(SettlementTier.City, Default, 1.5f), (int)(nominalCity * 1.5f), 3));
+            Check("empty of people holds nobody", DistrictRules.PopulationAt(SettlementTier.City, Default, 0f) == 0);
 
             // The crowding ceiling is the growth model's own constant, not a second opinion.
             Check("the ceiling is the birthrate stagnation ratio",
@@ -183,20 +182,21 @@ namespace DistrictRulesTests
             Check("a city tops out ~50% above nominal",
                 Near(DistrictRules.MaxPopulationForTier(SettlementTier.City, Default), (int)(nominalCity * 1.5f), 3));
             Check("occupancy cannot be pushed past the ceiling",
-                DistrictRules.PopulationAt(SettlementTier.City, Default, 1f, 99f)
+                DistrictRules.PopulationAt(SettlementTier.City, Default, 99f)
                 == DistrictRules.MaxPopulationForTier(SettlementTier.City, Default));
-            Check("buildable fraction cannot exceed whole ground",
-                DistrictRules.PopulationAt(SettlementTier.City, Default, 5f, 1f) == nominalCity);
+            Check("a negative occupancy is empty, not negative",
+                DistrictRules.PopulationAt(SettlementTier.City, Default, -2f) == 0);
 
             Section("occupancy read back, and named");
             Check("nominal population reads as 100% occupancy",
-                Near(DistrictRules.OccupancyOf(nominalCity, SettlementTier.City, Default, 1f), 1f, 0.01f));
-            Check("half the people on half the ground is still full",
-                Near(DistrictRules.OccupancyOf(nominalCity / 2, SettlementTier.City, Default, 0.5f), 1f, 0.02f));
+                Near(DistrictRules.OccupancyOf(nominalCity, SettlementTier.City, Default), 1f, 0.01f));
+            Check("half the people is half full",
+                Near(DistrictRules.OccupancyOf(nominalCity / 2, SettlementTier.City, Default), 0.5f, 0.02f));
             Check("nobody is zero, not a divide by zero",
-                DistrictRules.OccupancyOf(0, SettlementTier.City, Default, 1f) == 0f);
-            Check("unbuildable ground reports zero rather than infinity",
-                DistrictRules.OccupancyOf(500, SettlementTier.City, Default, 0f) == 0f);
+                DistrictRules.OccupancyOf(0, SettlementTier.City, Default) == 0f);
+            Check("a homestead with a crowd reads as overcrowded",
+                DistrictRules.OccupancyBand(DistrictRules.OccupancyOf(140, SettlementTier.Homestead, Default))
+                == DistrictOccupancy.Overcrowded);
 
             Check("an almost empty district is a ruin candidate",
                 DistrictRules.OccupancyBand(0.05f) == DistrictOccupancy.Ruined);
@@ -209,6 +209,26 @@ namespace DistrictRulesTests
                 && (int)DistrictRules.OccupancyBand(0.4f) < (int)DistrictRules.OccupancyBand(1f)
                 && (int)DistrictRules.OccupancyBand(1f) < (int)DistrictRules.OccupancyBand(1.2f)
                 && (int)DistrictRules.OccupancyBand(1.2f) < (int)DistrictRules.OccupancyBand(1.5f));
+
+            Section("terrain is build time, not capacity");
+            // Even a city occupies only a sixth of its tile, so hostile ground rarely makes the area
+            // impossible - it makes it slower to develop. A district always means the same thing.
+            Check("open ground builds at the base rate",
+                Near(DistrictRules.BuildDaysForToil(1f), DistrictRules.BaseBuildDays, 0.01f));
+            Check("an industrial society in a swamp (toil 0.5) takes twice as long",
+                Near(DistrictRules.BuildDaysForToil(0.5f), DistrictRules.BaseBuildDays * 2f, 0.01f));
+            Check("a tribe in the same swamp (toil 0.25) takes four times as long",
+                Near(DistrictRules.BuildDaysForToil(0.25f), DistrictRules.BaseBuildDays * 4f, 0.01f));
+            Check("worse ground is never faster",
+                DistrictRules.BuildDaysForToil(0.25f) > DistrictRules.BuildDaysForToil(0.5f)
+                && DistrictRules.BuildDaysForToil(0.5f) > DistrictRules.BuildDaysForToil(1f));
+            Check("even hopeless ground finishes eventually rather than never",
+                DistrictRules.BuildDaysForToil(0f) == DistrictRules.MaxBuildDays
+                && DistrictRules.BuildDaysForToil(0.0001f) == DistrictRules.MaxBuildDays);
+            Check("toil above 1 cannot beat open ground",
+                Near(DistrictRules.BuildDaysForToil(5f), DistrictRules.BaseBuildDays, 0.01f));
+            Check("ruin is slower than building, which is what stops it flapping",
+                DistrictRules.BaseRuinDays > DistrictRules.BaseBuildDays);
 
             Console.WriteLine();
             if (failures == 0) { Console.WriteLine("ALL DISTRICT TESTS PASSED"); return 0; }

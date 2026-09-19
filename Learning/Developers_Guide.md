@@ -566,12 +566,20 @@ numbers, and a district holds **100 people** at the measured build density on a 
 | `Town` | 37 | 3,700 | 5,550 | 9.9% | 10 |
 | `City` | 61 | 6,100 | 9,150 | 16.3% | 15 |
 
-**The nominal column is a target, not a cap.** It is every district built to the measured density, on
-ordinary ground, at exactly 100% occupancy. Real places sit either side: `PopulationAt(tier, mapEdge,
-buildableFraction, occupancy)` scales it by how much of the ground can be built on and by how crowded the
-place is. The crowding ceiling is `BirthrateRules.BirthStagnationRatio` (1.5), the same constant the growth
-model clamps to, so the two cannot disagree about how full "full" is. `OccupancyOf` reads the ratio back and
-`OccupancyBand` names it: Ruined, Sparse, Nominal, Crowded, Overcrowded.
+**The nominal column is a target, not a cap.** It is every district built to the measured density at
+exactly 100% occupancy. Real places sit either side of it, and crowding is the axis they sit on:
+`PopulationAt(tier, mapEdge, occupancy)` scales it. The ceiling is `BirthrateRules.BirthStagnationRatio`
+(1.5), the same constant the growth model clamps to, so the two cannot disagree about how full "full" is.
+`OccupancyOf` reads the ratio back and `OccupancyBand` names it: Ruined, Sparse, Nominal, Crowded,
+Overcrowded. The bottom band is what marks a district as a candidate to fall to ruin; the top band is
+overcrowding pressure.
+
+**Terrain is build time, not capacity.** Hostile ground does not shrink a district. Even a city occupies
+only a sixth of its tile, so mountains and marsh rarely make the area impossible - they make it slower to
+develop. `BuildDaysForToil(toil)` takes `BiomeHabitabilityRules.Toil`, which is 1 on open ground and
+already tech-aware, and returns days per district: 5 on open ground, 10 for an industrial society in a
+swamp, 20 for a tribe in the same swamp, capped at 50. A settlement on bad ground ends up smaller because
+it never finished building, not because its districts hold fewer people.
 
 Every tier leaves most of the tile as hinterland, which is what makes suburbs and farmland real rather
 than a fudge. Hinterland holds a further quarter of the settled population (`HinterlandShare`), which
