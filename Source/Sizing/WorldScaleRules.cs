@@ -116,19 +116,25 @@ namespace RegionsAndSocieties.Sizing
             return Sqrt(maps);
         }
 
-        /// <summary>Alias for <see cref="GridSide"/> in the vocabulary of the district model: one
-        /// district is one local map, so a tile is this many districts across.</summary>
-        public static float DistrictsAcrossTile(int mapEdgeCells)
-        {
-            return GridSide(mapEdgeCells);
-        }
+        /// <summary>
+        /// The map size the district model is calibrated at, and it is <b>fixed</b>.
+        ///
+        /// <para>A district was originally one of the player's own maps, which made a piece of the
+        /// simulation depend on a player setting: the settlement ladder then meant different things
+        /// for different players, and at 500x500 a city covered <b>65% of its tile</b> instead of a
+        /// sixth, destroying the hinterland the whole model rests on. What size map someone plays on
+        /// is a fact about their map (<see cref="MapsPerTile"/>), not an input to the simulation.</para>
+        /// </summary>
+        public const int ReferenceMapEdgeCells = DefaultMapEdgeCells;
 
-        /// <summary>One district (one local map) in km^2 — the unit the population density anchors
-        /// multiply against.</summary>
-        public static float DistrictAreaKm2(int mapEdgeCells)
-        {
-            return MapAreaKm2(mapEdgeCells);
-        }
+        /// <summary>One district, in km^2: a fixed 0.0625, the ground a 250x250 map covers.</summary>
+        public static float DistrictAreaKm2 { get { return MapAreaKm2(ReferenceMapEdgeCells); } }
+
+        /// <summary>Districts in one world tile: ~374, fixed.</summary>
+        public static float DistrictsPerTile { get { return MapsPerTile(ReferenceMapEdgeCells); } }
+
+        /// <summary>A tile's width in districts: ~19.3, fixed. The unit the pressure falloff counts in.</summary>
+        public static float DistrictsAcrossTile { get { return GridSide(ReferenceMapEdgeCells); } }
 
         /// <summary>
         /// A player-facing sentence: how small their map is against the tile it sits on, and the grid

@@ -61,13 +61,13 @@ namespace RegionsAndSocieties.UI
                 // them. The colonist count is authoritative and is never overridden here.
                 if (population > 0)
                 {
-                    SettlementTier tier = DistrictRules.TierForPopulation(population, mapEdge);
-                    int districts = DistrictRules.DistrictsForPopulation(population, mapEdge);
-                    float share = DistrictRules.SettledShareOfTile(districts, mapEdge);
+                    SettlementTier tier = DistrictRules.TierForPopulation(population);
+                    int districts = DistrictRules.DistrictsForPopulation(population);
+                    float share = DistrictRules.SettledShareOfTile(districts);
                     int tileTotal = DistrictRules.TilePopulation(population);
 
                     string note = $"{districts} settled district{(districts == 1 ? "" : "s")} of "
-                        + $"{Mathf.RoundToInt(WorldScaleRules.MapsPerTile(mapEdge))} ({share:P0} of the tile)"
+                        + $"{Mathf.RoundToInt(WorldScaleRules.DistrictsPerTile)} ({share:P0} of the tile)"
                         + $"\n{population} in the settled area · {tileTotal - population} in the surrounding country"
                         + $" · {tileTotal} on the tile";
 

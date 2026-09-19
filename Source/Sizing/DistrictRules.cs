@@ -112,28 +112,28 @@ namespace RegionsAndSocieties.Sizing
 
         // -- population --------------------------------------------------------
 
-        /// <summary>People a single developed district holds: 100 on a default 250x250 map, 400 on a
-        /// 500x500 one, because a district is one local map and rescales with the player's map size.</summary>
-        public static float PeoplePerDistrict(int mapEdgeCells)
+        /// <summary>People a single developed district holds: a fixed 100, because a district is a fixed
+        /// piece of ground (0.0625 km2) rather than whatever size map the player runs.</summary>
+        public static float PeoplePerDistrict()
         {
-            float areaKm2 = WorldScaleRules.DistrictAreaKm2(mapEdgeCells);
+            float areaKm2 = WorldScaleRules.DistrictAreaKm2;
             if (areaKm2 <= 0f) return 0f;
             return BuildDensityPerKm2 * areaKm2;
         }
 
         /// <summary>The settled population of a tier: 100 / 700 / 1,900 / 3,700 / 6,100 at the default
-        /// map size. Excludes hinterland; see <see cref="TilePopulation"/>.</summary>
-        public static int PopulationForTier(SettlementTier tier, int mapEdgeCells)
+        /// Excludes hinterland; see <see cref="TilePopulation"/>.</summary>
+        public static int PopulationForTier(SettlementTier tier)
         {
-            return RoundToInt(DistrictsForTier(tier) * PeoplePerDistrict(mapEdgeCells));
+            return RoundToInt(DistrictsForTier(tier) * PeoplePerDistrict());
         }
 
         /// <summary>Districts a settled population needs, capped at <paramref name="ringCap"/> rings so
         /// tile totals stay explainable. Any population above zero occupies at least one district.</summary>
-        public static int DistrictsForPopulation(int population, int mapEdgeCells, int ringCap)
+        public static int DistrictsForPopulation(int population, int ringCap)
         {
             if (population <= 0) return 0;
-            float per = PeoplePerDistrict(mapEdgeCells);
+            float per = PeoplePerDistrict();
             if (per <= 0f) return 0;
             int needed = (int)System.Math.Ceiling(population / per);
             if (needed < 1) needed = 1;
@@ -143,10 +143,10 @@ namespace RegionsAndSocieties.Sizing
 
         /// <summary>Districts a settled population needs with no ring cap at all — the true built
         /// extent, which the radius maths (#70) needs rather than the display-capped cluster.</summary>
-        public static int DistrictsForPopulationUncapped(int population, int mapEdgeCells)
+        public static int DistrictsForPopulationUncapped(int population)
         {
             if (population <= 0) return 0;
-            float per = PeoplePerDistrict(mapEdgeCells);
+            float per = PeoplePerDistrict();
             if (per <= 0f) return 0;
             long needed = (long)System.Math.Ceiling(population / per);
             if (needed < 1L) needed = 1L;
@@ -154,20 +154,20 @@ namespace RegionsAndSocieties.Sizing
         }
 
         /// <summary>Districts a settled population needs, at the default ring cap.</summary>
-        public static int DistrictsForPopulation(int population, int mapEdgeCells)
+        public static int DistrictsForPopulation(int population)
         {
-            return DistrictsForPopulation(population, mapEdgeCells, DefaultRingCap);
+            return DistrictsForPopulation(population, DefaultRingCap);
         }
 
         /// <summary>The tier a settled population reads as. Below one full district it is a homestead;
         /// otherwise the highest tier whose settled population it has reached.</summary>
-        public static SettlementTier TierForPopulation(int population, int mapEdgeCells)
+        public static SettlementTier TierForPopulation(int population)
         {
             SettlementTier result = SettlementTier.Homestead;
             for (int t = (int)SettlementTier.City; t >= 0; t--)
             {
                 var tier = (SettlementTier)t;
-                if (population >= PopulationForTier(tier, mapEdgeCells)) { result = tier; break; }
+                if (population >= PopulationForTier(tier)) { result = tier; break; }
             }
             return result;
         }
@@ -216,9 +216,9 @@ namespace RegionsAndSocieties.Sizing
         /// develop. Mountains and marsh therefore lengthen <see cref="BuildDaysForToil"/> instead of
         /// reducing capacity, which keeps a district meaning one thing everywhere.</para>
         /// </summary>
-        public static int PopulationAt(SettlementTier tier, int mapEdgeCells, float occupancy)
+        public static int PopulationAt(SettlementTier tier, float occupancy)
         {
-            float nominal = PopulationForTier(tier, mapEdgeCells);
+            float nominal = PopulationForTier(tier);
             float crowd = occupancy < 0f ? 0f : (occupancy > MaxOccupancy ? MaxOccupancy : occupancy);
             return RoundToInt(nominal * crowd);
         }
@@ -281,16 +281,16 @@ namespace RegionsAndSocieties.Sizing
 
         /// <summary>The most a tier can hold: every district built, on ordinary ground, crowded to the
         /// point where births stop. The honest ceiling, against the nominal target.</summary>
-        public static int MaxPopulationForTier(SettlementTier tier, int mapEdgeCells)
+        public static int MaxPopulationForTier(SettlementTier tier)
         {
-            return PopulationAt(tier, mapEdgeCells, MaxOccupancy);
+            return PopulationAt(tier, MaxOccupancy);
         }
 
         /// <summary>How full a place is, as a share of its nominal population. 1 is comfortable, above
         /// 1 is crowded, near 0 is abandoned. Returns 0 when the tier could hold nobody.</summary>
-        public static float OccupancyOf(int population, SettlementTier tier, int mapEdgeCells)
+        public static float OccupancyOf(int population, SettlementTier tier)
         {
-            float nominal = PopulationForTier(tier, mapEdgeCells);
+            float nominal = PopulationForTier(tier);
             if (nominal <= 0f || population <= 0) return 0f;
             return population / nominal;
         }
@@ -309,11 +309,11 @@ namespace RegionsAndSocieties.Sizing
         // -- the tile as a whole -----------------------------------------------
 
         /// <summary>The fraction of a tile's ground a district cluster covers. Even a metropolis uses
-        /// about a sixth at the default map size, which is what leaves room for suburbs and farmland
+        /// about a sixth, which is what leaves room for suburbs and farmland
         /// to be real rather than a fudge.</summary>
-        public static float SettledShareOfTile(int districts, int mapEdgeCells)
+        public static float SettledShareOfTile(int districts)
         {
-            float maps = WorldScaleRules.MapsPerTile(mapEdgeCells);
+            float maps = WorldScaleRules.DistrictsPerTile;
             if (maps <= 0f || districts <= 0) return 0f;
             float share = districts / maps;
             return share > 1f ? 1f : share;
@@ -329,10 +329,10 @@ namespace RegionsAndSocieties.Sizing
         /// <summary>The density the hinterland works out to, people per km², as a check that the share
         /// above stays sane across tiers: about 1/km² around a homestead, about 65/km² around a
         /// metropolis.</summary>
-        public static float HinterlandDensityPerKm2(int settledPopulation, int settledDistricts, int mapEdgeCells)
+        public static float HinterlandDensityPerKm2(int settledPopulation, int settledDistricts)
         {
             float tileKm2 = WorldScaleRules.TileAreaKm2;
-            float settledKm2 = settledDistricts * WorldScaleRules.DistrictAreaKm2(mapEdgeCells);
+            float settledKm2 = settledDistricts * WorldScaleRules.DistrictAreaKm2;
             float openKm2 = tileKm2 - settledKm2;
             if (openKm2 <= 0f) return 0f;
             return HinterlandPopulation(settledPopulation) / openKm2;
@@ -371,20 +371,20 @@ namespace RegionsAndSocieties.Sizing
         /// modelled share; the hinterland its usual share of the total. Developing the colony raises
         /// the tier, which adds suburbs around the player rather than declaring them short of people.
         /// </summary>
-        public static int PlayerTilePopulation(int colonistCount, SettlementTier tier, int mapEdgeCells)
+        public static int PlayerTilePopulation(int colonistCount, SettlementTier tier)
         {
             if (colonistCount < 0) colonistCount = 0;
             int surrounding = DistrictsForTier(tier) - 1;
             if (surrounding < 0) surrounding = 0;
-            int settled = colonistCount + RoundToInt(surrounding * PeoplePerDistrict(mapEdgeCells));
+            int settled = colonistCount + RoundToInt(surrounding * PeoplePerDistrict());
             return TilePopulation(settled);
         }
 
         /// <summary>The share of the player's tile population that is actually on screen — the
         /// reconciliation line, so the gap is stated rather than hidden.</summary>
-        public static float RenderedShare(int colonistCount, SettlementTier tier, int mapEdgeCells)
+        public static float RenderedShare(int colonistCount, SettlementTier tier)
         {
-            int total = PlayerTilePopulation(colonistCount, tier, mapEdgeCells);
+            int total = PlayerTilePopulation(colonistCount, tier);
             if (total <= 0) return 0f;
             return (float)colonistCount / total;
         }
@@ -404,10 +404,10 @@ namespace RegionsAndSocieties.Sizing
         /// its reach from. Grows as the square root of population, because built area is proportional
         /// to population and radius goes as the square root of area.
         /// </summary>
-        public static float BuiltRadiusTiles(int population, int mapEdgeCells)
+        public static float BuiltRadiusTiles(int population)
         {
-            int districts = DistrictsForPopulationUncapped(population, mapEdgeCells);
-            float acrossTile = WorldScaleRules.DistrictsAcrossTile(mapEdgeCells);
+            int districts = DistrictsForPopulationUncapped(population);
+            float acrossTile = WorldScaleRules.DistrictsAcrossTile;
             if (districts <= 0 || acrossTile <= 0f) return 0f;
             return BuiltRadiusDistricts(districts) / acrossTile;
         }
@@ -443,18 +443,18 @@ namespace RegionsAndSocieties.Sizing
         /// every tile again. Population living out in the open country is modelled by
         /// <see cref="HinterlandPopulation"/> instead, not by stretching every settlement's reach.</para>
         /// </summary>
-        public static float InfluenceRadiusTiles(int population, int mapEdgeCells, float influenceMultiplier)
+        public static float InfluenceRadiusTiles(int population, float influenceMultiplier)
         {
             if (population <= 0) return 0f;
             float mult = influenceMultiplier > 0f ? influenceMultiplier : DefaultInfluenceMultiplier;
-            float reach = BuiltRadiusTiles(population, mapEdgeCells) * mult;
+            float reach = BuiltRadiusTiles(population) * mult;
             return reach < MinInfluenceTiles ? MinInfluenceTiles : reach;
         }
 
         /// <summary>Influence radius at the default multiplier.</summary>
-        public static float InfluenceRadiusTiles(int population, int mapEdgeCells)
+        public static float InfluenceRadiusTiles(int population)
         {
-            return InfluenceRadiusTiles(population, mapEdgeCells, DefaultInfluenceMultiplier);
+            return InfluenceRadiusTiles(population, DefaultInfluenceMultiplier);
         }
 
         private static int RoundToInt(float v)

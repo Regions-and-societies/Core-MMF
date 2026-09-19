@@ -536,6 +536,13 @@ is readable on the world map before settling, and it already reflects whatever a
 
 ## District model (0.5.0)
 
+**A district is a fixed piece of ground, not the player’s map.** `WorldScaleRules.DistrictAreaKm2` is
+pinned at 0.0625 km² (the ground a 250x250 map covers) and `DistrictsPerTile` at ~374, so every figure below
+is the same for every player. Tying a district to the live map size made the ladder mean different things
+for different people: at 500x500 a city covered **65% of its tile** instead of a sixth, which removes the
+hinterland the model depends on. What size map someone plays on is a fact about their map
+(`MapsPerTile(mapEdgeCells)`), not an input to the simulation.
+
 **The tier ladder is `SettlementTier`, one ladder, not two.** Districts hang off the same enum the
 settlement-size system already used: `Homestead` (0 rings, 1 district), `Hamlet` (1, 7), `Village` (2, 19),
 `Town` (3, 37), `City` (4, 61). The rung index and the ring count are the same number. `MajorCity` and `Metropolis`
@@ -555,8 +562,8 @@ RimWorld's hex tiles already imply. Namespace `RegionsAndSocieties.Sizing`, clas
 ```
 
 `X` is the rendered map; ring 1 adds the six neighbours. District counts are the centered hexagonal
-numbers, and a district holds **100 people** at the measured build density on a default map (400 on a
-500x500 one, because a district is one local map and rescales with it).
+numbers, and a district holds **100 people** at the measured build density — fixed, because a district is a fixed
+piece of ground.
 
 | Tier | Districts | Nominal population | At 150% crowding | Share of tile | Supporting settlements |
 |---|---|---|---|---|---|
