@@ -80,7 +80,11 @@ top). Candidate densities:
 | **2 /km²** | ~47 | **~2.3M** | ~7.6M | ~18.5M | sparse agrarian |
 | 5 /km² | ~117 | ~5.7M | ~19M | ~46M | light medieval rural |
 
-**Proposed target: a mean of ~1–2 /km², biome-scaled — ~1.5–2.5M at 30% coverage.** Rationale:
+**Proposed target: a mean of ~1–2 /km², biome-scaled — ~1.5–2.5M at 30% coverage.** The working
+figure is **~30 people/tile** (≈1.3/km²): 49,000 land tiles × 30 ≈ **1.5M at 30%**, ~4.9M at 50%,
+~11.9M at 100% — millions, with settlements (~100–200k) a ~10–15% urban minority on top of a
+~85–90% rural world. 30/tile is the Frontier band's representative, not a flat value; the field is
+normalised so the biome-scaled *mean* lands there. Rationale:
 
 - **1 /km² is already blessed** as the density the model treats as acceptable for a homestead's own
   hinterland (`DistrictRules.HinterlandDensityPerKm2` ≈ 1/km²). Using it as a *land-wide floor* is
@@ -194,12 +198,49 @@ Prototype in `Design/sim` before committing constants:
 
 ## 8. Sequencing
 
-This precedes #58. Order:
+Order of record (2026-09-19):
 
-1. **This** — the wilderness surface (rules + sim tuning + wire-in), so the world carries people.
-2. **#58** — the demographic influence graph, now with a populated substrate to model.
-3. The rest of the demographic issues (#29, #33/#34, …) on top.
+1. **#30** — migrate the settlement scale (legacy `SettlementSizeRules` / `ResidenceRules` endpoints)
+   onto the district scale, and set the dwelling occupancy/land curve (see §9).
+2. **#79 (this)** — the wilderness surface + Frontier band (rules + sim tuning + wire-in), so the
+   world carries people.
+3. **#58** — the dynamic layer (attraction/aggregator + the §5 temporal relaxation), now with a
+   populated substrate to model.
+4. The rest of the demographic issues (#29, #33/#34, #28, #35, #31, #74, #61, #72) on top.
 
-#30's threshold retune (settlement scale) and this (countryside scale) are the two halves of "make
-the world's population real"; they should be tuned with an eye on each other so settlements stay the
-peaks above the countryside floor.
+#30 (settlement scale) and #79 (countryside scale) are the two halves of "make the world's population
+real"; tune them with an eye on each other so settlements stay the peaks above the countryside floor.
+
+## 9. Tier vocabulary, dwellings and the map overlays
+
+Decisions 2026-09-19, folded in so the overlays and #58 share one vocabulary.
+
+**One tier ladder, not two.** `ResidenceRules.Urbanization` was always a pure function of population,
+so `ResidenceTier` (Homestead/Village/Town/City) was a *duplicate* of the size axis, not an
+independent one. **Drop `ResidenceTier`.** Dwelling character — occupancy, land per dwelling,
+dwelling count — derives from population on the single `SettlementTier` ladder. The trade-off (form
+is pinned to size: no "sprawling vs compact village" at equal population) is deliberate and accepted.
+
+**Frontier is the floor band.** #77's `SettlementTier` keeps its invariant (rung index = ring count,
+Homestead 0 rings .. City 4), so Frontier is **not** inserted into that enum. It is the floor band of
+the shared *classification* the overlays and the dwelling curve read: a tile with rural population
+but no settlement object (no districts, no nucleation). Shared vocabulary:
+`Frontier → Homestead → Hamlet → Village → Town → City`.
+
+**"Dwellings", not "residences".** Standardise the housing layer on *dwellings* (precise, and already
+the in-game "Pawn dwellings" term); retire the mixed residence/dwelling wording in `ResidenceRules`
+and the overlay.
+
+**Occupancy/land curve, retuned (#30).** The rural→urban occupancy (7 → 1.8) and land-per-dwelling
+(1.0 → 0.12) endpoints stay; the *population* endpoints move off the legacy `RuralPopulation 15 /
+CityPopulation 250` onto the district scale (Frontier ~30/tile .. City 6,100). Monotonic and so it
+scales: dwellings = population ÷ occupancy across the whole ladder.
+
+**Two overlays recalibrated to the new baseline:**
+- **Population density** (people/tile): the ramp must span the Frontier floor (~30/tile) to a City
+  (thousands), where it used to top out near a few hundred. New top-of-scale and band cuts.
+- **Dwellings** (dwellings/tile): recalibrated through the retuned occupancy curve; legend keyed to
+  the shared `Frontier..City` vocabulary.
+
+Both overlays read the derived baseline for free; a diverged place shows its stored `current` (§5).
+Recalibrate them *after* #30/#79 have set the numbers.
