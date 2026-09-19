@@ -1,0 +1,512 @@
+<title>One World Tile</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&display=swap">
+<style>
+  :root {
+    --ground: #eaeee6;
+    --sheet: #f8faf5;
+    --ink: #1b211d;
+    --muted: #59635b;
+    --faint: #848e85;
+    --rule: #c6cec2;
+    --rule-soft: #dbe1d6;
+    --accent: #a9681f;
+    --accent-soft: #f0e2cd;
+    --reject: #8a4436;
+    --reject-soft: #f1ded9;
+    --grid-empty: #d7ddd2;
+
+    --display: "Archivo Narrow", "Arial Narrow", system-ui, sans-serif;
+    --body: "Source Sans 3", system-ui, -apple-system, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #131714;
+      --sheet: #1a1f1b;
+      --ink: #e7ebe4;
+      --muted: #9aa49a;
+      --faint: #7c867d;
+      --rule: #333b34;
+      --rule-soft: #262d27;
+      --accent: #d99c4d;
+      --accent-soft: #3a2c16;
+      --reject: #cc8271;
+      --reject-soft: #3a231d;
+      --grid-empty: #2b332c;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #131714;
+    --sheet: #1a1f1b;
+    --ink: #e7ebe4;
+    --muted: #9aa49a;
+    --faint: #7c867d;
+    --rule: #333b34;
+    --rule-soft: #262d27;
+    --accent: #d99c4d;
+    --accent-soft: #3a2c16;
+    --reject: #cc8271;
+    --reject-soft: #3a231d;
+    --grid-empty: #2b332c;
+  }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 16px;
+    line-height: 1.6;
+  }
+  .sheet {
+    max-width: 920px;
+    margin: 0 auto;
+    padding-inline: 20px;
+    padding-block: 40px 56px;
+  }
+  h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; line-height: 1.12; }
+  p { margin: 0; }
+
+  /* ---- title block: a survey sheet header ---- */
+  .titleblock {
+    border-top: 3px solid var(--ink);
+    border-bottom: 1px solid var(--rule);
+    padding-block: 18px 22px;
+    display: grid;
+    gap: 18px;
+    grid-template-columns: 1fr auto;
+    align-items: end;
+  }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+  h1 { font-size: clamp(38px, 8vw, 62px); font-weight: 700; letter-spacing: -0.01em; margin-top: 6px; }
+  .stamp {
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--muted);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--accent);
+    padding: 10px 14px;
+    white-space: nowrap;
+  }
+  .stamp b { color: var(--ink); font-weight: 500; }
+  .lede {
+    margin-top: 22px;
+    font-size: 19px;
+    max-width: 62ch;
+    color: var(--muted);
+  }
+  .lede strong { color: var(--ink); font-weight: 600; }
+
+  section { margin-top: 46px; }
+  h2 {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--rule);
+    margin-bottom: 20px;
+  }
+  h3 { font-size: 21px; font-weight: 600; }
+  .prose { max-width: 64ch; display: grid; gap: 14px; }
+  .prose p { color: var(--muted); }
+  .prose strong { color: var(--ink); font-weight: 600; }
+
+  /* ---- the two readings ---- */
+  .readings { display: grid; gap: 16px; grid-template-columns: 1fr 1fr; }
+  @media (max-width: 680px) { .readings { grid-template-columns: 1fr; } }
+  .reading {
+    background: var(--sheet);
+    border: 1px solid var(--rule);
+    padding: 20px;
+    display: grid;
+    gap: 12px;
+    align-content: start;
+  }
+  .verdict {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    justify-self: start;
+  }
+  .reading.no .verdict { background: var(--reject-soft); color: var(--reject); }
+  .reading.yes .verdict { background: var(--accent-soft); color: var(--accent); }
+  .reading.yes { border-color: var(--accent); }
+  .figure {
+    font-family: var(--display);
+    font-size: 34px;
+    font-weight: 700;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .reading.no .figure { color: var(--reject); }
+  .reading.yes .figure { color: var(--accent); }
+  .figure span { font-size: 15px; font-weight: 500; color: var(--muted); display: block; margin-top: 6px; }
+  .derivation {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.75;
+    color: var(--muted);
+    border-top: 1px dashed var(--rule);
+    padding-top: 12px;
+  }
+  .derivation b { color: var(--ink); font-weight: 500; }
+
+  /* ---- scale drawing ---- */
+  .plate {
+    margin-top: 22px;
+    background: var(--sheet);
+    border: 1px solid var(--rule);
+    padding: 22px;
+  }
+  .plate figcaption {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--faint);
+    margin-top: 14px;
+    line-height: 1.6;
+  }
+  .plate figcaption b { color: var(--accent); font-weight: 500; }
+  svg { display: block; max-width: 100%; height: auto; }
+
+  /* ---- reasons ---- */
+  .reasons { display: grid; gap: 1px; background: var(--rule); border: 1px solid var(--rule); }
+  .reason { background: var(--sheet); padding: 20px; display: grid; gap: 8px; grid-template-columns: 34px 1fr; }
+  .reason .n {
+    font-family: var(--mono); font-size: 12px; color: var(--accent);
+    grid-row: span 2; padding-top: 4px;
+  }
+  .reason h3 { font-size: 18px; }
+  .reason p { color: var(--muted); max-width: 60ch; }
+  .reason.key { background: var(--accent-soft); }
+  .reason.key h3 { color: var(--ink); }
+  .reason.key p { color: var(--ink); opacity: 0.82; }
+
+  /* ---- ladder ---- */
+  .ladder { display: grid; gap: 18px; grid-template-columns: repeat(5, 1fr); margin-top: 6px; }
+  @media (max-width: 680px) { .ladder { grid-template-columns: repeat(2, 1fr); } }
+  .rung { display: grid; gap: 6px; justify-items: center; text-align: center; }
+  .rung .nm { font-family: var(--display); font-size: 15px; font-weight: 600; }
+  .rung .dt { font-family: var(--mono); font-size: 11.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+  .tablewrap { overflow-x: auto; margin-top: 20px; }
+  th, td { text-align: right; padding: 9px 10px; border-bottom: 1px solid var(--rule-soft); font-variant-numeric: tabular-nums; }
+  th:first-child, td:first-child { text-align: left; font-family: var(--display); font-weight: 600; }
+  thead th {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--faint); font-weight: 400; border-bottom: 1px solid var(--rule);
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  td.hi { color: var(--accent); font-weight: 600; }
+
+  /* ---- ep panel ---- */
+  .ep {
+    margin-top: 52px;
+    border: 1px solid var(--accent);
+    background: var(--sheet);
+    padding: 30px;
+    display: grid;
+    gap: 16px;
+  }
+  .ep .eyebrow { color: var(--accent); }
+  .ep h2 { border: none; padding: 0; margin: 0; font-size: clamp(26px, 5vw, 36px); letter-spacing: -0.01em; text-transform: none; color: var(--ink); }
+  .ep p { color: var(--muted); max-width: 62ch; }
+  .eplist { display: grid; gap: 10px; grid-template-columns: repeat(3, 1fr); margin-top: 4px; }
+  @media (max-width: 680px) { .eplist { grid-template-columns: 1fr; } }
+  .epitem { border-top: 2px solid var(--accent); padding-top: 10px; }
+  .epitem b { display: block; font-family: var(--display); font-size: 16px; }
+  .epitem span { font-size: 14px; color: var(--muted); }
+  .soon { font-family: var(--mono); font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--faint); }
+
+  .headroom { margin-top: 22px; display: grid; gap: 20px; grid-template-columns: minmax(0, 300px) 1fr; align-items: center; }
+  @media (max-width: 680px) { .headroom { grid-template-columns: 1fr; } }
+  .headroom h3 { font-size: 19px; margin-bottom: 8px; }
+  .headroom p { color: var(--muted); font-size: 15px; max-width: 46ch; }
+  .rings { margin-top: 14px; font-family: var(--mono); font-size: 12.5px; display: grid; gap: 3px; }
+  .rings div { display: grid; grid-template-columns: 4.5em 5.5em 1fr; gap: 8px; color: var(--faint); font-variant-numeric: tabular-nums; }
+  .rings div.used { color: var(--ink); }
+  .rings div.used em { color: var(--accent); font-style: normal; }
+  .rings b { font-weight: 500; }
+
+  footer { margin-top: 44px; padding-top: 16px; border-top: 1px solid var(--rule); font-family: var(--mono); font-size: 11.5px; color: var(--faint); }
+</style>
+
+<div class="sheet">
+
+  <header class="titleblock">
+    <div>
+      <div class="eyebrow">Regions and Societies &middot; world model</div>
+      <h1>How big is one world tile?</h1>
+    </div>
+    <div class="stamp">
+      ADOPTED<br>
+      <b>6 km across &middot; 23.4 km&sup2;</b><br>
+      <b>374</b> local maps
+    </div>
+  </header>
+
+  <p class="lede">RimWorld never says how much ground a world tile covers, and <strong>two of its own numbers disagree by a factor of 370</strong>. Picking between them decided everything about how this mod models population.</p>
+
+  <section>
+    <h2>The game disagrees with itself</h2>
+    <div class="readings">
+      <div class="reading no">
+        <span class="verdict">Rejected</span>
+        <div class="figure">1 map<span>if you measure by walking cost</span></div>
+        <p style="color:var(--muted)">Crossing a tile costs the same movement as walking 340 cells, which is about one local map. Two unrelated parts of the game agree on it, and it is still wrong for people.</p>
+        <div class="derivation"><b>340</b> cells per tile<br>&rarr; a hex of <b>~75,000</b> cells<br>&rarr; <b>1.2</b> medium maps</div>
+      </div>
+      <div class="reading yes">
+        <span class="verdict">Adopted</span>
+        <div class="figure">374 maps<span>if you measure by the clock</span></div>
+        <p style="color:var(--muted)">A caravan spends 1.32 in-game hours crossing a tile. At a marching pace that is about 6 km of ground, and 6 km of ground is a lot of local maps.</p>
+        <div class="derivation"><b>3300</b> ticks per tile &divide; <b>2500</b> per hour<br>&rarr; <b>1.32 h</b> at ~4.5 km/h<br>&rarr; <b>6 km</b> across, <b>23.4 km&sup2;</b></div>
+      </div>
+    </div>
+
+    <figure class="plate">
+      <svg id="gridplate" viewBox="0 0 880 430" role="img" aria-label="A hexagonal world tile packed with staggered square local maps, one highlighted as the player's colony."></svg>
+      <figcaption>One world tile at true scale. The hexagon is the tile as RimWorld draws it; the <b>squares are game maps</b>, staggered so they pack the hexagon the way hex neighbours do. The <b>filled square</b> is the map you land on when you settle. A hexagon tiled with hexagons flips orientation, which is why the cells sit point-up inside a flat-top tile. The drawing rounds to whole maps, so it shows a few more than 374.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>Why the small answer had to go</h2>
+    <div class="reasons">
+      <div class="reason">
+        <div class="n">01</div>
+        <h3>A full map holds about a hundred people</h3>
+        <p>Measured from a real late-game colony: twenty-five pawns filled a quarter of a medium map, with private rooms and luxury furniture. A whole map at that standard is roughly a hundred, and RimWorld has no vertical building to go past it.</p>
+      </div>
+      <div class="reason">
+        <div class="n">02</div>
+        <h3>A hundred people is not a region</h3>
+        <p>If a tile caps out near a hundred, there is nothing for a regional model to describe. Raiders, traders and recruits have to come from somewhere, and a world of hamlets cannot supply them without inventing people out of thin air.</p>
+      </div>
+      <div class="reason key">
+        <div class="n">03</div>
+        <h3>Demographics need a crowd to be stable</h3>
+        <p>This is the one that settled it. In a population of a hundred, one defector moves the numbers. A caravan dying shifts the region's age profile; a single migrant changes its make-up. Movement between regions becomes noise rather than a flow you can watch. Populations have to be large enough that any one pawn is a rounding error &mdash; which is exactly what makes a defection a story instead of a statistical event.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>But people cluster</h2>
+    <div class="prose">
+      <p>Nobody spreads evenly over 23 square kilometres. A settlement occupies a tight cluster of those maps &mdash; called <strong>districts</strong> &mdash; growing outward in rings, with farmland and wilderness around it.</p>
+      <p>Even the largest settlement uses about <strong>a sixth of its tile</strong>. That is what leaves room for suburbs and farmland to be real places rather than a fudge factor.</p>
+    </div>
+
+    <div class="plate">
+      <div class="ladder" id="ladder"></div>
+      <figcaption>Each square is one game map; the thin hexagon around it is the cell it occupies. Staggering the maps is what lets square ground pack a hexagonal tile. All five drawn at one scale.</figcaption>
+
+      <div class="headroom">
+        <svg id="cityplate" viewBox="0 0 300 320" role="img" aria-label="A hexagonal world tile packed with square maps, with the 61 maps of a city shaded in the middle."></svg>
+        <div>
+          <h3>Sixty-one districts is not a stretch</h3>
+          <p>The shaded patch is a city at its largest, drawn inside the tile that holds it &mdash; the same hexagon shape, at roughly a sixth of the area. The ladder stops at ring four because that is where a settlement stops being a settlement &mdash; not because the tile runs out of room.</p>
+          <div class="rings" id="rings"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Settlement</th><th>Districts</th><th>People</th><th>Crowded</th><th>Share of tile</th><th>Needs</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Homestead</td><td>1</td><td>100</td><td>150</td><td>0.3%</td><td>1 settlement</td></tr>
+          <tr><td>Hamlet</td><td>7</td><td>700</td><td>1,050</td><td>1.9%</td><td>3</td></tr>
+          <tr><td>Village</td><td>19</td><td>1,900</td><td>2,850</td><td>5.1%</td><td>6</td></tr>
+          <tr><td>Town</td><td>37</td><td>3,700</td><td>5,550</td><td>9.9%</td><td>10</td></tr>
+          <tr><td>City</td><td>61</td><td class="hi">6,100</td><td class="hi">9,150</td><td>16.3%</td><td>15</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="font-family:var(--mono);font-size:12px;color:var(--faint);margin-top:12px;line-height:1.6">People = every district built at a comfortable density. Crowded = the same place packed to the point where births stop. Needs = settlements a faction must hold before it can support one.</p>
+  </section>
+
+  <div class="ep">
+    <div class="eyebrow">Expansion pack &middot; in development</div>
+    <h2>Regions and Societies: Districts</h2>
+    <p>Core draws the world at this scale and simulates the people in it. The Districts expansion takes you <strong style="color:var(--ink)">inside a single tile</strong> &mdash; where those districts stop being arithmetic and become places you can look at, read and deal with.</p>
+    <div class="eplist">
+      <div class="epitem"><b>Quarters, not averages</b><span>Xenotypes and wealth cluster by district, so a city has a rich core and a poor edge instead of one blended number.</span></div>
+      <div class="epitem"><b>A skyline that moves</b><span>Settlements build districts one at a time as they grow, and abandoned districts fall to ruin when people leave.</span></div>
+      <div class="epitem"><b>Every district has a job</b><span>Farming, forestry, mining, quarrying, industry, garrison &mdash; and what the settlement produces is the sum of them.</span></div>
+    </div>
+    <p class="soon">Also planned: special structures &middot; unrest where people are crowded or repressed &middot; a district inspector</p>
+  </div>
+
+  <footer>
+    Figures derived from RimWorld's own constants: DefaultTicksPerMove 3300, TicksPerHour 2500, CellToTilesConversionRatio 340, marsh pathCost 30. Density measured in play, not estimated.
+  </footer>
+</div>
+
+<script>
+  (function () {
+    var NS = "http://www.w3.org/2000/svg";
+    function el(n, a) { var e = document.createElementNS(NS, n); for (var k in a) e.setAttribute(k, a[k]); return e; }
+
+    // A tile holds 374 districts, so its hexagon is 19.34 district-hexes across. Everything below is
+    // drawn from that one ratio: square game maps sit at the centres of a true hex lattice.
+    var ACROSS = 19.34;
+    var SQ = 1.30;            // square side as a multiple of the cell circumradius
+
+    // Cells are pointy-top; a hexagon OF them comes out flat-top, so the tile outline is flat-top
+    // and a settlement cluster ends up the same shape and orientation as its tile.
+    function hexPts(cx, cy, R, flat) {
+      var pts = [], off = flat ? 0 : -90;
+      for (var i = 0; i < 6; i++) {
+        var a = Math.PI / 180 * (60 * i + off);
+        pts.push([cx + R * Math.cos(a), cy + R * Math.sin(a)]);
+      }
+      return pts;
+    }
+    function hexDist(q, r) { return (Math.abs(q) + Math.abs(q + r) + Math.abs(r)) / 2; }
+    function pstr(pts) { return pts.map(function (q) { return q[0].toFixed(2) + "," + q[1].toFixed(2); }).join(" "); }
+    function inPoly(x, y, poly) {
+      var hit = false;
+      for (var i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        var xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1];
+        if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) hit = !hit;
+      }
+      return hit;
+    }
+    // Axial hex lattice: cell (q,r) centre, pointy-top, circumradius R.
+    function cellXY(cx, cy, R, q, r) {
+      return [cx + R * Math.sqrt(3) * (q + r / 2), cy + R * 1.5 * r];
+    }
+    function square(x, y, R, fill, stroke) {
+      var s = R * SQ;
+      return el("rect", {
+        x: (x - s / 2).toFixed(2), y: (y - s / 2).toFixed(2),
+        width: s.toFixed(2), height: s.toFixed(2),
+        fill: fill, stroke: stroke || "none", "stroke-width": "0.6"
+      });
+    }
+    // Every lattice cell whose centre falls inside the tile hexagon, nearest-first.
+    function tileCells(cx, cy, Rt) {
+      var R = Rt / ACROSS, poly = hexPts(cx, cy, Rt, true), out = [], span = Math.ceil(ACROSS) + 2;
+      for (var q = -span; q <= span; q++) {
+        for (var r = -span; r <= span; r++) {
+          var xy = cellXY(cx, cy, R, q, r);
+          if (!inPoly(xy[0], xy[1], poly)) continue;
+          out.push({ x: xy[0], y: xy[1], ring: hexDist(q, r) });
+        }
+      }
+      out.sort(function (a, b) { return a.ring - b.ring; });
+      return { cells: out, R: R, poly: poly };
+    }
+
+    // ---- plate 1: the tile, packed with square maps, one of them yours ----
+    var svg = document.getElementById("gridplate");
+    if (svg) {
+      var cx = 210, cy = 213, Rt = 196;
+      var tc = tileCells(cx, cy, Rt);
+      svg.appendChild(el("polygon", { points: pstr(tc.poly), fill: "none", stroke: "var(--rule)", "stroke-width": "1.6" }));
+      tc.cells.forEach(function (c) {
+        svg.appendChild(square(c.x, c.y, tc.R, c.ring === 0 ? "var(--accent)" : "var(--grid-empty)"));
+      });
+
+      svg.appendChild(el("path", {
+        d: "M " + (cx + 8) + " " + cy + " L 470 " + cy, stroke: "var(--accent)", "stroke-width": "1.2", fill: "none"
+      }));
+      var a1 = el("text", { x: 478, y: cy - 4, fill: "var(--ink)", "font-family": "Archivo Narrow, sans-serif", "font-size": "19", "font-weight": "600" });
+      a1.textContent = "your colony";
+      svg.appendChild(a1);
+      var a2 = el("text", { x: 478, y: cy + 15, fill: "var(--muted)", "font-family": "IBM Plex Mono, monospace", "font-size": "12.5" });
+      a2.textContent = "one 250 x 250 game map";
+      svg.appendChild(a2);
+      var a3 = el("text", { x: 478, y: cy + 33, fill: "var(--faint)", "font-family": "IBM Plex Mono, monospace", "font-size": "12.5" });
+      a3.textContent = "= 1 district";
+      svg.appendChild(a3);
+
+      var b1 = el("text", { x: 478, y: 96, fill: "var(--ink)", "font-family": "Archivo Narrow, sans-serif", "font-size": "19", "font-weight": "600" });
+      b1.textContent = "one world tile";
+      svg.appendChild(b1);
+      var b2 = el("text", { x: 478, y: 115, fill: "var(--muted)", "font-family": "IBM Plex Mono, monospace", "font-size": "12.5" });
+      b2.textContent = "6 km across - 23.4 km2";
+      svg.appendChild(b2);
+      var b3 = el("text", { x: 478, y: 133, fill: "var(--muted)", "font-family": "IBM Plex Mono, monospace", "font-size": "12.5" });
+      b3.textContent = "~374 game maps, staggered";
+      svg.appendChild(b3);
+      svg.appendChild(el("path", { d: "M 478 148 L 700 148", stroke: "var(--rule)", "stroke-width": "1" }));
+    }
+
+    // ---- the rings the ladder uses, and the ones still spare ----
+    var ringHost = document.getElementById("rings");
+    if (ringHost) {
+      var names = ["Homestead", "Hamlet", "Village", "Town", "City"];
+      for (var k = 0; k <= 7; k++) {
+        var d = 1 + 3 * k * (k + 1);
+        var row = document.createElement("div");
+        if (k <= 4) row.className = "used";
+        var share = (100 * d / 374.1).toFixed(1) + "%";
+        row.innerHTML = "<b>ring " + k + "</b><span>" + d + " maps</span>" +
+          (k <= 4 ? "<em>" + names[k] + " &middot; " + share + "</em>" : "<span>spare &middot; " + share + "</span>");
+        ringHost.appendChild(row);
+      }
+    }
+
+    // ---- plate 1b: a city shaded inside its tile ----
+    var cp = document.getElementById("cityplate");
+    if (cp) {
+      var ccx = 150, ccy = 158, cRt = 146;
+      var ct = tileCells(ccx, ccy, cRt);
+      cp.appendChild(el("polygon", { points: pstr(ct.poly), fill: "none", stroke: "var(--rule)", "stroke-width": "1.4" }));
+      ct.cells.forEach(function (c) {
+        cp.appendChild(square(c.x, c.y, ct.R, c.ring <= 4 ? "var(--accent)" : "var(--grid-empty)"));
+      });
+    }
+
+    // ---- plate 2: the ladder, as staggered game maps in their hex cells, all at one scale ----
+    var rungs = [
+      { name: "Homestead", rings: 0, n: 1 },
+      { name: "Hamlet", rings: 1, n: 7 },
+      { name: "Village", rings: 2, n: 19 },
+      { name: "Town", rings: 3, n: 37 },
+      { name: "City", rings: 4, n: 61 }
+    ];
+    var host = document.getElementById("ladder");
+    if (host) {
+      rungs.forEach(function (rg) {
+        var wrap = document.createElement("div");
+        wrap.className = "rung";
+        var box = 136, R = 6.7, bx = box / 2, by = box / 2;
+        var s = el("svg", { viewBox: "0 0 " + box + " " + box, role: "img", "aria-label": rg.name + ": " + rg.n + " game maps" });
+        s.style.width = "100%";
+        s.style.maxWidth = "136px";
+        for (var q = -rg.rings; q <= rg.rings; q++) {
+          for (var rr = -rg.rings; rr <= rg.rings; rr++) {
+            var dist = (Math.abs(q) + Math.abs(q + rr) + Math.abs(rr)) / 2;
+            if (dist > rg.rings) continue;
+            var xy = cellXY(bx, by, R, q, rr);
+            // the hex cell at true scale, then the square game map sitting in it
+            s.appendChild(el("polygon", { points: pstr(hexPts(xy[0], xy[1], R, false)), fill: "none", stroke: "var(--rule)", "stroke-width": "0.5" }));
+            s.appendChild(square(xy[0], xy[1], R, dist === 0 ? "var(--accent)" : "var(--grid-empty)"));
+          }
+        }
+        wrap.appendChild(s);
+        var nm = document.createElement("div"); nm.className = "nm"; nm.textContent = rg.name;
+        var dt = document.createElement("div"); dt.className = "dt";
+        dt.textContent = rg.n + (rg.n === 1 ? " map" : " maps");
+        wrap.appendChild(nm); wrap.appendChild(dt);
+        host.appendChild(wrap);
+      });
+    }
+  })();
+</script>
