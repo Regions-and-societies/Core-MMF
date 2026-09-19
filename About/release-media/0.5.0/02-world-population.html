@@ -1,0 +1,420 @@
+<title>How Many People</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&display=swap">
+<style>
+  :root {
+    --ground: #eaeee6;
+    --sheet: #f8faf5;
+    --ink: #1b211d;
+    --muted: #59635b;
+    --faint: #848e85;
+    --rule: #c6cec2;
+    --rule-soft: #dbe1d6;
+    --accent: #a9681f;
+    --accent-soft: #f0e2cd;
+    --reject: #8a4436;
+    --reject-soft: #f1ded9;
+    --grid-empty: #d7ddd2;
+
+    --display: "Archivo Narrow", "Arial Narrow", system-ui, sans-serif;
+    --body: "Source Sans 3", system-ui, -apple-system, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #131714;
+      --sheet: #1a1f1b;
+      --ink: #e7ebe4;
+      --muted: #9aa49a;
+      --faint: #7c867d;
+      --rule: #333b34;
+      --rule-soft: #262d27;
+      --accent: #d99c4d;
+      --accent-soft: #3a2c16;
+      --reject: #cc8271;
+      --reject-soft: #3a231d;
+      --grid-empty: #2b332c;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #131714;
+    --sheet: #1a1f1b;
+    --ink: #e7ebe4;
+    --muted: #9aa49a;
+    --faint: #7c867d;
+    --rule: #333b34;
+    --rule-soft: #262d27;
+    --accent: #d99c4d;
+    --accent-soft: #3a2c16;
+    --reject: #cc8271;
+    --reject-soft: #3a231d;
+    --grid-empty: #2b332c;
+  }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 16px;
+    line-height: 1.6;
+  }
+  .sheet {
+    max-width: 920px;
+    margin: 0 auto;
+    padding-inline: 20px;
+    padding-block: 40px 56px;
+  }
+  h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; line-height: 1.12; }
+  p { margin: 0; }
+
+  .titleblock {
+    border-top: 3px solid var(--ink);
+    border-bottom: 1px solid var(--rule);
+    padding-block: 18px 22px;
+    display: grid;
+    gap: 18px;
+    grid-template-columns: 1fr auto;
+    align-items: end;
+  }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+  h1 { font-size: clamp(38px, 8vw, 62px); font-weight: 700; letter-spacing: -0.01em; margin-top: 6px; }
+  .stamp {
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--muted);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--accent);
+    padding: 10px 14px;
+    white-space: nowrap;
+  }
+  .stamp b { color: var(--ink); font-weight: 500; }
+  .lede {
+    margin-top: 22px;
+    font-size: 19px;
+    max-width: 62ch;
+    color: var(--muted);
+  }
+  .lede strong { color: var(--ink); font-weight: 600; }
+
+  section { margin-top: 46px; }
+  h2 {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--rule);
+    margin-bottom: 20px;
+  }
+  h3 { font-size: 21px; font-weight: 600; }
+  .prose { max-width: 64ch; display: grid; gap: 14px; }
+  .prose p { color: var(--muted); }
+  .prose strong { color: var(--ink); font-weight: 600; }
+
+  .readings { display: grid; gap: 16px; grid-template-columns: 1fr 1fr; }
+  @media (max-width: 680px) { .readings { grid-template-columns: 1fr; } }
+  .reading {
+    background: var(--sheet);
+    border: 1px solid var(--rule);
+    padding: 20px;
+    display: grid;
+    gap: 12px;
+    align-content: start;
+  }
+  .verdict {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    justify-self: start;
+  }
+  .reading.no .verdict { background: var(--reject-soft); color: var(--reject); }
+  .reading.yes .verdict { background: var(--accent-soft); color: var(--accent); }
+  .reading.yes { border-color: var(--accent); }
+  .figure {
+    font-family: var(--display);
+    font-size: 34px;
+    font-weight: 700;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .reading.no .figure { color: var(--reject); }
+  .reading.yes .figure { color: var(--accent); }
+  .figure span { font-size: 15px; font-weight: 500; color: var(--muted); display: block; margin-top: 6px; }
+  .derivation {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.75;
+    color: var(--muted);
+    border-top: 1px dashed var(--rule);
+    padding-top: 12px;
+  }
+  .derivation b { color: var(--ink); font-weight: 500; }
+
+  .plate {
+    margin-top: 22px;
+    background: var(--sheet);
+    border: 1px solid var(--rule);
+    padding: 22px;
+  }
+  .plate figcaption {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--faint);
+    margin-top: 14px;
+    line-height: 1.6;
+  }
+  .plate figcaption b { color: var(--accent); font-weight: 500; }
+  svg { display: block; max-width: 100%; height: auto; }
+
+  .reasons { display: grid; gap: 1px; background: var(--rule); border: 1px solid var(--rule); }
+  .reason { background: var(--sheet); padding: 20px; display: grid; gap: 8px; grid-template-columns: 34px 1fr; }
+  .reason .n {
+    font-family: var(--mono); font-size: 12px; color: var(--accent);
+    grid-row: span 2; padding-top: 4px;
+  }
+  .reason h3 { font-size: 18px; }
+  .reason p { color: var(--muted); max-width: 60ch; }
+  .reason.key { background: var(--accent-soft); }
+  .reason.key h3 { color: var(--ink); }
+  .reason.key p { color: var(--ink); opacity: 0.82; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+  .tablewrap { overflow-x: auto; margin-top: 20px; }
+  th, td { text-align: right; padding: 9px 10px; border-bottom: 1px solid var(--rule-soft); font-variant-numeric: tabular-nums; }
+  th:first-child, td:first-child { text-align: left; font-family: var(--display); font-weight: 600; }
+  thead th {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--faint); font-weight: 400; border-bottom: 1px solid var(--rule);
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  td.hi { color: var(--accent); font-weight: 600; }
+
+  /* ---- rural / urban split bar ---- */
+  .split { margin-top: 6px; }
+  .splitbar { display: flex; height: 46px; border: 1px solid var(--rule); overflow: hidden; }
+  .splitbar > div { display: flex; align-items: center; padding: 0 14px; font-family: var(--mono); font-size: 12px; white-space: nowrap; }
+  .splitbar .rural { background: var(--accent-soft); color: var(--accent); flex: 88 1 0; }
+  .splitbar .urban { background: var(--accent); color: var(--ground); flex: 12 1 0; justify-content: flex-end; }
+  .splitlabels { display: flex; justify-content: space-between; margin-top: 8px; font-family: var(--mono); font-size: 11.5px; color: var(--faint); }
+
+  /* ---- density classification strip ---- */
+  .bands { display: grid; gap: 1px; background: var(--rule); border: 1px solid var(--rule); margin-top: 6px; }
+  .band { background: var(--sheet); display: grid; grid-template-columns: 8em 1fr auto; gap: 14px; align-items: baseline; padding: 12px 16px; }
+  .band .bn { font-family: var(--display); font-size: 17px; font-weight: 600; }
+  .band .bd { font-family: var(--body); font-size: 14px; color: var(--muted); }
+  .band .bp { font-family: var(--mono); font-size: 13px; color: var(--faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .band.frontier { background: var(--accent-soft); }
+  .band.frontier .bn { color: var(--accent); }
+  .band.frontier .bd { color: var(--ink); opacity: 0.82; }
+  .band.frontier .bp { color: var(--accent); }
+  @media (max-width: 680px) { .band { grid-template-columns: 1fr auto; } .band .bd { grid-column: 1 / -1; } }
+
+  .ep {
+    margin-top: 52px;
+    border: 1px solid var(--accent);
+    background: var(--sheet);
+    padding: 30px;
+    display: grid;
+    gap: 16px;
+  }
+  .ep .eyebrow { color: var(--accent); }
+  .ep h2 { border: none; padding: 0; margin: 0; font-size: clamp(26px, 5vw, 36px); letter-spacing: -0.01em; text-transform: none; color: var(--ink); }
+  .ep p { color: var(--muted); max-width: 62ch; }
+  .eplist { display: grid; gap: 10px; grid-template-columns: repeat(3, 1fr); margin-top: 4px; }
+  @media (max-width: 680px) { .eplist { grid-template-columns: 1fr; } }
+  .epitem { border-top: 2px solid var(--accent); padding-top: 10px; }
+  .epitem b { display: block; font-family: var(--display); font-size: 16px; }
+  .epitem span { font-size: 14px; color: var(--muted); }
+
+  footer { margin-top: 44px; padding-top: 16px; border-top: 1px solid var(--rule); font-family: var(--mono); font-size: 11.5px; color: var(--faint); }
+</style>
+
+<div class="sheet">
+
+  <header class="titleblock">
+    <div>
+      <div class="eyebrow">Regions and Societies &middot; world model &middot; 2 of 2</div>
+      <h1>How many people live in the world?</h1>
+    </div>
+    <div class="stamp">
+      ADOPTED<br>
+      <b>~30</b> per tile<br>
+      <b>~1.5M</b> at 30% coverage
+    </div>
+  </header>
+
+  <p class="lede">Count only the towns and this world holds a few tens of thousands &mdash; too few for anything to shift. <strong>Fill the countryside</strong> and it holds <strong>millions</strong>, roughly nine in ten of them living out on the land.</p>
+
+  <section>
+    <h2>An empty country has nothing to model</h2>
+    <div class="readings">
+      <div class="reading no">
+        <span class="verdict">Rejected</span>
+        <div class="figure">~20,000<span>people, if only settlements count</span></div>
+        <p style="color:var(--muted)">Tie all population to named settlements and the land between them is empty. The whole world holds fewer people than a small city &mdash; and a demographic model has nothing to move around.</p>
+        <div class="derivation"><b>~200</b> settlements<br>&times; <b>~100</b> people each<br>&rarr; <b>~20,000</b> &middot; the country blank</div>
+      </div>
+      <div class="reading yes">
+        <span class="verdict">Adopted</span>
+        <div class="figure">~1.5M<span>people, once the country is full</span></div>
+        <p style="color:var(--muted)">Every land tile carries people whether or not a town sits on it &mdash; about thirty, spread thin across 23 km&sup2;. Settlements become the peaks that rise above that floor, not the whole map.</p>
+        <div class="derivation"><b>~49,000</b> land tiles at 30%<br>&times; <b>~30</b> people per tile<br>&rarr; <b>~1.5M</b>, and it scales</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>The country is most of the world</h2>
+    <div class="split plate">
+      <div class="splitbar">
+        <div class="rural">~88% live in the countryside</div>
+        <div class="urban">~12% in settlements</div>
+      </div>
+      <div class="splitlabels"><span>dispersed farms, homesteads and hamlets on the land</span><span>towns &amp; cities</span></div>
+      <figcaption>A pre-industrial world is overwhelmingly rural. The old model had it backwards &mdash; nearly everyone in a named settlement, the land empty. <b>Now the settlements are the exception</b>, and the demographic field has a whole countryside to draw migration and change from.</figcaption>
+    </div>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>World coverage</th><th>Land tiles</th><th>People per tile</th><th>World population</th><th>Rural share</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>30%</td><td>~49,000</td><td>~30</td><td class="hi">~1.5M</td><td>~88%</td></tr>
+          <tr><td>50%</td><td>~163,000</td><td>~30</td><td class="hi">~4.9M</td><td>~88%</td></tr>
+          <tr><td>100%</td><td>~396,000</td><td>~30</td><td class="hi">~11.9M</td><td>~88%</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="font-family:var(--mono);font-size:12px;color:var(--faint);margin-top:12px;line-height:1.6">Thirty per tile is a biome-scaled mean, not a flat number: deserts and ice hold almost nobody, river valleys and forest more. The field is tuned so the average lands here.</p>
+  </section>
+
+  <section>
+    <h2>The land, from empty to dense</h2>
+    <div class="bands">
+      <div class="band frontier"><div class="bn">Frontier</div><div class="bd">Open country &mdash; scattered farms and hermits, no town at all. The new floor beneath everything.</div><div class="bp">~30 / tile</div></div>
+      <div class="band"><div class="bn">Homestead</div><div class="bd">A single built-up map &mdash; one extended family and its land.</div><div class="bp">100</div></div>
+      <div class="band"><div class="bn">Hamlet</div><div class="bd">A cluster of homes, still rural in how people live.</div><div class="bp">700</div></div>
+      <div class="band"><div class="bn">Village</div><div class="bd">A real centre, households tightening onto smaller lots.</div><div class="bp">1,900</div></div>
+      <div class="band"><div class="bn">Town</div><div class="bd">Dense enough that farmland moves to the edges.</div><div class="bp">3,700</div></div>
+      <div class="band"><div class="bn">City</div><div class="bd">Nuclear households packed tight &mdash; the top of the ladder.</div><div class="bp">6,100</div></div>
+    </div>
+    <p style="font-family:var(--mono);font-size:12px;color:var(--faint);margin-top:12px;line-height:1.6">One ladder for the whole world. Frontier is people spread across a tile; the rest are people concentrated in a settlement's districts. How people are housed &mdash; big rural households or tight urban lots &mdash; follows the same ladder.</p>
+  </section>
+
+  <section>
+    <h2>A world of millions that costs almost nothing</h2>
+    <div class="reasons">
+      <div class="reason">
+        <div class="n">01</div>
+        <h3>Nobody is stored</h3>
+        <p>The world keeps <strong style="color:var(--ink)">proportions, not people</strong>: a tile's make-up &mdash; xenotypes, ages, beliefs, wealth &mdash; is a formula of the world seed and the land, recomputed on demand. A city of six thousand costs exactly what a homestead of a hundred does: nothing.</p>
+      </div>
+      <div class="reason">
+        <div class="n">02</div>
+        <h3>People are made only when needed</h3>
+        <p>The usual way round is a database with a row per person, aggregated upward. This is the inverse: an individual is drawn from the local mix only when a raid, a trader or a recruit actually needs a face &mdash; then forgotten. No census, ever.</p>
+      </div>
+      <div class="reason key">
+        <div class="n">03</div>
+        <h3>The world remembers only what changed</h3>
+        <p>This is what makes it cheap enough to live. Every place starts from its seed-derived baseline for free. Once a city grows or a region drains, it stores <strong style="color:var(--ink)">one number</strong> &mdash; how far it has moved &mdash; and a timestamp. Everywhere untouched keeps costing nothing.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Cities grow by pulling on the country</h2>
+    <div class="prose" style="margin-bottom:8px">
+      <p>A settlement's <strong>target</strong> is the pull of the land around it &mdash; its attraction, read fresh whenever anyone looks. Its <strong>current</strong> size chases that target: fast when the gap is wide, easing as it closes. That is the whole growth curve, and it needs no day&#8209;by&#8209;day simulation &mdash; just one stored number caught up in closed form the moment a region is opened.</p>
+    </div>
+    <figure class="plate">
+      <svg id="curve" viewBox="0 0 880 300" role="img" aria-label="A growth curve: current population rising and easing toward a dashed target line."></svg>
+      <figcaption>The gap <b>is</b> the speed &mdash; no acceleration is stored. A young, well-placed town fills fast and settles in; an old, saturated one crawls. Three in&#8209;game years of churn resolve in a single calculation when you look.</figcaption>
+    </figure>
+  </section>
+
+  <div class="ep">
+    <div class="eyebrow">What a populated world unlocks &middot; 0.5.0</div>
+    <h2>A living population, not a backdrop</h2>
+    <p>With people actually on the land, the world stops being scenery and starts behaving like a place with its own life &mdash; one you can read on the map and feel in who shows up at your gate.</p>
+    <div class="eplist">
+      <div class="epitem"><b>Migration you can watch</b><span>People flow from thin country toward attraction, and the map shifts as they go.</span></div>
+      <div class="epitem"><b>Towns that boom and fade</b><span>A well-placed settlement grows into a city; a stranded one drains back to frontier.</span></div>
+      <div class="epitem"><b>Raiders drawn from real neighbours</b><span>Who comes at you reflects the actual make-up of the land you settled in.</span></div>
+    </div>
+  </div>
+
+  <footer>
+    Figures: 23.4 km&sup2; per tile (see sheet 1 of 2), ~49,000 land tiles at 30% coverage, ~30 people/tile biome-scaled mean. Population derived from the world seed, never stored; one number per place that has changed.
+  </footer>
+</div>
+
+<script>
+  (function () {
+    var NS = "http://www.w3.org/2000/svg";
+    function el(n, a) { var e = document.createElementNS(NS, n); for (var k in a) e.setAttribute(k, a[k]); return e; }
+
+    var svg = document.getElementById("curve");
+    if (!svg) return;
+
+    // plot area
+    var x0 = 60, x1 = 700, y0 = 40, yb = 250;   // yb = baseline (pop 0), y0 = top (target)
+    var targetY = 70;                            // the target line
+
+    // axes
+    svg.appendChild(el("line", { x1: x0, y1: yb, x2: x1, y2: yb, stroke: "var(--rule)", "stroke-width": "1.2" }));
+    svg.appendChild(el("line", { x1: x0, y1: y0, x2: x0, y2: yb, stroke: "var(--rule)", "stroke-width": "1.2" }));
+
+    // target (dashed)
+    svg.appendChild(el("line", { x1: x0, y1: targetY, x2: x1, y2: targetY, stroke: "var(--accent)", "stroke-width": "1.4", "stroke-dasharray": "6 5" }));
+    var tl = el("text", { x: x1 + 8, y: targetY + 4, fill: "var(--accent)", "font-family": "Archivo Narrow, sans-serif", "font-size": "17", "font-weight": "600" });
+    tl.textContent = "target"; svg.appendChild(tl);
+    var tl2 = el("text", { x: x1 + 8, y: targetY + 23, fill: "var(--muted)", "font-family": "IBM Plex Mono, monospace", "font-size": "12" });
+    tl2.textContent = "the country's pull"; svg.appendChild(tl2);
+
+    // current: exponential approach current(t) = target*(1 - e^-kt)
+    var k = 3.4, span = yb - targetY, d = "", N = 120;
+    for (var i = 0; i <= N; i++) {
+      var t = i / N;
+      var px = x0 + (x1 - x0) * t;
+      var frac = 1 - Math.exp(-k * t);
+      var py = yb - span * frac;
+      d += (i === 0 ? "M " : "L ") + px.toFixed(1) + " " + py.toFixed(1) + " ";
+    }
+    svg.appendChild(el("path", { d: d, fill: "none", stroke: "var(--ink)", "stroke-width": "2.4" }));
+
+    // "gap = speed" markers: two vertical gap lines, wide early, narrow late
+    function gap(tx, label) {
+      var px = x0 + (x1 - x0) * tx;
+      var frac = 1 - Math.exp(-k * tx);
+      var py = yb - span * frac;
+      svg.appendChild(el("line", { x1: px, y1: py, x2: px, y2: targetY, stroke: "var(--faint)", "stroke-width": "1", "stroke-dasharray": "3 3" }));
+      var g = el("text", { x: px + 5, y: (py + targetY) / 2, fill: "var(--faint)", "font-family": "IBM Plex Mono, monospace", "font-size": "11.5" });
+      g.textContent = label; svg.appendChild(g);
+    }
+    gap(0.12, "wide gap -> fast");
+    gap(0.62, "small gap -> slow");
+
+    // current dot at the end
+    var endFrac = 1 - Math.exp(-k * 1);
+    svg.appendChild(el("circle", { cx: x1, cy: yb - span * endFrac, r: 4.5, fill: "var(--ink)" }));
+
+    // axis labels
+    var xl = el("text", { x: x0, y: yb + 24, fill: "var(--faint)", "font-family": "IBM Plex Mono, monospace", "font-size": "12" });
+    xl.textContent = "time"; svg.appendChild(xl);
+    var yl = el("text", { x: x0 - 8, y: yb + 24, fill: "var(--faint)", "font-family": "IBM Plex Mono, monospace", "font-size": "12", "text-anchor": "end" });
+    yl.textContent = "founded"; svg.appendChild(yl);
+    var cl = el("text", { x: x0 + 14, y: y0 + 8, fill: "var(--ink)", "font-family": "Archivo Narrow, sans-serif", "font-size": "17", "font-weight": "600" });
+    cl.textContent = "current population"; svg.appendChild(cl);
+  })();
+</script>

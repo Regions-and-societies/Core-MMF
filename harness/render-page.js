@@ -98,11 +98,13 @@ async function getJson(p) {
     { width, height, deviceScaleFactor: 2, mobile: false }, sessionId);
   await sleep(250);
 
-  const shot = await send('Page.captureScreenshot',
-    { format: 'png', captureBeyondViewport: true, fromSurface: true }, sessionId);
+  const isJpg = /\.jpe?g$/i.test(out);
+  const shotParams = { format: isJpg ? 'jpeg' : 'png', captureBeyondViewport: true, fromSurface: true };
+  if (isJpg) shotParams.quality = 92;
+  const shot = await send('Page.captureScreenshot', shotParams, sessionId);
   fs.writeFileSync(out, Buffer.from(shot.data, 'base64'));
 
-  console.log('wrote ' + out + '  ' + (width * 2) + 'x' + (height * 2) + ' px (css ' + width + 'x' + height + ', ' + scheme + ')');
+  console.log('wrote ' + out + '  ' + (width * 2) + 'x' + (height * 2) + ' px (css ' + width + 'x' + height + ', ' + scheme + ', ' + (isJpg ? 'jpeg' : 'png') + ')');
 
   try { await send('Browser.close'); } catch (e) { /* closing races the socket */ }
   ws.close();
