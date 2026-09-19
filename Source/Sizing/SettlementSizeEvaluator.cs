@@ -32,9 +32,13 @@ namespace RegionsAndSocieties.Sizing
 
         public static SettlementTier FromPopulation(int population)
         {
-            if (population >= SettlementSizeRules.TownMinPopulation) return SettlementTier.Town;
-            if (population >= SettlementSizeRules.VillageMinPopulation) return SettlementTier.Village;
-            if (population >= SettlementSizeRules.HamletMinPopulation) return SettlementTier.Hamlet;
+            // Thresholds are the district populations (via SettlementSizeRules → DistrictRules): a
+            // settlement is the highest tier whose comfortable population it has reached. City is not
+            // reached on headcount alone — it is reserved for a fully upgraded holding (FromLevel) and
+            // the vanilla ceiling is Town (MaxTierFor) — so this stops at Town.
+            if (population >= SettlementSizeRules.MinPopulationFor(SettlementTier.Town)) return SettlementTier.Town;
+            if (population >= SettlementSizeRules.MinPopulationFor(SettlementTier.Village)) return SettlementTier.Village;
+            if (population >= SettlementSizeRules.MinPopulationFor(SettlementTier.Hamlet)) return SettlementTier.Hamlet;
             return SettlementTier.Homestead;
         }
 

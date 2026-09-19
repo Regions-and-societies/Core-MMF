@@ -54,19 +54,24 @@ namespace RegionsAndSocieties.Integration
         /// </summary>
         public static bool populationCaps = true;
 
-        /// <summary>Cap multiplier — a tier's cap is its required-territories count times this.
-        /// Player-tunable via the mod-menu slider. Default 30 (0.3.0; was 10) → T1 caps at 30, T5 at 450
-        /// (industrial), so a settled region reads in the hundreds.</summary>
+        /// <summary>Cap multiplier — a tier's cap is its district ceiling (DistrictRules) times this.
+        /// Player-tunable via the mod-menu slider. Default 1.0 (#30): the scale now lives in the district
+        /// model, so this is a plain "denser/sparser world" knob around 1 rather than the scale itself.</summary>
         public static float populationCapMultiplier = DefaultPopulationCapMultiplier;
 
         /// <summary>Mirror of <c>Sizing.PopulationCapRules.DefaultMultiplier</c> — kept as a literal here so
         /// this file stays compilable in the dependency-free test suites. Keep the two equal.</summary>
-        public const float DefaultPopulationCapMultiplier = 30f;
+        public const float DefaultPopulationCapMultiplier = 1f;
 
         /// <summary>Set once the 0.3.0 cap-multiplier rescale has been applied to a saved settings file,
         /// so a value of exactly 10 left over from the old default is lifted to 30 once and a player who
         /// later chooses 10 on purpose keeps it.</summary>
         private static bool capMultiplierRescaled030;
+
+        /// <summary>Set once the #30 district rescale has been applied, so a value left over from the old
+        /// sub-district scale (the 10→30 era) is lifted to the new ×1 default exactly once. A player who
+        /// later chooses a big multiplier on purpose keeps it.</summary>
+        private static bool capMultiplierRescaledDistrict;
 
         /// <summary>How fast settlement populations grow, as a multiple of real-world demographic rates
         /// (#6). Real growth (~1-2%/yr) is invisible over a playthrough, so the default 10× makes a
@@ -124,8 +129,18 @@ namespace RegionsAndSocieties.Integration
                 // One-time 0.3.0 rescale: a settings file written under the old default (10) carries that
                 // value explicitly, so it would otherwise pin the old scale forever. Runs once whichever
                 // way the file is being scribed; the flag is then written true.
-                if (populationCapMultiplier == 10f) populationCapMultiplier = DefaultPopulationCapMultiplier;
+                if (populationCapMultiplier == 10f) populationCapMultiplier = 30f;
                 capMultiplierRescaled030 = true;
+            }
+            Scribe_Values.Look(ref capMultiplierRescaledDistrict, "integration_capMultiplierRescaledDistrict", false);
+            if (!capMultiplierRescaledDistrict)
+            {
+                // One-time #30 rescale: the scale moved into the district model, so the multiplier's
+                // sensible range collapsed from tens to ~1. A file carrying the old sub-district default
+                // (30) would otherwise multiply the district scale 30-fold; lift it to the new ×1 default
+                // once. A deliberately-large value survives because the flag then latches true.
+                if (populationCapMultiplier == 30f) populationCapMultiplier = DefaultPopulationCapMultiplier;
+                capMultiplierRescaledDistrict = true;
             }
             Scribe_Values.Look(ref growthRateMultiplier, "integration_growthRateMultiplier", 10f);
             Scribe_Values.Look(ref demographicInfluence, "integration_demographicInfluence", Sizing.DistrictRules.DefaultInfluenceMultiplier);

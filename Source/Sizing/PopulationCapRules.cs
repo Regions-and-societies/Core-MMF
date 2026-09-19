@@ -4,26 +4,29 @@ namespace RegionsAndSocieties.Sizing
 {
     /// <summary>
     /// How large a settlement may grow, and the size it drifts toward, as a function of its tier
-    /// (0.8). The cap reuses the pyramid directly: a tier's cap is the number of territories that tier
-    /// requires (its triangular number, <see cref="TierPyramidRules.TerritoriesForTier"/>) times a
-    /// player-set multiplier, times a tech-level factor. So at the default ×10 with an industrial
-    /// faction (factor 1): T1 caps at 10, T5 (metropolis) at 150.
+    /// (0.8; rescaled onto the district model in #30). The cap <b>is the district model's own crowded
+    /// ceiling</b>: <see cref="DistrictRules.MaxPopulationForTier"/> — the tier's comfortable
+    /// population (100 / 700 / 1,900 / 3,700 / 6,100) times the birth-stagnation ratio (1.5) — scaled
+    /// by a player multiplier (now a knob around 1.0) and a tech-level factor. At the default ×1 with
+    /// an industrial faction (factor 1): a hamlet caps at 1,050, a city at 9,150.
     ///
-    /// <para>The desired size is two-thirds of the cap, and the modeled population steps toward it with
-    /// a dead-band so it settles rather than oscillates (hysteresis). Pure: it works on plain numbers,
-    /// so the tech factor and the current population arrive as arguments and the whole thing is
-    /// testable without a game. For the player this only informs R&amp;T's model — it never adds or
-    /// removes real colonists.</para>
+    /// <para>The desired size is two-thirds of the cap. Because the district ceiling is 1.5× the
+    /// comfortable population, two-thirds of it lands exactly back on that comfortable figure — so a
+    /// settlement drifts toward its nominal district population (a city toward 6,100) and crowds up to
+    /// 1.5× before births stop. The modeled population steps toward the target with a dead-band so it
+    /// settles rather than oscillates (hysteresis). Pure: it works on plain numbers, so the tech
+    /// factor and the current population arrive as arguments and the whole thing is testable without a
+    /// game. For the player this only informs R&amp;T's model — it never adds or removes real colonists.</para>
     /// </summary>
     public static class PopulationCapRules
     {
         /// <summary>
-        /// Default cap multiplier: territories-for-tier × this. Player-tunable via a mod-menu slider.
-        /// 30 (0.3.0; was 10): at industrial tech a village caps at 30, a town 90, a city 180, a major
-        /// city 300 and a metropolis 450, so a settled region reads in the hundreds rather than tens
-        /// and the density heatmap actually reaches its upper bands.
+        /// Default cap multiplier: the district ceiling × this. Player-tunable via a mod-menu slider.
+        /// 1.0 (#30; was 30 on the old sub-district scale): the real scale now lives in
+        /// <see cref="DistrictRules"/>, so the multiplier is a plain "denser/sparser world" knob around
+        /// 1 rather than the number that sets the scale.
         /// </summary>
-        public const float DefaultMultiplier = 30f;
+        public const float DefaultMultiplier = 1f;
 
         /// <summary>
         /// The population a settlement starts modelling from.
@@ -53,23 +56,19 @@ namespace RegionsAndSocieties.Sizing
 
         /// <summary>
         /// Maximum population a settlement of this tier may hold:
-        /// <c>territoriesForTier(tier) × multiplier × techFactor</c>, rounded, never negative.
-        /// A tierless holding caps at 0.
+        /// <c>DistrictRules.MaxPopulationForTier(tier) × multiplier × techFactor</c>, rounded, never
+        /// negative. A tierless holding caps at 0.
         /// </summary>
         public static int MaxPopulation(SettlementTier tier, float multiplier, float techFactor)
         {
-            // The cap basis is the tier's OWN triangular number, t(t+1)/2 — which is 0 at Homestead,
-            // and 0 is what "no tier-imposed cap" means (#71).
-            //
-            // Deliberately NOT TierPyramidRules.TerritoriesForTier. That answers a different question —
-            // how many settlements a faction must field to AFFORD a capital of this tier — and it starts
-            // at 1, because a homestead is itself a settlement. The two formulas were the same until the
-            // ladder lost a rung; sharing one here would silently give every untiered holding a cap and
-            // stop the #71 fallback ever firing.
-            int rung = (int)tier;
-            int basis = rung <= 0 ? 0 : rung * (rung + 1) / 2;
-            if (basis <= 0 || multiplier <= 0f || techFactor <= 0f) return 0;
-            return Mathf_RoundToInt(basis * multiplier * techFactor);
+            // Homestead (rung 0) is the "no tier-imposed cap" sentinel (#71): a homestead — and every
+            // holding when settlement tiers are off, which is the default — must return 0 here so
+            // SeedPopulation reads it as "no cap, use the fallback estimate" rather than "room for
+            // nobody", which is what emptied the whole demographic field before #71.
+            if ((int)tier <= 0 || multiplier <= 0f || techFactor <= 0f) return 0;
+            // The scale lives in DistrictRules (the crowded ceiling = comfortable population × 1.5),
+            // not here; the multiplier is a player knob around 1 (#30). Hamlet 1,050 .. City 9,150.
+            return Mathf_RoundToInt(DistrictRules.MaxPopulationForTier(tier) * multiplier * techFactor);
         }
 
         /// <summary>The size a settlement of this tier drifts toward: two-thirds of its cap.</summary>

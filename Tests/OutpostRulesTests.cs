@@ -33,10 +33,11 @@ namespace OutpostRulesTests
             Check("a territory over its allowance takes no more (never negative)", OutpostAllowanceRules.RemainingAllowance(SettlementTier.Hamlet, 5) == 0);
 
             Section("allowance flows from a tier classified out of population");
-            // A tribal settlement (~50 pop) classifies as Town, so its territory allows three outposts.
-            SettlementTier townTier = SettlementSizeEvaluator.Classify(WorldObjectKind.Settlement, 50);
-            Check("a ~50-pop settlement is a Town", townTier == SettlementTier.Village);
-            Check("...and a Town territory allows 3 outposts", OutpostAllowanceRules.OutpostAllowance(townTier) == 3);
+            // On the district scale (#30) a ~2,000-person settlement holds a village's population, so
+            // it classifies as a Village and its territory allows three outposts.
+            SettlementTier villageTier = SettlementSizeEvaluator.Classify(WorldObjectKind.Settlement, 2000);
+            Check("a ~2,000-pop settlement is a Village", villageTier == SettlementTier.Village);
+            Check("...and a Village territory allows 3 outposts", OutpostAllowanceRules.OutpostAllowance(villageTier) == 3);
 
             Section("archetype follows the dominant terrain signal");
             Check("mountainous ground is a mine",
