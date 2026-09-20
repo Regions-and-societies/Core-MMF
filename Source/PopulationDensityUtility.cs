@@ -46,11 +46,11 @@ namespace RegionsAndSocieties
         private static int cachedMaxTilePopulation = 0;
         private static bool cacheDirty = true;
 
-        // Natural-pocket realism (#62). A pocket that forms on its own stays small unless a landmark
-        // (road, river, coast) gives it a reason to grow; dangerous biomes push pawns to the edges.
-        private const float NaturalPocketCap = 5f;      // off-landmark: no more than a homestead
-        private const float LandmarkPocketCap = 12f;    // on road/river/coast: room to grow
-        private const float DangerousLandmarkCap = 6f;  // rainforest/swamp, and only near a landmark
+        // #79: the wilderness surface reads biome habitability at a subsistence reference tech level —
+        // rural people work the land by hand whatever the region's owner runs — so the countryside
+        // population is a property of the land and the world seed, not of who holds the region. Medieval
+        // (ordinal 3, matching BiomeHabitabilityRules' tech scale).
+        private const int WildernessReferenceTech = 3;
 
         // Bumped on every invalidation so province-level aggregates (currentPopulation, dwellings)
         // can tell in O(1) whether their cached sum is still current, instead of re-summing tiles
@@ -105,46 +105,42 @@ namespace RegionsAndSocieties
             float[] tempPops = new float[count];    // smeared influence field (heatmap)
             float[] tempSource = new float[count];  // dwellings at the tile (labels + province totals)
 
-            // 1. Baseline pawn placement in hospitable environments (nomads, homesteads). Pawns
-            //    settle where they can survive: a pocket left to itself stays small (<= NaturalPocketCap),
-            //    and in a dangerous biome (rainforest, swamp) it only forms at all if it can hug a
-            //    landmark - a road, a river, a coast - and even then it stays modest (#62).
+            // 1. The base population of the land itself. A NEW world (non-legacy) uses the seeded
+            //    wilderness surface (#79): EVERY habitable tile carries a biome-weighted Frontier
+            //    population, deterministic from the world seed, so the countryside is populated
+            //    everywhere and the demographic model has a whole world to draw on — not the ~6% of
+            //    tiles the old natural-pocket smear reached. A LEGACY world keeps that old smear
+            //    exactly, so an existing save's numbers never shift.
+            int worldSeed = Find.World?.info?.Seed ?? 0;
             for (int i = 0; i < count; i++)
             {
                 Tile tileData = Find.WorldGrid[i];
-                if (!IsHabitable(tileData))
+                if (!IsHabitable(tileData)) continue;
+
+                if (refreshingLegacy)
                 {
+                    // 0.7.1 exactly: a ~6% chance of an uncapped natural pocket, heatmap only.
+                    if (tileData.temperature >= -12f && tileData.temperature <= 42f && tileData.PrimaryBiome.plantDensity > 0.15f)
+                    {
+                        UnityEngine.Random.State state = UnityEngine.Random.state;
+                        UnityEngine.Random.InitState(i * 377 + 99);
+                        if (UnityEngine.Random.value < 0.06f)
+                            tempPops[i] += UnityEngine.Random.Range(2f, 8f) * (tileData.PrimaryBiome.plantDensity + tileData.PrimaryBiome.forageability + 0.2f);
+                        UnityEngine.Random.state = state;
+                    }
                     continue;
                 }
 
-                if (tileData.temperature >= -12f && tileData.temperature <= 42f && tileData.PrimaryBiome.plantDensity > 0.15f)
+                // #79: seeded, biome-weighted base population for this tile. Habitability is read at a
+                // subsistence reference tech — rural people work the land by hand whatever the region's
+                // owner runs — so the surface is a property of the land and the seed, not of who holds it.
+                float habitability = Placement.BiomeHabitabilityRules.Habitability(
+                    BiomeSafe.Traits(tileData.PrimaryBiome), WildernessReferenceTech);
+                int wild = Sizing.WildernessPopulationRules.PopulationForTile(worldSeed, i, habitability);
+                if (wild > 0)
                 {
-                    UnityEngine.Random.State state = UnityEngine.Random.state;
-                    UnityEngine.Random.InitState(i * 377 + 99);
-                    float roll = UnityEngine.Random.value;
-                    if (roll < 0.06f)
-                    {
-                        float raw = UnityEngine.Random.Range(2f, 8f) * (tileData.PrimaryBiome.plantDensity + tileData.PrimaryBiome.forageability + 0.2f);
-                        if (refreshingLegacy)
-                        {
-                            // 0.7.1 exactly: uncapped, no landmark/danger consideration.
-                            tempPops[i] += raw;
-                        }
-                        else
-                        {
-                            // Landmark and danger are only worth the neighbour lookups on the ~6% of tiles
-                            // that actually roll a pocket, so they sit inside the roll, not the outer loop.
-                            bool nearLandmark = HasRoadAt(i) || IsNextToRiver(i) || IsNextToWater(i);
-                            bool dangerous = IsDangerousBiome(tileData.PrimaryBiome);
-                            float pocket = RealisticPocket(raw, nearLandmark, dangerous);
-                            if (pocket > 0f)
-                            {
-                                tempPops[i] += pocket;
-                                tempSource[i] += pocket;
-                            }
-                        }
-                    }
-                    UnityEngine.Random.state = state;
+                    tempSource[i] += wild;
+                    tempPops[i] += wild;
                 }
             }
 
@@ -624,61 +620,5 @@ namespace RegionsAndSocieties
             return false;
         }
 
-        /// <summary>Whether a road touches this tile (any edge to a neighbour carries one).</summary>
-        private static bool HasRoadAt(int tileId)
-        {
-            if (Find.WorldGrid == null) return false;
-            var neighbors = new List<PlanetTile>();
-            Find.WorldGrid.GetTileNeighbors(tileId, neighbors);
-            foreach (var n in neighbors)
-            {
-                if (Find.WorldGrid.GetRoadDef(tileId, n.tileId) != null) return true;
-            }
-            return false;
-        }
-
-        /// <summary>Whether a river runs along any edge of this tile. Mirrors SynapseRegionManager.HasRiver.</summary>
-        private static bool IsNextToRiver(int tileId)
-        {
-            if (Find.WorldGrid == null) return false;
-            var neighbors = new List<PlanetTile>();
-            Find.WorldGrid.GetTileNeighbors(tileId, neighbors);
-            foreach (var n in neighbors)
-            {
-                if (Find.WorldGrid.GetRiverDef(tileId, n.tileId) != null || Find.WorldGrid.GetRiverDef(n.tileId, tileId) != null)
-                {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        /// <summary>
-        /// Biomes where predators and disease make interior settlement unlikely. Rainforest and
-        /// swamp/marsh are the ones the propagation model already treats as high-resistance terrain,
-        /// so treating them as dangerous for pocket seeding keeps the two halves of the model aligned.
-        /// </summary>
-        private static bool IsDangerousBiome(BiomeDef biome)
-        {
-            if (biome == null) return false;
-            string n = biome.defName;
-            if (string.IsNullOrEmpty(n)) return false;
-            return n.Contains("Rainforest") || n.Contains("Swamp") || n.Contains("Marsh");
-        }
-
-        /// <summary>
-        /// Clamp a raw natural pocket to what its surroundings can support (#62): off-landmark it stays
-        /// a homestead (&lt;= <see cref="NaturalPocketCap"/>); near a landmark it may grow; a dangerous
-        /// biome yields nothing away from a landmark and stays modest even beside one.
-        /// </summary>
-        private static float RealisticPocket(float raw, bool nearLandmark, bool dangerous)
-        {
-            if (dangerous && !nearLandmark) return 0f;
-
-            float cap = nearLandmark ? LandmarkPocketCap : NaturalPocketCap;
-            if (dangerous && cap > DangerousLandmarkCap) cap = DangerousLandmarkCap;
-
-            return raw < cap ? raw : cap;
-        }
     }
 }

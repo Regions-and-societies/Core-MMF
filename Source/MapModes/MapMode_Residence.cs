@@ -20,17 +20,10 @@ namespace RegionsAndSocieties
     [StaticConstructorOnStartup]
     public class MapMode_Residence : MapMode
     {
-        // One colour per settlement tier, rural to urban: land-rich green -> packed-in red. Indexed by
-        // (int)SettlementTier, so Homestead=0 .. City=4.
-        private static readonly Color[] TierBase =
-        {
-            new Color(0.35f, 0.62f, 0.30f, 0.55f),   // Homestead — rural, land-rich
-            new Color(0.55f, 0.69f, 0.26f, 0.57f),   // Hamlet
-            new Color(0.74f, 0.68f, 0.21f, 0.59f),   // Village
-            new Color(0.88f, 0.54f, 0.18f, 0.63f),   // Town
-            new Color(0.84f, 0.24f, 0.28f, 0.68f),   // City — dense, small lots
-        };
-        private static Material[] tierMats;
+        // Colours come from the shared PopulationOverlayPalette (#30/#79): clear for the Frontier
+        // countryside and empty land alike, and a violet→yellow ramp for the settled zone — ramped here by
+        // DWELLINGS per tile (sublinear in people, since urban homes hold fewer each) up to the peak.
+        private static Material[] rampMats;
 
         public MapMode_Residence() { }
         public MapMode_Residence(MapModeDef def) : base(def) { }
@@ -38,40 +31,49 @@ namespace RegionsAndSocieties
         public override WorldLayer_MapMode WorldLayer => WorldLayer_MapMode_Terrain.Instance;
         public override bool CanToggleWater => false;
 
+        private static Material MakeMat(Color color)
+        {
+            Material m = (ShaderDatabase.MetaOverlay != null && BaseContent.WhiteTex != null)
+                ? MaterialPool.MatFrom(BaseContent.WhiteTex, ShaderDatabase.MetaOverlay, color, 3510)
+                : SolidColorMaterials.SimpleSolidColorMaterial(color);
+            return m ?? BaseContent.WhiteMat;
+        }
+
         public override void DoPreRegenerate()
         {
             base.DoPreRegenerate();
             PopulationDensityUtility.EnsureCache();
-            if (tierMats != null) return;
-            tierMats = new Material[TierBase.Length];
-            for (int i = 0; i < TierBase.Length; i++)
-            {
-                Color c = TierBase[i];
-                Material m = (ShaderDatabase.MetaOverlay != null && BaseContent.WhiteTex != null)
-                    ? MaterialPool.MatFrom(BaseContent.WhiteTex, ShaderDatabase.MetaOverlay, c, 3510)
-                    : SolidColorMaterials.SimpleSolidColorMaterial(c);
-                tierMats[i] = m ?? BaseContent.WhiteMat;
-            }
+            if (rampMats != null) return;
+            Color[] ramp = PopulationOverlayPalette.Ramp;
+            rampMats = new Material[ramp.Length];
+            for (int i = 0; i < ramp.Length; i++) rampMats[i] = MakeMat(ramp[i]);
         }
 
         public override Material GetMaterial(int tile)
         {
-            if (tierMats == null || Find.WorldGrid == null || tile < 0 || tile >= Find.WorldGrid.TilesCount)
+            if (rampMats == null || Find.WorldGrid == null || tile < 0 || tile >= Find.WorldGrid.TilesCount)
                 return BaseContent.ClearMat;
             Tile t = Find.WorldGrid[tile];
             if (t == null || t.WaterCovered) return BaseContent.ClearMat;
+
+            // Ramp by dwellings per tile: white for empty land, clear for the Frontier countryside, then
+            // up the ramp to the densest tile's dwelling count (the peak).
             int pop = PopulationDensityUtility.GetPopulationAtTile(tile);
-            if (pop <= 0) return BaseContent.ClearMat;
-            int band = (int)Sizing.DistrictRules.TierForPopulation(pop);
-            if (band < 0) band = 0;
-            if (band >= tierMats.Length) band = tierMats.Length - 1;
-            return tierMats[band];
+            int dwellings = ResidenceRules.For(pop).dwellings;
+            int peakDwellings = ResidenceRules.For(PopulationDensityUtility.MaxTilePopulation()).dwellings;
+            int band = PopulationOverlayPalette.Band(dwellings, PopulationOverlayPalette.FrontierCeilingDwellings, peakDwellings);
+
+            if (band < 0) return BaseContent.ClearMat;   // clear — countryside or empty land
+            if (band >= rampMats.Length) band = rampMats.Length - 1;
+            return rampMats[band];
         }
 
         public override string GetTileLabel(int tile)
         {
+            // #79: only settlement-scale tiles get a dwelling-count label; the Frontier countryside
+            // (populated everywhere now) stays unlabelled, matching where the ramp colours the map.
             int pop = PopulationDensityUtility.GetSourcePopulationAtTile(tile);
-            if (pop <= 0) return null;
+            if (pop < PopulationOverlayPalette.FrontierCeiling) return null;
             return ResidenceRules.For(pop).dwellings.ToString();
         }
 

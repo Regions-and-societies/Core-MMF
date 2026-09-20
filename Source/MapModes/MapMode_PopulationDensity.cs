@@ -11,59 +11,37 @@ namespace RegionsAndSocieties
     {
         private static Material[] densityMats = null;
 
-        // The heatmap is normalised against the highest THEORETICAL settlement population in the world
-        // (0.8): a tile at that ceiling is bright yellow, most settlements — which drift to two-thirds of
-        // their cap — land in the red-orange bands, and small pawn-dwelling pockets stay a faded violet.
-        // Five fraction bands run violet → magenta → hot red → orange → bright yellow (the "magma" ramp),
-        // each darkened by elevation. 0.3.0: this replaces green-to-red, which dissolved into the green
-        // terrain; blue was tried and read as water. Violet/magenta/yellow occur nowhere in the planet's
-        // own palette (green land, blue sea, tan desert, grey rock), and the ramp matches the density
-        // heatmap in the mod's preview art.
-        private static readonly Color[] SegmentBase = new Color[]
-        {
-            new Color(0.45f, 0.20f, 0.75f, 0.50f),   // 0: violet — low, pawn dwellings
-            new Color(0.75f, 0.20f, 0.70f, 0.55f),   // 1: magenta
-            new Color(0.95f, 0.30f, 0.42f, 0.60f),   // 2: hot red-pink — where most settlements sit (~2/3 cap)
-            new Color(0.98f, 0.58f, 0.15f, 0.65f),   // 3: orange
-            new Color(1.00f, 0.90f, 0.25f, 0.72f)    // 4: bright yellow — at the theoretical max
-        };
+        // Colours come from the shared PopulationOverlayPalette (#30/#79): clear for the Frontier
+        // countryside and empty land alike, and a violet→yellow magma ramp for the settled zone, each
+        // ramp colour darkened by elevation. The old fixed 5-band table lived here; it moved to the
+        // palette so the population and dwellings overlays cannot drift apart on what "peak" looks like.
 
-        // Band thresholds on the LOG scale (fraction = log(1+pop) / log(1+densest tile)). Against a
-        // 150-person core: violet up to ~3 people (a hamlet), magenta to ~11 (outskirts, pockets), red
-        // to ~33 (a village core), orange to ~80 (a town core), yellow above (city and metropolis cores).
-        private static readonly float[] SegmentThresholds = new float[] { 0.30f, 0.50f, 0.70f, 0.88f };
+        private static Material MakeMat(Color color)
+        {
+            Material m = null;
+            if (ShaderDatabase.MetaOverlay != null && BaseContent.WhiteTex != null)
+                m = MaterialPool.MatFrom(BaseContent.WhiteTex, ShaderDatabase.MetaOverlay, color, 3510);
+            if (m == null) m = SolidColorMaterials.SimpleSolidColorMaterial(color);
+            return m ?? BaseContent.WhiteMat;
+        }
 
         public static void InitializeMaterials()
         {
             if (densityMats != null) return;
 
-            // 5 density segments * 4 elevation bands = 20 materials.
-            densityMats = new Material[20];
-
-            for (int seg = 0; seg < 5; seg++)
+            // ramp segments * 4 elevation bands.
+            Color[] ramp = PopulationOverlayPalette.Ramp;
+            densityMats = new Material[ramp.Length * 4];
+            for (int seg = 0; seg < ramp.Length; seg++)
             {
-                Color baseColor = SegmentBase[seg];
+                Color baseColor = ramp[seg];
                 for (int band = 0; band < 4; band++)
                 {
                     // Darken toward the mountains and lift alpha a little, so terrain still reads through.
                     float dim = 1f - 0.16f * band;
                     Color color = new Color(baseColor.r * dim, baseColor.g * dim, baseColor.b * dim,
                         Mathf.Min(0.9f, baseColor.a + 0.05f * band));
-
-                    int index = seg * 4 + band;
-                    densityMats[index] = null;
-                    if (ShaderDatabase.MetaOverlay != null && BaseContent.WhiteTex != null)
-                    {
-                        densityMats[index] = MaterialPool.MatFrom(BaseContent.WhiteTex, ShaderDatabase.MetaOverlay, color, 3510);
-                    }
-                    if (densityMats[index] == null)
-                    {
-                        densityMats[index] = SolidColorMaterials.SimpleSolidColorMaterial(color);
-                    }
-                    if (densityMats[index] == null)
-                    {
-                        densityMats[index] = BaseContent.WhiteMat;
-                    }
+                    densityMats[seg * 4 + band] = MakeMat(color);
                 }
             }
         }
@@ -104,40 +82,23 @@ namespace RegionsAndSocieties
             }
 
             // Colour by the smeared influence field so the heatmap still fades outward from cities.
+            // #79: the whole map now has a Frontier baseline, so the palette reads the countryside and
+            // empty land alike as clear, and only settlement concentrations up the ramp to the peak.
             int pop = PopulationDensityUtility.GetPopulationAtTile(tile);
-            if (pop <= 0)
-            {
-                return BaseContent.ClearMat;   // no dwellings here — leave the terrain unshaded
-            }
+            int band = PopulationOverlayPalette.Band(pop, PopulationOverlayPalette.FrontierCeiling,
+                PopulationDensityUtility.MaxTilePopulation());
 
-            // Normalise against the densest tile actually in the world (0.3.0): the sprawl field is
-            // conserved, so a settlement tile holds its core share, never the theoretical cap, and a
-            // fixed reference left the whole map in the bottom band. Relative to the densest tile, the
-            // biggest city is always the top colour and everything else reads against it.
-            // Logarithmic, not linear: a city's outskirts hold a few percent of its core, so a linear
-            // scale put every tile but the core in the bottom band. On a log scale (against the densest
-            // tile) a hamlet is violet, a village core red, a town core orange and only the biggest
-            // cities yellow — the hotspots visibly step up through the ramp.
-            int referenceMax = PopulationDensityUtility.MaxTilePopulation();
-            float fraction = referenceMax > 1
-                ? Mathf.Log(1f + pop) / Mathf.Log(1f + referenceMax)
-                : (referenceMax > 0 ? (float)pop / referenceMax : 0f);
+            if (band < 0) return BaseContent.ClearMat;   // clear — countryside or empty land
 
-            int densitySegment = 0;
-            for (int s = SegmentThresholds.Length - 1; s >= 0; s--)
-            {
-                if (fraction >= SegmentThresholds[s]) { densitySegment = s + 1; break; }
-            }
-
+            // Darken the ramp colour toward the mountains so terrain still reads through.
             float elevation = tileData.elevation;
             int elevationBand = 0;
             if (elevation >= 2200f) elevationBand = 3;
             else if (elevation >= 1200f) elevationBand = 2;
             else if (elevation >= 600f) elevationBand = 1;
 
-            int index = densitySegment * 4 + elevationBand;
-
-            if (densityMats == null || index >= densityMats.Length)
+            int index = band * 4 + elevationBand;
+            if (densityMats == null || index < 0 || index >= densityMats.Length)
             {
                 return BaseContent.ClearMat;
             }
@@ -147,9 +108,12 @@ namespace RegionsAndSocieties
 
         public override string GetTileLabel(int tile)
         {
-            // Label with the dwellings actually on the tile, not the smeared field (#55).
+            // Label with the population actually on the tile, not the smeared field (#55). #79: only
+            // settlement-scale tiles get a label — the countryside carries people everywhere now, so
+            // labelling every tile buries the map. The threshold is the same Frontier ceiling that gives
+            // a tile a colour, so labels appear exactly where the ramp does.
             int pop = PopulationDensityUtility.GetSourcePopulationAtTile(tile);
-            return pop > 0 ? pop.ToString() : null;
+            return pop >= PopulationOverlayPalette.FrontierCeiling ? pop.ToString() : null;
         }
 
         public override string GetTooltip(int tile)
