@@ -81,9 +81,17 @@ namespace RegionsAndSocieties.Demographics
         private const int EduSalt = 29;
         private const int IdeoPickSalt = 31;   // which of a faction's ideos (primary/minor) a tile follows
 
+        /// <summary>#79: a wilderness (Frontier) tile's people are the owning society's, but poorer — the
+        /// countryside is subsistence. Their wealth is the faction's median at this discount.</summary>
+        private const float RuralWealthFactor = 0.7f;
+
         private static readonly Dictionary<Faction, FactionDemographicProfile> profileCache = new Dictionary<Faction, FactionDemographicProfile>();
         private static readonly Dictionary<int, RegionDemographics> regionCache = new Dictionary<int, RegionDemographics>();
         private static readonly Dictionary<Faction, RegionDemographics> factionCache = new Dictionary<Faction, RegionDemographics>();
+        // #79: the ambient (owning) faction whose people fill a province's wilderness, by province id.
+        // Derived from the province's stable ownership, not the cullable source list, so it is identical
+        // under full and culled aggregation — VerifyCulling stays result-identical.
+        private static readonly Dictionary<int, Faction> ambientCache = new Dictionary<int, Faction>();
         private static List<PressureSource> sources;
         private static int cacheVersion = -1;
         private static float avgTileSize = -1f;
@@ -93,6 +101,7 @@ namespace RegionsAndSocieties.Demographics
             profileCache.Clear();
             regionCache.Clear();
             factionCache.Clear();
+            ambientCache.Clear();
             sources = null;
             cacheVersion = -1;
         }
@@ -101,6 +110,7 @@ namespace RegionsAndSocieties.Demographics
         public static void InvalidateRegionCache()
         {
             regionCache.Clear();
+            ambientCache.Clear();
         }
 
         private static void EnsureFresh()
@@ -111,6 +121,7 @@ namespace RegionsAndSocieties.Demographics
                 profileCache.Clear();
                 regionCache.Clear();
                 factionCache.Clear();
+                ambientCache.Clear();
                 sources = null;
                 cacheVersion = v;
             }
@@ -147,30 +158,34 @@ namespace RegionsAndSocieties.Demographics
         }
 
         /// <summary>The deterministic people of one tile: the pressure-weighted blend of the settlements
-        /// reaching it, then a fixed draw from that blend by the tile seed.</summary>
-        public static TileDemographicSample SampleTile(int tileId) => SampleTile(tileId, Sources());
+        /// reaching it, then a fixed draw from that blend by the tile seed. When no settlement reaches
+        /// the tile it is wilderness (#79) — filled from the province's owning society, shaped by the land.</summary>
+        public static TileDemographicSample SampleTile(int tileId) => SampleTile(tileId, Sources(), AmbientForTile(tileId));
 
         /// <summary>As <see cref="SampleTile(int)"/>, but over a caller-supplied source list — the region
         /// aggregation passes the sources pre-culled to those that can actually reach the region, turning
         /// the per-tile pressure loop from O(all settlements) into O(nearby settlements). Since Pressure is
         /// exactly 0 beyond a source's reach, culling changes no result; it only skips zero-contribution work.</summary>
-        private static TileDemographicSample SampleTile(int tileId, List<PressureSource> srcs)
+        private static TileDemographicSample SampleTile(int tileId, List<PressureSource> srcs, Faction ambient)
         {
             var sample = new TileDemographicSample();
 
             uint sexState = DemographicsRules.TileSeed(WorldSeed, tileId, SexSalt);
             sample.sex = DemographicsRules.NextFloat(ref sexState) < 0.5f ? Gender.Female : Gender.Male;
 
-            WorldGrid grid = Find.WorldGrid;
-            if (grid == null || srcs == null || srcs.Count == 0) return sample;   // wilderness: a sex, nothing else
-
             // A demographic sample is a SURFACE phenomenon. An off-surface / out-of-range tileId — e.g. an
             // orbital or otherwise non-surface origin handed in by pawn generation on an Odyssey planet with
             // extra PlanetLayers — must never reach the surface grid: GetTileCenter (via CrowTiles below)
             // logs "out of range (count: <surface>)" once per call and returns zero, spamming the log (#77).
-            if (tileId < 0 || tileId >= grid.TilesCount) return sample;
+            WorldGrid grid = Find.WorldGrid;
+            if (grid == null || tileId < 0 || tileId >= grid.TilesCount) return sample;
             Tile tile = grid[tileId];   // the land itself pushes on race (biome affinity), below
             if (tile == null) return sample;
+
+            // No settlement pressure list at all: pure wilderness (#79). If the land is claimed, its
+            // people are the owning society's, shaped by the land; unclaimed frontier stays a bare sex.
+            if (srcs == null || srcs.Count == 0)
+                return ambient != null ? SampleWilderness(sample, tileId, tile, ambient) : sample;
 
             // Accumulate the overlapping pressures into a blended race distribution + per-race wealth,
             // and a faction pressure list for the ideology draw.
@@ -214,7 +229,10 @@ namespace RegionsAndSocieties.Demographics
                 }
             }
 
-            if (pf.Count == 0) return sample;   // no city reaches this tile
+            // No settlement reaches this tile — it is wilderness (#79). Claimed land takes the owning
+            // society's make-up shaped by the land; unclaimed no-man's-land stays a bare sex.
+            if (pf.Count == 0)
+                return ambient != null ? SampleWilderness(sample, tileId, tile, ambient) : sample;
             sample.owner = top;
 
             // Deterministic race pick from the blend. Options are sorted by defName so the pick is stable
@@ -264,6 +282,104 @@ namespace RegionsAndSocieties.Demographics
             int eduPick = DemographicsRules.WeightedPick(ref eduState, eduDist);
             sample.educationTier = eduPick >= 0 ? (EducationTier)eduPick : EducationTier.Primary;
             return sample;
+        }
+
+        /// <summary>
+        /// The people of a wilderness (Frontier) tile (#79) — one with a base population but no settlement
+        /// reaching it. Their make-up is the owning society's, shaped by the land, at a rural skew: the
+        /// countryside of a pigskin nation is pigskins, poorer than its towns. Drawn deterministically from
+        /// the same tile seed and salts as a settled tile, so the field is stable across reloads and free.
+        /// </summary>
+        private static TileDemographicSample SampleWilderness(TileDemographicSample sample, int tileId, Tile tile, Faction ambient)
+        {
+            FactionDemographicProfile prof = ProfileFor(ambient);
+            sample.owner = ambient;
+
+            // Race: the faction's races, weighted by the land (biome affinity); else the plain-human bucket.
+            var raceWeight = new Dictionary<XenotypeDef, float>();
+            float wsum = 0f;
+            for (int r = 0; r < prof.raceWeights.Length; r++) wsum += prof.raceWeights[r];
+            if (prof.races.Length > 0 && wsum > 0f)
+            {
+                for (int r = 0; r < prof.races.Length; r++)
+                {
+                    XenotypeDef race = prof.races[r];
+                    float contrib = (prof.raceWeights[r] / wsum) * BiomeAffinity(race, tile);
+                    raceWeight.TryGetValue(race, out float rw); raceWeight[race] = rw + contrib;
+                }
+            }
+
+            XenotypeDef chosen = null;
+            if (raceWeight.Count > 0)
+            {
+                var races = new List<XenotypeDef>(raceWeight.Keys);
+                races.Sort((a, b) => string.CompareOrdinal(a.defName, b.defName));   // stable across machines
+                var weights = new float[races.Count];
+                for (int i = 0; i < races.Count; i++) weights[i] = raceWeight[races[i]];
+                uint raceState = DemographicsRules.TileSeed(WorldSeed, tileId, RaceSalt);
+                int pick = DemographicsRules.WeightedPick(ref raceState, weights);
+                if (pick >= 0 && pick < races.Count) chosen = races[pick];
+            }
+            sample.race = chosen;
+
+            // Wealth: the race's (or fallback) median, at a rural discount — the countryside is subsistence.
+            double baseWealth = prof.fallbackWealth;
+            if (chosen != null)
+            {
+                for (int r = 0; r < prof.races.Length; r++)
+                    if (prof.races[r] == chosen) { baseWealth = prof.raceMedianWealth[r]; break; }
+            }
+            baseWealth *= RuralWealthFactor;
+            uint wealthState = DemographicsRules.TileSeed(WorldSeed, tileId, WealthSalt);
+            sample.wealth = DemographicsRules.RangeInt(ref wealthState, (int)(baseWealth * 0.6), (int)(baseWealth * 1.4));
+
+            // Ideology, age, education: from the owning faction, same salts and pyramids as a settled tile.
+            sample.ideo = PickIdeo(tileId, prof);
+            float[] agePyramid = AgeStructureRules.Pyramid(prof.techLevel, prof.natalistSkew, LongevityOf(chosen));
+            uint ageState = DemographicsRules.TileSeed(WorldSeed, tileId, AgeSalt);
+            int agePick = DemographicsRules.WeightedPick(ref ageState, agePyramid);
+            sample.ageBucket = agePick >= 0 ? (AgeBucket)agePick : AgeBucket.WorkingAge;
+
+            float[] eduDist = EducationRules.Pyramid(prof.techLevel, prof.researchSkew, AptitudeOf(chosen));
+            uint eduState = DemographicsRules.TileSeed(WorldSeed, tileId, EduSalt);
+            int eduPick = DemographicsRules.WeightedPick(ref eduState, eduDist);
+            sample.educationTier = eduPick >= 0 ? (EducationTier)eduPick : EducationTier.Primary;
+            return sample;
+        }
+
+        /// <summary>The society whose people fill a province's wilderness: its first listed owner that
+        /// still exists (#79). Null for unclaimed land, which stays empty no-man's-land. Cached per
+        /// province and derived from the province's stable ownership — not the cullable source list — so
+        /// full and culled aggregation see the same ambient and <see cref="VerifyCulling"/> holds.</summary>
+        private static Faction AmbientFactionFor(GeographicProvince province)
+        {
+            if (province == null) return null;
+            if (ambientCache.TryGetValue(province.id, out Faction cached)) return cached;
+            Faction f = ResolveOwner(province);
+            ambientCache[province.id] = f;
+            return f;
+        }
+
+        private static Faction ResolveOwner(GeographicProvince province)
+        {
+            if (province?.owningFactionIds == null || province.owningFactionIds.Count == 0) return null;
+            var fm = Find.FactionManager;
+            if (fm == null) return null;
+            List<Faction> all = fm.AllFactionsListForReading;
+            for (int i = 0; i < province.owningFactionIds.Count; i++)
+            {
+                string id = province.owningFactionIds[i];
+                for (int j = 0; j < all.Count; j++)
+                    if (all[j] != null && all[j].GetUniqueLoadID() == id) return all[j];
+            }
+            return null;
+        }
+
+        private static Faction AmbientForTile(int tileId)
+        {
+            var mgr = Find.World?.GetComponent<SynapseRegionManager>();
+            GeographicProvince prov = mgr?.GetProvinceForTile(tileId);
+            return AmbientFactionFor(prov);
         }
 
         private static Faction PressureWeightedFaction(int tileId, List<Faction> factions, List<float> pressures, Faction fallback)
@@ -364,11 +480,15 @@ namespace RegionsAndSocieties.Demographics
             float longevityAcc = 0f;
             int female = 0;
 
+            // #79: the society that fills this province's wilderness — computed once, from the province's
+            // stable ownership (not the cullable srcs), so full and culled aggregation agree.
+            Faction ambient = AmbientFactionFor(province);
+
             List<int> tiles = province.tiles;
             demo.tileCount = tiles.Count;
             for (int i = 0; i < tiles.Count; i++)
             {
-                TileDemographicSample s = SampleTile(tiles[i], srcs);
+                TileDemographicSample s = SampleTile(tiles[i], srcs, ambient);
                 if (s.sex == Gender.Female) female++;
                 if (s.owner == null) continue;   // no pressure here — contributes only to the sex ratio
 
