@@ -115,29 +115,41 @@ namespace RegionsAndSocieties.UI
         [DebugAction("Regions and Societies", "R&S: cohort projection (#58)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void CohortProjection()
         {
-            // Runs the stateful cohort container forward against a representative region stage, to validate
-            // that AdvanceYear (step + births/deaths/migration/inheritance) evolves populations sanely.
+            // Runs the stateful cohort container forward against a LIVE region stage (RegionStageBuilder),
+            // to validate that AdvanceYear (step + births/deaths/migration/inheritance) evolves populations
+            // sanely on real regions. Uses the selected world tile's province, else a sample of land regions.
             var sb = new System.Text.StringBuilder();
-            sb.AppendLine("=== R&S cohort projection (#58) — 50 demographic years on a representative stage ===");
-            var factions = Find.FactionManager?.AllFactionsListForReading;
-            if (factions == null) { Log.Message(sb.ToString()); return; }
-            int shown = 0;
-            foreach (Faction f in factions)
-            {
-                if (f == null || f.IsPlayer || f.def == null || f.Hidden || f.defeated) continue;
-                if (shown++ >= 4) break;
+            sb.AppendLine("=== R&S cohort projection (#58) — 50 demographic years on live region stages ===");
+            var mgr = Find.World?.GetComponent<SynapseRegionManager>();
+            if (mgr?.Provinces == null) { sb.AppendLine("no region manager."); Log.Message(sb.ToString()); return; }
 
-                var stage = RepresentativeStage(f);
-                var region = new Demographics.RegionCohorts();
-                region.Seed(f, stage.population);
-                float p0 = region.TotalPopulation;
-                for (int y = 1; y <= 50; y++)
+            var targets = new System.Collections.Generic.List<GeographicProvince>();
+            int selTile = (Find.WorldSelector != null && Find.WorldSelector.SelectedTile != PlanetTile.Invalid)
+                ? Find.WorldSelector.SelectedTile.tileId : -1;
+            GeographicProvince selected = selTile >= 0 ? mgr.GetProvinceForTile(selTile) : null;
+            if (selected != null && selected.provinceType == ProvinceType.Land) targets.Add(selected);
+            else
+            {
+                int shown = 0;
+                foreach (GeographicProvince p in mgr.Provinces)
                 {
-                    region.AdvanceYear(stage);
-                    if (y == 10 || y == 50)
-                        sb.AppendLine($"-- {f.Name}: yr {y}  pop {region.TotalPopulation:0}  ({region.cohorts.Count} cohort(s))");
+                    if (p == null || p.provinceType != ProvinceType.Land || p.currentPopulation <= 0) continue;
+                    targets.Add(p);
+                    if (++shown >= 4) break;
                 }
-                sb.AppendLine($"   {f.Name}: start {p0:0} -> end {region.TotalPopulation:0}");
+            }
+
+            foreach (GeographicProvince province in targets)
+            {
+                Demographics.RegionStage stage = Demographics.RegionStageBuilder.Build(province);
+                Faction owner = Demographics.RegionStageBuilder.OwnerOf(province);
+                var region = new Demographics.RegionCohorts();
+                region.Seed(owner, stage.population);
+                float p0 = region.TotalPopulation;
+                for (int y = 1; y <= 50; y++) region.AdvanceYear(stage);
+                string oname = owner != null ? owner.Name : "unowned";
+                sb.AppendLine($"-- region #{province.id} ({oname}): {province.tiles.Count}t, wealth {stage.wealth:0.00}, edu-idx, "
+                    + $"pop {p0:0} -> {region.TotalPopulation:0} over 50yr ({region.cohorts.Count} cohort(s))");
                 foreach (Demographics.RegionCohort rc in region.cohorts)
                 {
                     Demographics.CohortState c = rc.state;
@@ -147,23 +159,6 @@ namespace RegionsAndSocieties.UI
                 }
             }
             Log.Message(sb.ToString());
-        }
-
-        // A representative region stage for the projection probe: sensible levels seeded off the faction's
-        // tech level. Stand-in until the real stage builder reads a live region's derived signals.
-        private static Demographics.RegionStage RepresentativeStage(Faction f)
-        {
-            int tech = (int)(f.def?.techLevel ?? TechLevel.Industrial);
-            float wealth = Mathf.Clamp01(0.25f + 0.12f * tech);
-            return new Demographics.RegionStage
-            {
-                wealth = wealth, urbanisation = Mathf.Clamp01(0.15f + 0.10f * tech), employmentRate = 0.85f,
-                conflict = 0f, pollution = 0.1f, roads = 0.4f, biomeFertility = 0.5f,
-                slaveryStance = 0f, ideoTolerance = 0.3f, natalism = 0.35f, ageWorking = 0.6f, crime = 0.05f,
-                education = new float[] { 0.15f, 0.35f, 0.30f, 0.15f, 0.05f },
-                sectorServices = 0.3f, sectorManufacturing = 0.3f, sectorPublic = 0.1f, sectorMilitary = 0.05f,
-                tiles = 200, population = 6000f,
-            };
         }
 
         [DebugAction("Regions and Societies", "R&S: placement probe (#61)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
