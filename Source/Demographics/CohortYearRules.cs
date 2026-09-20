@@ -50,6 +50,7 @@ namespace RegionsAndSocieties.Demographics
         public int lifeExpectancy, infantMortalityPer1000;
         public DeathCause leadingCause;
         public float mortalityHazard, dependency, femaleFraction, genderDiverse;
+        public float ageChild, ageWorking, ageElder;   // the cohort's age pyramid (shares, sum 1)
     }
 
     /// <summary>
@@ -156,7 +157,8 @@ namespace RegionsAndSocieties.Demographics
             float inMig = 0.02f * r.wealth * (x.standing > 0f ? 1f : 0.3f);
             x.migNet = inMig - outMig;
 
-            // --- dependency ratio (§7) ---
+            // --- age structure + dependency ratio (§7) ---
+            IndicatorsRules.AgeStructure(x.birthRate, x.lifeExpectancy, out x.ageChild, out x.ageWorking, out x.ageElder);
             x.dependency = IndicatorsRules.DependencyRatio(x.birthRate, x.lifeExpectancy);
         }
 

@@ -62,13 +62,24 @@ namespace RegionsAndSocieties.Demographics
         public static float SubstanceUse(float contentment, float employmentRate, float drugAvailability, float freedom)
             => Clamp(0.05f + 0.45f * (1f - contentment) + 0.2f * (1f - employmentRate) + 0.25f * drugAvailability - 0.2f * freedom, 0f, SubstanceUseCap);
 
-        /// <summary>Dependency ratio: children + elders per working-age adult, approximated from the birth
-        /// rate (the young) and life expectancy (the old). Higher = fewer workers carrying more dependents.</summary>
+        /// <summary>The cohort's approximate age structure — child / working-age / elder shares — from its
+        /// birth rate (the young) and life expectancy (the old). A coarse pyramid, enough to aggregate a
+        /// region's age profile from its cohorts (#58). Shares sum to 1.</summary>
+        public static void AgeStructure(float birthRate, int lifeExpectancy, out float child, out float working, out float elder)
+        {
+            child = Clamp(birthRate * 6f, 0.10f, 0.45f);
+            elder = Clamp((lifeExpectancy - 40f) / 220f, 0.02f, 0.28f);
+            working = 1f - child - elder;
+            if (working < 0f) working = 0f;
+            float sum = child + working + elder;
+            if (sum > 0f) { child /= sum; working /= sum; elder /= sum; }
+        }
+
+        /// <summary>Dependency ratio: children + elders per working-age adult, from the age structure.
+        /// Higher = fewer workers carrying more dependents.</summary>
         public static float DependencyRatio(float birthRate, int lifeExpectancy)
         {
-            float child = Clamp(birthRate * 6f, 0.10f, 0.45f);
-            float elder = Clamp((lifeExpectancy - 40f) / 220f, 0.02f, 0.28f);
-            float working = 1f - child - elder;
+            AgeStructure(birthRate, lifeExpectancy, out float child, out float working, out float elder);
             return (child + elder) / (working < 0.2f ? 0.2f : working);
         }
 

@@ -45,6 +45,15 @@ namespace IndicatorsRulesTests
             Check("freedom damps substance use",
                 IndicatorsRules.SubstanceUse(0.5f, 0.8f, 0.5f, 1f) < IndicatorsRules.SubstanceUse(0.5f, 0.8f, 0.5f, 0f));
 
+            Section("age structure");
+            IndicatorsRules.AgeStructure(0.03f, 70, out float ch, out float wk, out float el);
+            Check("age shares sum to 1", Close(ch + wk + el, 1f));
+            Check("working-age is the majority", wk > ch && wk > el);
+            IndicatorsRules.AgeStructure(0.06f, 70, out float ch2, out float _, out float _);
+            Check("a higher birth rate means more children", ch2 > ch);
+            IndicatorsRules.AgeStructure(0.03f, 95, out float _, out float _, out float el2);
+            Check("a longer life means more elders", el2 > el);
+
             Section("dependency ratio");
             Check("high birth rate raises dependency",
                 IndicatorsRules.DependencyRatio(0.06f, 70) > IndicatorsRules.DependencyRatio(0.01f, 70));

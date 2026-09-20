@@ -50,6 +50,7 @@ namespace CohortYearRulesTests
             CohortYearRules.Step(acc, r);
             Check("education distribution sums to 1", Close(Sum(acc.education), 1f));
             Check("strata sums to 1", Close(acc.strataElite + acc.strataMiddle + acc.strataUnderclass, 1f));
+            Check("age structure sums to 1", Close(acc.ageChild + acc.ageWorking + acc.ageElder, 1f));
             Check("life expectancy is set", acc.lifeExpectancy >= 15);
             Check("an income source was assigned", Enum.IsDefined(typeof(IncomeSource), acc.incomeSource));
             Check("contentment in range", acc.contentment >= 0f && acc.contentment <= 1f);
