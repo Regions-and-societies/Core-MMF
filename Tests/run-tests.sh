@@ -128,6 +128,11 @@ run_suite wilderness Exe \
     Tests/WildernessPopulationRulesTests.cs \
     $SRC/Sizing/WildernessPopulationRules.cs
 
+# Pure, no game — the influence-graph step primitives (#58 keystone) use only System.Math.
+run_suite influencegraph Exe \
+    Tests/InfluenceGraphRulesTests.cs \
+    $SRC/Demographics/InfluenceGraphRules.cs
+
 run_suite populationcap Exe \
     Tests/PopulationCapRulesTests.cs \
     $SRC/Sizing/PopulationCapRules.cs $SRC/Sizing/TierPyramidRules.cs $SRC/Sizing/SettlementTier.cs \
