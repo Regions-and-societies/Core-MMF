@@ -8,13 +8,11 @@ namespace RegionsAndSocieties
     /// carries people everywhere, so a flat density tint would paint the whole planet; instead the ramp
     /// is calibrated to show only what stands out from the Frontier floor:
     /// <list type="bullet">
-    ///   <item>truly empty land (0 people) reads <b>white</b> — a positive "nobody could live here" mark,
-    ///   not the absence of the overlay;</item>
-    ///   <item>the Frontier countryside — up to a bit more than the wilderness mean — reads <b>clear</b>,
-    ///   so the ubiquitous rural baseline is nothing to look at;</item>
+    ///   <item>the Frontier countryside — up to a bit more than the wilderness mean — and empty land alike
+    ///   read <b>clear</b>, so the ubiquitous rural baseline is nothing to look at;</item>
     ///   <item>above that a magma ramp rises through the settlement tiers to the densest tile (the peak).</item>
     /// </list>
-    /// One palette, so the two overlays agree on what "empty", "countryside" and "peak" look like.
+    /// One palette, so the two overlays agree on what "countryside" and "peak" look like.
     /// </summary>
     public static class PopulationOverlayPalette
     {
@@ -28,10 +26,6 @@ namespace RegionsAndSocieties
         /// <summary>Dwellings per tile equivalent of <see cref="FrontierCeiling"/>, for the dwellings
         /// overlay — the homes a frontier-ceiling population resolves into.</summary>
         public static int FrontierCeilingDwellings => Demographics.ResidenceRules.For(FrontierCeiling).dwellings;
-
-        /// <summary>White — habitable land with no people at all. Opaque-ish so it reads as a statement,
-        /// not a faded gap in the overlay.</summary>
-        public static readonly Color Empty = new Color(0.95f, 0.95f, 0.95f, 0.72f);
 
         /// <summary>The colored ramp for the settled zone, just-above-frontier → peak: the "magma" ramp
         /// (violet → yellow), hues that occur nowhere in the planet's own green/blue/tan/grey palette so
@@ -48,16 +42,15 @@ namespace RegionsAndSocieties
         // Band cuts on the log fraction from the frontier ceiling up to the peak.
         private static readonly float[] Thresholds = new float[] { 0.30f, 0.50f, 0.70f, 0.88f };
 
-        /// <summary>The band for a tile: <b>-2</b> empty (white), <b>-1</b> Frontier (clear), else
-        /// <b>0..Ramp.Length-1</b> up the ramp. <paramref name="value"/>, <paramref name="ceiling"/> and
-        /// <paramref name="peak"/> are the same metric (people, or dwellings), so one call serves both
+        /// <summary>The band for a tile: <b>-1</b> for Frontier countryside and empty land alike (clear),
+        /// else <b>0..Ramp.Length-1</b> up the ramp. <paramref name="value"/>, <paramref name="ceiling"/>
+        /// and <paramref name="peak"/> are the same metric (people, or dwellings), so one call serves both
         /// overlays. Log-scaled from the ceiling to the peak so settlement cores step up through the
         /// colours instead of every non-peak tile collapsing into the bottom band.</summary>
         public static int Band(int value, int ceiling, int peak)
         {
-            if (value <= 0) return -2;              // white — genuinely nobody
             if (ceiling < 1) ceiling = 1;
-            if (value < ceiling) return -1;         // clear — countryside
+            if (value < ceiling) return -1;         // clear — countryside or empty land
             float bottom = Mathf.Log(1f + ceiling);
             float top = Mathf.Log(1f + Mathf.Max(peak, ceiling + 1));
             float span = top - bottom;

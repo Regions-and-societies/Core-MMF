@@ -10,12 +10,11 @@ namespace RegionsAndSocieties
     public class MapMode_PopulationDensity : MapMode
     {
         private static Material[] densityMats = null;
-        private static Material emptyMat = null;   // white — habitable land with no people (#79)
 
-        // Colours come from the shared PopulationOverlayPalette (#30/#79): white for empty land, clear for
-        // the Frontier countryside, and a violet→yellow magma ramp for the settled zone, each ramp colour
-        // darkened by elevation. The old fixed 5-band table lived here; it moved to the palette so the
-        // population and dwellings overlays cannot drift apart on what "empty/countryside/peak" look like.
+        // Colours come from the shared PopulationOverlayPalette (#30/#79): clear for the Frontier
+        // countryside and empty land alike, and a violet→yellow magma ramp for the settled zone, each
+        // ramp colour darkened by elevation. The old fixed 5-band table lived here; it moved to the
+        // palette so the population and dwellings overlays cannot drift apart on what "peak" looks like.
 
         private static Material MakeMat(Color color)
         {
@@ -29,8 +28,6 @@ namespace RegionsAndSocieties
         public static void InitializeMaterials()
         {
             if (densityMats != null) return;
-
-            emptyMat = MakeMat(PopulationOverlayPalette.Empty);
 
             // ramp segments * 4 elevation bands.
             Color[] ramp = PopulationOverlayPalette.Ramp;
@@ -85,14 +82,13 @@ namespace RegionsAndSocieties
             }
 
             // Colour by the smeared influence field so the heatmap still fades outward from cities.
-            // #79: the whole map now has a Frontier baseline, so the palette reads empty land as white,
-            // the countryside as clear, and only settlement concentrations up the ramp to the peak.
+            // #79: the whole map now has a Frontier baseline, so the palette reads the countryside and
+            // empty land alike as clear, and only settlement concentrations up the ramp to the peak.
             int pop = PopulationDensityUtility.GetPopulationAtTile(tile);
             int band = PopulationOverlayPalette.Band(pop, PopulationOverlayPalette.FrontierCeiling,
                 PopulationDensityUtility.MaxTilePopulation());
 
-            if (band == -2) return emptyMat ?? BaseContent.WhiteMat;   // white — nobody could live here
-            if (band == -1) return BaseContent.ClearMat;               // clear — Frontier countryside
+            if (band < 0) return BaseContent.ClearMat;   // clear — countryside or empty land
 
             // Darken the ramp colour toward the mountains so terrain still reads through.
             float elevation = tileData.elevation;
@@ -112,9 +108,12 @@ namespace RegionsAndSocieties
 
         public override string GetTileLabel(int tile)
         {
-            // Label with the dwellings actually on the tile, not the smeared field (#55).
+            // Label with the population actually on the tile, not the smeared field (#55). #79: only
+            // settlement-scale tiles get a label — the countryside carries people everywhere now, so
+            // labelling every tile buries the map. The threshold is the same Frontier ceiling that gives
+            // a tile a colour, so labels appear exactly where the ramp does.
             int pop = PopulationDensityUtility.GetSourcePopulationAtTile(tile);
-            return pop > 0 ? pop.ToString() : null;
+            return pop >= PopulationOverlayPalette.FrontierCeiling ? pop.ToString() : null;
         }
 
         public override string GetTooltip(int tile)

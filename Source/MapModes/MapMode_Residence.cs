@@ -20,11 +20,10 @@ namespace RegionsAndSocieties
     [StaticConstructorOnStartup]
     public class MapMode_Residence : MapMode
     {
-        // Colours come from the shared PopulationOverlayPalette (#30/#79): white for empty land, clear for
-        // the Frontier countryside, and a violet→yellow ramp for the settled zone — ramped here by
+        // Colours come from the shared PopulationOverlayPalette (#30/#79): clear for the Frontier
+        // countryside and empty land alike, and a violet→yellow ramp for the settled zone — ramped here by
         // DWELLINGS per tile (sublinear in people, since urban homes hold fewer each) up to the peak.
         private static Material[] rampMats;
-        private static Material emptyMat;
 
         public MapMode_Residence() { }
         public MapMode_Residence(MapModeDef def) : base(def) { }
@@ -45,7 +44,6 @@ namespace RegionsAndSocieties
             base.DoPreRegenerate();
             PopulationDensityUtility.EnsureCache();
             if (rampMats != null) return;
-            emptyMat = MakeMat(PopulationOverlayPalette.Empty);
             Color[] ramp = PopulationOverlayPalette.Ramp;
             rampMats = new Material[ramp.Length];
             for (int i = 0; i < ramp.Length; i++) rampMats[i] = MakeMat(ramp[i]);
@@ -65,16 +63,17 @@ namespace RegionsAndSocieties
             int peakDwellings = ResidenceRules.For(PopulationDensityUtility.MaxTilePopulation()).dwellings;
             int band = PopulationOverlayPalette.Band(dwellings, PopulationOverlayPalette.FrontierCeilingDwellings, peakDwellings);
 
-            if (band == -2) return emptyMat ?? BaseContent.WhiteMat;   // white — nobody could live here
-            if (band == -1) return BaseContent.ClearMat;               // clear — Frontier countryside
+            if (band < 0) return BaseContent.ClearMat;   // clear — countryside or empty land
             if (band >= rampMats.Length) band = rampMats.Length - 1;
             return rampMats[band];
         }
 
         public override string GetTileLabel(int tile)
         {
+            // #79: only settlement-scale tiles get a dwelling-count label; the Frontier countryside
+            // (populated everywhere now) stays unlabelled, matching where the ramp colours the map.
             int pop = PopulationDensityUtility.GetSourcePopulationAtTile(tile);
-            if (pop <= 0) return null;
+            if (pop < PopulationOverlayPalette.FrontierCeiling) return null;
             return ResidenceRules.For(pop).dwellings.ToString();
         }
 
