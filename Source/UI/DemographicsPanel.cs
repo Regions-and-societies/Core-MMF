@@ -36,13 +36,13 @@ namespace RegionsAndSocieties.UI
                 return HeaderH;
             }
 
-            // Residences: the region's people resolved into homes by how urban it is (population is a head
-            // count; residences are where they live). Rural extended families to dense urban households.
+            // Dwellings: the region's people resolved into homes by how urban it is (population is a head
+            // count; dwellings are where they live). Rural extended families to dense urban households.
             if (population > 0)
             {
                 ResidenceProfile res = ResidenceRules.For(population);
-                y = NoteSection(rect, y, $"Residences  —  {res.tier}",
-                    $"{res.residences} homes · {res.occupancy:0.0} people per home · {population} residents\nland per person {res.landPerPawn:0.00} (relative)");
+                y = NoteSection(rect, y, $"Dwellings  —  {res.tier}",
+                    $"{res.dwellings} homes · {res.occupancy:0.0} people per home · {population} residents\nland per person {res.landPerPawn:0.00} (relative)");
                 y += SectionGap;
             }
 

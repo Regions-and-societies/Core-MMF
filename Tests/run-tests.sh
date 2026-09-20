@@ -125,7 +125,8 @@ run_suite district Exe \
 # "no inhabitants" - the misreading that emptied every NPC settlement. Pure, no game.
 run_suite populationcap Exe \
     Tests/PopulationCapRulesTests.cs \
-    $SRC/Sizing/PopulationCapRules.cs $SRC/Sizing/TierPyramidRules.cs $SRC/Sizing/SettlementTier.cs
+    $SRC/Sizing/PopulationCapRules.cs $SRC/Sizing/TierPyramidRules.cs $SRC/Sizing/SettlementTier.cs \
+    $SRC/Sizing/WorldScaleRules.cs $SRC/Sizing/DistrictRules.cs $SRC/Sizing/BirthrateRules.cs
 
 # 0.3.0 settlement birthrate-growth core (#6): tech-informed rate + logistic step toward the target.
 # Pure, no game — needs only the standalone BirthrateRules.
@@ -153,7 +154,8 @@ run_suite education Exe \
 # urban a place is. Pure, no game.
 run_suite residence Exe \
     Tests/ResidenceRulesTests.cs \
-    $SRC/Demographics/ResidenceRules.cs
+    $SRC/Demographics/ResidenceRules.cs \
+    $SRC/Sizing/WorldScaleRules.cs $SRC/Sizing/DistrictRules.cs $SRC/Sizing/SettlementTier.cs $SRC/Sizing/TierPyramidRules.cs $SRC/Sizing/BirthrateRules.cs
 
 # 0.3.0 faction-character core (#27): base/DLC archetype classification + knowledge/wealth skews, and the
 # end-to-end effect on education. Pure, no game — needs the character rules and the education core.

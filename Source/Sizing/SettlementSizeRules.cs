@@ -11,27 +11,11 @@ namespace RegionsAndSocieties.Sizing
     {
         // -- population thresholds --------------------------------------------
         //
-        // Calibrated against what PopulationDensityUtility actually produces rather than invented.
-        // NPC settlements are seeded from faction tech level plus random(-10, +20):
-        //
-        //     medieval / default   base  50   ->   40 - 69
-        //     neolithic            base  60   ->   50 - 79
-        //     industrial           base  90   ->   80 - 109
-        //     spacer               base 150   ->  140 - 169
-        //
-        // while a player colony reports its live FreeColonistsCount, realistically 1 - 25.
-        //
-        // The thresholds below therefore land tech level onto tier almost exactly: a tribal
-        // settlement is a town, an industrial one a city, a spacer one a major city, and a player
-        // colony starts as a village. That correspondence is deliberate — a spacer world genuinely
-        // is a major city next to a tribal camp — but it does mean a vanilla player colony cannot
-        // out-grow Village on headcount alone. Players running Empire climb through the tiers on
-        // their colonies' upgrade levels instead; see SettlementSizeEvaluator.FromLevel.
-
-        public const int HamletMinPopulation = 1;
-        public const int VillageMinPopulation = 40;
-        public const int TownMinPopulation = 80;
-        public const int CityMinPopulation = 240;
+        // The tier populations are the district model's own figures (#30/#77): a settlement reads as
+        // a given tier once it holds that tier's comfortable district population —
+        // 700 (Hamlet), 1,900 (Village), 3,700 (Town), 6,100 (City); below 700 it is a Homestead.
+        // DistrictRules is the single source of truth for these, so this table can never drift from
+        // the scale drawn on the world map. See DistrictRules.PopulationForTier / TierForPopulation.
 
         /// <summary>
         /// Residents per dwelling, so a dwelling count can stand in for an unknown population.
@@ -39,16 +23,11 @@ namespace RegionsAndSocieties.Sizing
         /// </summary>
         public const int ResidentsPerDwelling = 2;
 
+        /// <summary>The comfortable population at which a settlement reads as this tier — the tier's
+        /// district population (0 for Homestead, the floor).</summary>
         public static int MinPopulationFor(SettlementTier tier)
         {
-            switch (tier)
-            {
-                case SettlementTier.Hamlet: return HamletMinPopulation;
-                case SettlementTier.Village: return VillageMinPopulation;
-                case SettlementTier.Town: return TownMinPopulation;
-                case SettlementTier.City: return CityMinPopulation;
-                default: return 0;
-            }
+            return (int)tier <= 0 ? 0 : DistrictRules.PopulationForTier(tier);
         }
 
         // -- tier effects -----------------------------------------------------
@@ -62,14 +41,9 @@ namespace RegionsAndSocieties.Sizing
         /// </summary>
         public static int PopulationCapacity(SettlementTier tier)
         {
-            switch (tier)
-            {
-                case SettlementTier.Hamlet: return VillageMinPopulation;
-                case SettlementTier.Village: return TownMinPopulation;
-                case SettlementTier.Town: return CityMinPopulation;
-                case SettlementTier.City: return 700;
-                default: return 0;
-            }
+            // A tier's own crowded ceiling (comfortable population × 1.5), from the district model.
+            // Homestead returns 0 — "no tier-imposed cap" — as the contract above requires.
+            return (int)tier <= 0 ? 0 : DistrictRules.MaxPopulationForTier(tier);
         }
 
         /// <summary>

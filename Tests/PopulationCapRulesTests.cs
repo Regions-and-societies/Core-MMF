@@ -23,6 +23,18 @@ namespace PopulationCapRulesTests
                      (int)Math.Round(PopulationCapRules.MaxPopulation(SettlementTier.Town, 30f, 1f) * 2f / 3f), 1));
             Check("a nonsense multiplier caps at nothing", PopulationCapRules.MaxPopulation(SettlementTier.Town, 0f, 1f) == 0);
 
+            Section("the district scale (#30)");
+            // The cap is DistrictRules.MaxPopulationForTier (comfortable population x 1.5); the target is
+            // two-thirds of that, which lands back on the comfortable district population exactly.
+            Check("a city caps at its crowded district ceiling (6,100 x 1.5)",
+                PopulationCapRules.MaxPopulation(SettlementTier.City, 1f, 1f) == 9150);
+            Check("a city's target is its comfortable district population",
+                PopulationCapRules.TargetPopulation(SettlementTier.City, 1f, 1f) == 6100);
+            Check("a village caps at 2,850", PopulationCapRules.MaxPopulation(SettlementTier.Village, 1f, 1f) == 2850);
+            Check("a village's target is 1,900", PopulationCapRules.TargetPopulation(SettlementTier.Village, 1f, 1f) == 1900);
+            Check("the multiplier scales the cap linearly",
+                PopulationCapRules.MaxPopulation(SettlementTier.City, 2f, 1f) == 18300);
+
             Section("seeding — the #71 contract");
             // The bug: an untiered settlement has capacity 0, and seeding read that as an empty settlement.
             // Settlement tiers are OFF by default, so this emptied every NPC settlement on the planet and

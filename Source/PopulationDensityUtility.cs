@@ -504,16 +504,23 @@ namespace RegionsAndSocieties
         public static int StaticNpcPopulationEstimate(Settlement settlement)
         {
             if (settlement == null) return 0;
-            int basePop = 50;
+            // District scale (#30): a static settlement reads as a small nucleated place — a large
+            // homestead to a town by tech level — not the sub-district ~50-150 of the old model. This
+            // is the PRIMARY population source in default play (settlement tiers are off), so it must
+            // land NPC settlements on the district scale or the whole demographic field reads ~30x too
+            // thin. The bands track DistrictRules populations: ~homestead/hamlet, hamlet, village, town.
+            int basePop = 700;   // medieval / default: a hamlet
             if (settlement.Faction != null)
             {
                 var tech = settlement.Faction.def?.techLevel ?? TechLevel.Industrial;
-                if (tech == TechLevel.Neolithic) basePop = 60;
-                else if (tech == TechLevel.Industrial) basePop = 90;
-                else if (tech >= TechLevel.Spacer) basePop = 150;
+                if (tech <= TechLevel.Neolithic) basePop = 400;         // tribal: large homestead / small hamlet
+                else if (tech == TechLevel.Industrial) basePop = 1900;  // a village
+                else if (tech >= TechLevel.Spacer) basePop = 3700;      // a town
             }
+            // Deterministic +/-20% jitter, so a faction's settlements are not all identical.
             System.Random random = new System.Random(settlement.Tile);
-            return basePop + random.Next(-10, 20);
+            float jitter = 0.8f + (float)random.NextDouble() * 0.4f;
+            return UnityEngine.Mathf.RoundToInt(basePop * jitter);
         }
 
         public static float GetStepMultiplier(PlanetTile fromTile, PlanetTile toTile)
