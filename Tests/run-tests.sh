@@ -143,6 +143,11 @@ run_suite vitals Exe \
     Tests/VitalsRulesTests.cs \
     $SRC/Demographics/VitalsRules.cs
 
+# Pure, no game — geographic scale/food/carrying-capacity (#58 §6), reads WorldScaleRules.
+run_suite geoscale Exe \
+    Tests/GeographicScaleRulesTests.cs \
+    $SRC/Demographics/GeographicScaleRules.cs $SRC/Sizing/WorldScaleRules.cs
+
 run_suite populationcap Exe \
     Tests/PopulationCapRulesTests.cs \
     $SRC/Sizing/PopulationCapRules.cs $SRC/Sizing/TierPyramidRules.cs $SRC/Sizing/SettlementTier.cs \
