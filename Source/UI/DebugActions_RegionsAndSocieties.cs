@@ -104,11 +104,37 @@ namespace RegionsAndSocieties.UI
                 foreach (Demographics.RegionCohort rc in roster)
                 {
                     Demographics.CohortState c = rc.state;
-                    string kind = rc.xeno != null ? rc.xeno.defName : (c.isHybrid ? "Hybrid" : "Baseliner/other");
+                    string kind = rc.IsXeno ? rc.xenoDefName : (c.isHybrid ? "Hybrid" : "Baseliner/other");
                     sb.AppendLine($"   {kind}: share {c.share:P0}  pop {c.pop:0}  lifespan {c.lifespan:0}"
                         + $"  drugBurden {c.drugBurden:0.0}  fragility {c.fragility:0.00}  heritable {c.heritable}");
                 }
             }
+            Log.Message(sb.ToString());
+        }
+
+        [DebugAction("Regions and Societies", "R&S: advance cohort year (#58)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        private static void AdvanceCohortYear()
+        {
+            // Drives the LIVE per-province cohort tick once (the same call the yearly WorldComponentTick makes),
+            // so the stored, scribed cohort state can be validated without waiting an in-game year.
+            var mgr = Find.World?.GetComponent<SynapseRegionManager>();
+            if (mgr == null) { Log.Message("[R&S] no region manager."); return; }
+            mgr.AdvanceCohortYear();
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("=== R&S advance cohort year (#58) — LIVE stored per-province cohorts ===");
+            var provs = mgr.Provinces;
+            int seeded = 0, shown = 0; float worldPop = 0f;
+            if (provs != null)
+                foreach (GeographicProvince p in provs)
+                {
+                    if (p == null || p.provinceType != ProvinceType.Land || p.cohorts == null || !p.cohorts.seeded) continue;
+                    seeded++;
+                    worldPop += p.cohorts.TotalPopulation;
+                    if (shown++ < 6)
+                        sb.AppendLine($"   region #{p.id}: {p.cohorts.cohorts.Count} cohort(s), pop {p.cohorts.TotalPopulation:0}");
+                }
+            sb.AppendLine($"seeded regions: {seeded}   total modelled world population: {worldPop:0}");
             Log.Message(sb.ToString());
         }
 
@@ -144,7 +170,7 @@ namespace RegionsAndSocieties.UI
                 Demographics.RegionStage stage = Demographics.RegionStageBuilder.Build(province);
                 Faction owner = Demographics.RegionStageBuilder.OwnerOf(province);
                 var region = new Demographics.RegionCohorts();
-                region.Seed(owner, stage.population);
+                region.SetRoster(Demographics.CohortFactory.BuildRoster(owner, stage.population));
                 float p0 = region.TotalPopulation;
                 for (int y = 1; y <= 50; y++) region.AdvanceYear(stage);
                 string oname = owner != null ? owner.Name : "unowned";
@@ -153,7 +179,7 @@ namespace RegionsAndSocieties.UI
                 foreach (Demographics.RegionCohort rc in region.cohorts)
                 {
                     Demographics.CohortState c = rc.state;
-                    string kind = rc.xeno != null ? rc.xeno.defName : (c.isHybrid ? "Hybrid" : "Baseliner/other");
+                    string kind = rc.IsXeno ? rc.xenoDefName : (c.isHybrid ? "Hybrid" : "Baseliner/other");
                     sb.AppendLine($"      {kind}: share {c.share:P0}  pop {c.pop:0}  birth {c.birthRate:0.000}"
                         + $"  lifeExp {c.lifeExpectancy}  cause {c.leadingCause}  content {c.contentment:0.00}");
                 }

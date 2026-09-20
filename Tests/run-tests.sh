@@ -315,6 +315,9 @@ run_suite typecheck Library \
     $SRC/WorldObjectPlacementUtility.cs $SRC/OutpostPlacementUtility.cs \
     $SRC/RegionalOwnershipUtility.cs \
     $SRC/GeographicProvince.cs $SRC/BiomeSafe.cs $SRC/IRegionDemographicProvider.cs \
+    $SRC/Demographics/RegionCohorts.cs $SRC/Demographics/CohortYearRules.cs \
+    $SRC/Demographics/InfluenceGraphRules.cs $SRC/Demographics/WealthRules.cs $SRC/Demographics/VitalsRules.cs \
+    $SRC/Demographics/GeographicScaleRules.cs $SRC/Demographics/ReproductionRules.cs $SRC/Demographics/IndicatorsRules.cs \
     $SRC/Demographics/AgeStructureRules.cs \
     $SRC/Demographics/EducationRules.cs \
     $SRC/Demographics/FactionCharacterRules.cs \

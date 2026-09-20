@@ -55,6 +55,11 @@ namespace RegionsAndSocieties
         // --- Economics / Demographics ---
         public bool initializedEconomics;
 
+        // #58: the region's evolving per-cohort demographic state — the source of truth for its people.
+        // Seeded lazily on first demographic-year tick, advanced yearly (SynapseRegionManager). Scribed
+        // with the province so the living population persists across saves.
+        public Demographics.RegionCohorts cohorts = new Demographics.RegionCohorts();
+
         // Population and dwellings are a materialized aggregate: summed once from the per-tile
         // density cache and re-summed only when that cache is invalidated (a population-bearing
         // world object added or removed), tracked by PopulationDensityUtility.CacheVersion. The old
@@ -246,6 +251,8 @@ namespace RegionsAndSocieties
             ScribePool(ResourceKind.SpacerGoods, "spacerGoods");
 
             Scribe_Collections.Look(ref activeCrises, "activeCrises", LookMode.Deep);
+            Scribe_Deep.Look(ref cohorts, "cohorts");
+            if (Scribe.mode == LoadSaveMode.PostLoadInit && cohorts == null) cohorts = new Demographics.RegionCohorts();
             if (activeCrises == null)
             {
                 activeCrises = new List<SettlementCrisis>();

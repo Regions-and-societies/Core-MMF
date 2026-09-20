@@ -117,7 +117,7 @@ namespace RegionsAndSocieties.Demographics
 
             if (profile?.races == null || profile.races.Length == 0 || total <= 0f)
             {
-                roster.Add(new RegionCohort(null, BuildCohort(null, 1f, regionPopulation)));   // single Baseliner cohort
+                roster.Add(new RegionCohort("", BuildCohort(null, 1f, regionPopulation)));   // single Baseliner cohort
                 return roster;
             }
 
@@ -134,13 +134,14 @@ namespace RegionsAndSocieties.Demographics
                 float share = profile.raceWeights[idx] / total;
                 if (named < topN)
                 {
-                    roster.Add(new RegionCohort(profile.races[idx], BuildCohort(profile.races[idx], share, regionPopulation)));
+                    XenotypeDef xeno = profile.races[idx];
+                    roster.Add(new RegionCohort(xeno?.defName ?? "", BuildCohort(xeno, share, regionPopulation)));
                     named++;
                 }
                 else otherShare += share;
             }
             if (otherShare > 0f)
-                roster.Add(new RegionCohort(null, BuildCohort(null, otherShare, regionPopulation)));   // the tail, as baseliner
+                roster.Add(new RegionCohort("", BuildCohort(null, otherShare, regionPopulation)));   // the tail, as baseliner
             return roster;
         }
     }

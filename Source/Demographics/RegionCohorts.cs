@@ -1,24 +1,26 @@
 using System;
 using System.Collections.Generic;
-using RimWorld;
 using Verse;
 
 namespace RegionsAndSocieties.Demographics
 {
-    /// <summary>A cohort's identity (its xenotype) paired with its evolving <see cref="CohortState"/>. The
-    /// xeno is null for the baseliner and hybrid cohorts; <c>state.isBaseliner</c>/<c>state.isHybrid</c>
-    /// distinguish them. Scribed as part of <see cref="RegionCohorts"/>.</summary>
+    /// <summary>A cohort's identity (its xenotype, by defName) paired with its evolving <see cref="CohortState"/>.
+    /// The defName is empty for the baseliner and hybrid cohorts; <c>state.isBaseliner</c>/<c>state.isHybrid</c>
+    /// distinguish them. Identity is a string, not an <c>XenotypeDef</c>, so the scribed container stays free of
+    /// game defs — the game-coupled layer (<see cref="CohortFactory"/>, pawn generation) maps defName ↔ def.</summary>
     public class RegionCohort : IExposable
     {
-        public XenotypeDef xeno;              // null for baseliner / hybrid / "other"
+        public string xenoDefName;           // "" for baseliner / hybrid / "other"
         public CohortState state = new CohortState();
 
         public RegionCohort() { }
-        public RegionCohort(XenotypeDef xeno, CohortState state) { this.xeno = xeno; this.state = state; }
+        public RegionCohort(string xenoDefName, CohortState state) { this.xenoDefName = xenoDefName ?? ""; this.state = state; }
+
+        public bool IsXeno => !string.IsNullOrEmpty(xenoDefName);
 
         public void ExposeData()
         {
-            Scribe_Defs.Look(ref xeno, "xeno");
+            Scribe_Values.Look(ref xenoDefName, "xeno", "");
             if (state == null) state = new CohortState();
             // Persist the intrinsic Stock + the slow-carried values only; the derived per-year outputs
             // (income, vitals, education/strata distributions, indicators) are recomputed each AdvanceYear.
@@ -39,13 +41,14 @@ namespace RegionsAndSocieties.Demographics
 
     /// <summary>
     /// The scribed per-region cohort container (DEMOGRAPHIC_MODEL §1, #58 step 3) — the <b>source of truth</b>
-    /// for a region's people. Seeded once from the region's faction roster (<see cref="CohortFactory"/>), then
-    /// advanced one demographic year at a time: every cohort's factors step (<see cref="CohortYearRules"/>),
+    /// for a region's people. The caller seeds it with a roster (built by <see cref="CohortFactory"/>), then
+    /// advances it one demographic year at a time: every cohort's factors step (<see cref="CohortYearRules"/>),
     /// then populations move by births, deaths and migration with germline inheritance
-    /// (<see cref="ReproductionRules"/>). The region's aggregate demographics are read back off these cohorts.
+    /// (<see cref="ReproductionRules"/>). Region aggregates are read back off these cohorts.
     ///
-    /// <para>Bounded by the top-N + "other" roster, so a save stays small. Game-coupled (scribes defs, holds
-    /// the container) — held to shape by the type-check; the pure step/inheritance math it drives is unit-tested.</para>
+    /// <para>Pure of game defs (identity is a defName string), so it scribes cleanly and the step/inheritance
+    /// math it drives is unit-tested; only the roster building (which reads genes) is game-coupled and lives in
+    /// <see cref="CohortFactory"/>. Bounded by the top-N + "other" roster, so a save stays small.</para>
     /// </summary>
     public class RegionCohorts : IExposable
     {
@@ -64,10 +67,10 @@ namespace RegionsAndSocieties.Demographics
             get { float p = 0f; if (cohorts != null) for (int i = 0; i < cohorts.Count; i++) p += cohorts[i].state.pop; return p; }
         }
 
-        /// <summary>Cold start: build the roster from the region's owning faction and headcount.</summary>
-        public void Seed(Faction faction, float regionPopulation, int topN = CohortFactory.DefaultTopN)
+        /// <summary>Cold start: adopt a pre-built roster (from <see cref="CohortFactory.BuildRoster"/>).</summary>
+        public void SetRoster(List<RegionCohort> roster)
         {
-            cohorts = CohortFactory.BuildRoster(faction, regionPopulation, topN);
+            cohorts = roster ?? new List<RegionCohort>();
             seeded = true;
         }
 
@@ -98,15 +101,15 @@ namespace RegionsAndSocieties.Demographics
             float endogamy = ReproductionRules.Endogamy(stage.ideoTolerance);
             float totPop = total <= 0f ? 1f : total;
 
-            var bornXeno = new Dictionary<XenotypeDef, float>();
+            var bornXeno = new Dictionary<string, float>();
             float bornBaseliner = 0f, bornHybrid = 0f;
 
             void AddToParent(RegionCohort p, float n)
             {
                 if (n <= 0f) return;
                 if (p.state.isHybrid) bornHybrid += n;
-                else if (p.xeno == null || p.state.isBaseliner) bornBaseliner += n;
-                else { bornXeno.TryGetValue(p.xeno, out float v); bornXeno[p.xeno] = v + n; }
+                else if (!p.IsXeno || p.state.isBaseliner) bornBaseliner += n;
+                else { bornXeno.TryGetValue(p.xenoDefName, out float v); bornXeno[p.xenoDefName] = v + n; }
             }
             void AddOutcome(ChildOutcome oc, RegionCohort a, RegionCohort b, float n)
             {
@@ -120,7 +123,6 @@ namespace RegionsAndSocieties.Demographics
                 }
             }
 
-            // gross births per cohort, assigned to children by mating
             for (int i = 0; i < cohorts.Count; i++)
             {
                 CohortState s = cohorts[i].state;
@@ -141,7 +143,6 @@ namespace RegionsAndSocieties.Demographics
                 }
             }
 
-            // apply deaths + migration to the standing populations
             for (int i = 0; i < cohorts.Count; i++)
             {
                 CohortState s = cohorts[i].state;
@@ -150,22 +151,22 @@ namespace RegionsAndSocieties.Demographics
                 s.pop = Math.Max(0f, s.pop - deaths + mig);
             }
 
-            // add the year's births to their (possibly new) cohorts
             foreach (var kv in bornXeno) FindOrCreateXeno(kv.Key).state.pop += kv.Value;
             if (bornBaseliner > 0f) FindOrCreateSpecial(false).state.pop += bornBaseliner;
             if (bornHybrid > 0f) FindOrCreateSpecial(true).state.pop += bornHybrid;
 
-            // prune vanished cohorts (keep it bounded), recompute shares
             cohorts.RemoveAll(c => c.state.pop <= 0.5f && c.state.share <= 0.001f);
             float p = TotalPopulation;
             for (int i = 0; i < cohorts.Count; i++) cohorts[i].state.share = p > 0f ? cohorts[i].state.pop / p : 0f;
         }
 
-        private RegionCohort FindOrCreateXeno(XenotypeDef xeno)
+        private RegionCohort FindOrCreateXeno(string xenoDefName)
         {
             for (int i = 0; i < cohorts.Count; i++)
-                if (cohorts[i].xeno == xeno && !cohorts[i].state.isHybrid) return cohorts[i];
-            var c = new RegionCohort(xeno, CohortFactory.BuildCohort(xeno, 0f, 0f));
+                if (cohorts[i].xenoDefName == xenoDefName && !cohorts[i].state.isHybrid) return cohorts[i];
+            // A xenotype cohort that has died out and is being reintroduced by exogamy: revive it as a plain
+            // heritable germline (its gene-read intrinsics are lost, but the identity/lineage continues).
+            var c = new RegionCohort(xenoDefName, new CohortState { heritable = true, isBaseliner = false });
             cohorts.Add(c);
             return c;
         }
@@ -175,15 +176,11 @@ namespace RegionsAndSocieties.Demographics
             for (int i = 0; i < cohorts.Count; i++)
             {
                 CohortState s = cohorts[i].state;
-                if (hybrid ? s.isHybrid : (s.isBaseliner && !s.isHybrid && cohorts[i].xeno == null)) return cohorts[i];
+                if (hybrid ? s.isHybrid : (s.isBaseliner && !s.isHybrid && !cohorts[i].IsXeno)) return cohorts[i];
             }
-            CohortState st = CohortFactory.BuildCohort(null, 0f, 0f);   // baseliner defaults
-            if (hybrid)
-            {
-                st.isBaseliner = false; st.isHybrid = true; st.heritable = true;
-                st.baseInit = -0.15f; st.basePreference = -0.15f;   // hybrids carry a mild standing penalty (§8)
-            }
-            var c = new RegionCohort(null, st);
+            var st = new CohortState { heritable = true, isBaseliner = !hybrid, isHybrid = hybrid };
+            if (hybrid) { st.baseInit = -0.15f; st.basePreference = -0.15f; }   // hybrids carry a mild standing penalty (§8)
+            var c = new RegionCohort("", st);
             cohorts.Add(c);
             return c;
         }

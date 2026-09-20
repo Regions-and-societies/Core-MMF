@@ -458,6 +458,10 @@ namespace RegionsAndSocieties
         // granularity for a decay measured in years, and keeps the override sweep off the hot path.
         private const int DemographicDecayInterval = 2500;
 
+        // #58: the cohort model advances one demographic year per in-game year. Infrequent by design — the
+        // per-cohort graph is slow-moving, and a whole world of regions is stepped in one pass.
+        private const int DemographicYearInterval = GenDate.TicksPerYear;
+
         public override void WorldComponentTick()
         {
             base.WorldComponentTick();
@@ -491,6 +495,13 @@ namespace RegionsAndSocieties
                 if (Find.TickManager != null && Find.TickManager.TicksGame % Integration.PopulationDynamics.CadenceTicks == 0)
                 {
                     Integration.PopulationDynamics.RunPasses(this, regionPopulationDelta);
+                }
+
+                // #58: one demographic year for the per-cohort model, once per in-game year.
+                if (Find.TickManager != null && Find.TickManager.TicksGame > 0
+                    && Find.TickManager.TicksGame % DemographicYearInterval == 0)
+                {
+                    AdvanceCohortYear();
                 }
             }
 
@@ -552,6 +563,29 @@ namespace RegionsAndSocieties
             int ceil = (int)Math.Round(capacity * Sizing.BirthrateRules.BirthStagnationRatio, MidpointRounding.AwayFromZero);
             if (capacity > 0 && v > ceil) v = ceil;
             return v;
+        }
+
+        /// <summary>#58: advance every land region's cohort model one demographic year. Seeds a region's
+        /// cohorts on first touch (cold start from its owning faction + current population), then steps each
+        /// cohort and moves stocks (births/deaths/migration/inheritance). Gated by Societies at the call site;
+        /// exposed so the projection debug action can drive it on demand.</summary>
+        public void AdvanceCohortYear()
+        {
+            var provs = Provinces;
+            if (provs == null) return;
+            for (int i = 0; i < provs.Count; i++)
+            {
+                GeographicProvince p = provs[i];
+                if (p == null || p.provinceType != ProvinceType.Land) continue;
+                if (p.cohorts == null) p.cohorts = new Demographics.RegionCohorts();
+                if (!p.cohorts.seeded)
+                {
+                    Faction owner = Demographics.RegionStageBuilder.OwnerOf(p);
+                    p.cohorts.SetRoster(Demographics.CohortFactory.BuildRoster(owner, p.currentPopulation > 0 ? p.currentPopulation : 1f));
+                }
+                Demographics.RegionStage stage = Demographics.RegionStageBuilder.Build(p);
+                p.cohorts.AdvanceYear(stage);
+            }
         }
 
         private void AdvanceSettlementGrowth(int intervalTicks)
