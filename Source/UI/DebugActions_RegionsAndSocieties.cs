@@ -87,6 +87,24 @@ namespace RegionsAndSocieties.UI
             Log.Message(RegionDebugReports.HoldingsReport());
         }
 
+        [DebugAction("Regions and Societies", "R&S: xenotype intrinsics (#58)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        private static void XenotypeIntrinsics()
+        {
+            // Validates CohortFactory's gene reading (§1: per-xenotype constants from genes) against EVERY
+            // real xenotype in the database — the multi-cohort variety the all-baseliner faction rosters
+            // can't show. Expect e.g. Hussar/Waster drugBurden > 0, Sanguophage heritable false, a
+            // longevity xenotype lifespan > 80.
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("=== R&S xenotype intrinsics (#58) — gene-read cohort constants per xenotype ===");
+            foreach (XenotypeDef x in DefDatabase<XenotypeDef>.AllDefsListForReading)
+            {
+                Demographics.CohortState c = Demographics.CohortFactory.BuildCohort(x, 0f, 0f);
+                sb.AppendLine($"   {x.defName,-18} lifespan {c.lifespan,4:0}  drugBurden {c.drugBurden:0.0}"
+                    + $"  fragility {c.fragility:0.00}  heritable {c.heritable}  baseliner {c.isBaseliner}");
+            }
+            Log.Message(sb.ToString());
+        }
+
         [DebugAction("Regions and Societies", "R&S: cohort roster (#58)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void CohortRoster()
         {
