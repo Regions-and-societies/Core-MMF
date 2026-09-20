@@ -112,6 +112,60 @@ namespace RegionsAndSocieties.UI
             Log.Message(sb.ToString());
         }
 
+        [DebugAction("Regions and Societies", "R&S: cohort projection (#58)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        private static void CohortProjection()
+        {
+            // Runs the stateful cohort container forward against a representative region stage, to validate
+            // that AdvanceYear (step + births/deaths/migration/inheritance) evolves populations sanely.
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("=== R&S cohort projection (#58) — 50 demographic years on a representative stage ===");
+            var factions = Find.FactionManager?.AllFactionsListForReading;
+            if (factions == null) { Log.Message(sb.ToString()); return; }
+            int shown = 0;
+            foreach (Faction f in factions)
+            {
+                if (f == null || f.IsPlayer || f.def == null || f.Hidden || f.defeated) continue;
+                if (shown++ >= 4) break;
+
+                var stage = RepresentativeStage(f);
+                var region = new Demographics.RegionCohorts();
+                region.Seed(f, stage.population);
+                float p0 = region.TotalPopulation;
+                for (int y = 1; y <= 50; y++)
+                {
+                    region.AdvanceYear(stage);
+                    if (y == 10 || y == 50)
+                        sb.AppendLine($"-- {f.Name}: yr {y}  pop {region.TotalPopulation:0}  ({region.cohorts.Count} cohort(s))");
+                }
+                sb.AppendLine($"   {f.Name}: start {p0:0} -> end {region.TotalPopulation:0}");
+                foreach (Demographics.RegionCohort rc in region.cohorts)
+                {
+                    Demographics.CohortState c = rc.state;
+                    string kind = rc.xeno != null ? rc.xeno.defName : (c.isHybrid ? "Hybrid" : "Baseliner/other");
+                    sb.AppendLine($"      {kind}: share {c.share:P0}  pop {c.pop:0}  birth {c.birthRate:0.000}"
+                        + $"  lifeExp {c.lifeExpectancy}  cause {c.leadingCause}  content {c.contentment:0.00}");
+                }
+            }
+            Log.Message(sb.ToString());
+        }
+
+        // A representative region stage for the projection probe: sensible levels seeded off the faction's
+        // tech level. Stand-in until the real stage builder reads a live region's derived signals.
+        private static Demographics.RegionStage RepresentativeStage(Faction f)
+        {
+            int tech = (int)(f.def?.techLevel ?? TechLevel.Industrial);
+            float wealth = Mathf.Clamp01(0.25f + 0.12f * tech);
+            return new Demographics.RegionStage
+            {
+                wealth = wealth, urbanisation = Mathf.Clamp01(0.15f + 0.10f * tech), employmentRate = 0.85f,
+                conflict = 0f, pollution = 0.1f, roads = 0.4f, biomeFertility = 0.5f,
+                slaveryStance = 0f, ideoTolerance = 0.3f, natalism = 0.35f, ageWorking = 0.6f, crime = 0.05f,
+                education = new float[] { 0.15f, 0.35f, 0.30f, 0.15f, 0.05f },
+                sectorServices = 0.3f, sectorManufacturing = 0.3f, sectorPublic = 0.1f, sectorMilitary = 0.05f,
+                tiles = 200, population = 6000f,
+            };
+        }
+
         [DebugAction("Regions and Societies", "R&S: placement probe (#61)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void PlacementProbe()
         {
