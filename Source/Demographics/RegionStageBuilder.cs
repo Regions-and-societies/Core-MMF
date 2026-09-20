@@ -21,6 +21,11 @@ namespace RegionsAndSocieties.Demographics
         public const float DefaultIdeoTolerance = 0.3f, DefaultSlaveryStance = 0f, DefaultPublicSector = 0.1f;
         public const float DefaultCrime = 0.05f;
 
+        // #58: a subsistence floor so an unowned / undeveloped region (derived wealth ~0) holds a rural
+        // population instead of death-spiralling — the countryside is poor, not lethal (aligns with the #79
+        // Frontier that carries ~30/tile). A hand-to-mouth farming economy is fed and mostly employed.
+        public const float SubsistenceWealth = 0.15f, SubsistenceEmployment = 0.6f;
+
         /// <summary>Build the stage for a land province from its current derived demographics.</summary>
         public static RegionStage Build(GeographicProvince province)
         {
@@ -31,8 +36,10 @@ namespace RegionsAndSocieties.Demographics
             Faction owner = DominantFaction(demo, province);
             FactionDemographicProfile profile = owner != null ? FactionDemographicProfile.Build(owner) : FactionDemographicProfile.Empty;
 
-            stage.wealth = Clamp01(demo.sesIndex / 100f);
-            stage.employmentRate = Clamp01(demo.employmentRate / 100f);
+            // Floored at subsistence: even an unowned frontier feeds and mostly employs itself, so it holds
+            // a poor rural population rather than collapsing (the death-spiral the live projection exposed).
+            stage.wealth = Clamp01(Max(SubsistenceWealth, demo.sesIndex / 100f));
+            stage.employmentRate = Clamp01(Max(SubsistenceEmployment, demo.employmentRate / 100f));
             stage.urbanisation = demo.tileCount > 0 ? Clamp01((float)demo.settledTiles / demo.tileCount) : 0f;
             stage.biomeFertility = province.primaryBiome != null ? Clamp01(province.primaryBiome.plantDensity) : 0.5f;
             stage.ageWorking = ReadShare(demo.ageShares, (int)AgeBucket.WorkingAge, 0.6f);
@@ -95,5 +102,6 @@ namespace RegionsAndSocieties.Demographics
             => (arr != null && index >= 0 && index < arr.Length) ? arr[index] : fallback;
 
         private static float Clamp01(float v) => v < 0f ? 0f : (v > 1f ? 1f : v);
+        private static float Max(float a, float b) => a > b ? a : b;
     }
 }
