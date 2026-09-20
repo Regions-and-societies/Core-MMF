@@ -133,6 +133,11 @@ run_suite influencegraph Exe \
     Tests/InfluenceGraphRulesTests.cs \
     $SRC/Demographics/InfluenceGraphRules.cs
 
+# Pure, no game — the per-cohort wealth decomposition (#58 §5).
+run_suite wealth Exe \
+    Tests/WealthRulesTests.cs \
+    $SRC/Demographics/WealthRules.cs
+
 run_suite populationcap Exe \
     Tests/PopulationCapRulesTests.cs \
     $SRC/Sizing/PopulationCapRules.cs $SRC/Sizing/TierPyramidRules.cs $SRC/Sizing/SettlementTier.cs \
