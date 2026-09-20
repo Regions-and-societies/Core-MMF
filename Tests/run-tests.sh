@@ -158,6 +158,13 @@ run_suite indicators Exe \
     Tests/IndicatorsRulesTests.cs \
     $SRC/Demographics/IndicatorsRules.cs
 
+# Pure, no game — the per-cohort year step composing all six modules (#58 spine).
+run_suite cohortyear Exe \
+    Tests/CohortYearRulesTests.cs \
+    $SRC/Demographics/CohortYearRules.cs $SRC/Demographics/InfluenceGraphRules.cs $SRC/Demographics/WealthRules.cs \
+    $SRC/Demographics/VitalsRules.cs $SRC/Demographics/GeographicScaleRules.cs $SRC/Demographics/IndicatorsRules.cs \
+    $SRC/Sizing/WorldScaleRules.cs
+
 run_suite populationcap Exe \
     Tests/PopulationCapRulesTests.cs \
     $SRC/Sizing/PopulationCapRules.cs $SRC/Sizing/TierPyramidRules.cs $SRC/Sizing/SettlementTier.cs \
