@@ -123,6 +123,11 @@ run_suite district Exe \
     $SRC/Sizing/WorldScaleRules.cs $SRC/Sizing/DistrictRules.cs $SRC/Sizing/SettlementTier.cs $SRC/Sizing/TierPyramidRules.cs $SRC/Sizing/BirthrateRules.cs
 # Population caps and the seeding contract (#71): a non-positive capacity means "no tier cap", never
 # "no inhabitants" - the misreading that emptied every NPC settlement. Pure, no game.
+# Pure, no game — the seeded wilderness base-population surface (#79) uses only System.Math.
+run_suite wilderness Exe \
+    Tests/WildernessPopulationRulesTests.cs \
+    $SRC/Sizing/WildernessPopulationRules.cs
+
 run_suite populationcap Exe \
     Tests/PopulationCapRulesTests.cs \
     $SRC/Sizing/PopulationCapRules.cs $SRC/Sizing/TierPyramidRules.cs $SRC/Sizing/SettlementTier.cs \
