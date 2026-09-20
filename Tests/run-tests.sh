@@ -153,6 +153,11 @@ run_suite reproduction Exe \
     Tests/ReproductionRulesTests.cs \
     $SRC/Demographics/ReproductionRules.cs
 
+# Pure, no game — the added societal indicators (#58 §7).
+run_suite indicators Exe \
+    Tests/IndicatorsRulesTests.cs \
+    $SRC/Demographics/IndicatorsRules.cs
+
 run_suite populationcap Exe \
     Tests/PopulationCapRulesTests.cs \
     $SRC/Sizing/PopulationCapRules.cs $SRC/Sizing/TierPyramidRules.cs $SRC/Sizing/SettlementTier.cs \
