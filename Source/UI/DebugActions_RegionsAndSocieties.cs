@@ -101,9 +101,10 @@ namespace RegionsAndSocieties.UI
                 if (shown++ >= 8) break;
                 var roster = Demographics.CohortFactory.BuildRoster(f, 10000f);
                 sb.AppendLine($"-- {f.Name} ({f.def.defName}, tech {f.def.techLevel}) — {roster.Count} cohort(s) --");
-                foreach (Demographics.CohortState c in roster)
+                foreach (Demographics.RegionCohort rc in roster)
                 {
-                    string kind = c.isBaseliner ? "Baseliner/other" : "xenotype";
+                    Demographics.CohortState c = rc.state;
+                    string kind = rc.xeno != null ? rc.xeno.defName : (c.isHybrid ? "Hybrid" : "Baseliner/other");
                     sb.AppendLine($"   {kind}: share {c.share:P0}  pop {c.pop:0}  lifespan {c.lifespan:0}"
                         + $"  drugBurden {c.drugBurden:0.0}  fragility {c.fragility:0.00}  heritable {c.heritable}");
                 }

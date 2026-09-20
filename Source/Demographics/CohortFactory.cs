@@ -101,13 +101,14 @@ namespace RegionsAndSocieties.Demographics
         }
 
         /// <summary>
-        /// The region's cohort roster: the faction's top-N xenotypes as named cohorts plus an "other" bucket
-        /// for the tail, populated to the region's headcount. One Baseliner cohort when Biotech is off or the
-        /// faction has no roster — the graceful-degradation case.
+        /// The region's cohort roster: the faction's top-N xenotypes as named cohorts (each paired with its
+        /// <see cref="XenotypeDef"/> identity) plus an "other" bucket for the tail, populated to the region's
+        /// headcount. One Baseliner cohort when Biotech is off or the faction has no roster — the
+        /// graceful-degradation case (= the old region-level model).
         /// </summary>
-        public static List<CohortState> BuildRoster(Faction faction, float regionPopulation, int topN = DefaultTopN)
+        public static List<RegionCohort> BuildRoster(Faction faction, float regionPopulation, int topN = DefaultTopN)
         {
-            var roster = new List<CohortState>();
+            var roster = new List<RegionCohort>();
             FactionDemographicProfile profile = faction != null ? FactionDemographicProfile.Build(faction) : FactionDemographicProfile.Empty;
 
             // normalise the weights into shares
@@ -116,7 +117,7 @@ namespace RegionsAndSocieties.Demographics
 
             if (profile?.races == null || profile.races.Length == 0 || total <= 0f)
             {
-                roster.Add(BuildCohort(null, 1f, regionPopulation));   // single Baseliner cohort (= old model)
+                roster.Add(new RegionCohort(null, BuildCohort(null, 1f, regionPopulation)));   // single Baseliner cohort
                 return roster;
             }
 
@@ -133,16 +134,13 @@ namespace RegionsAndSocieties.Demographics
                 float share = profile.raceWeights[idx] / total;
                 if (named < topN)
                 {
-                    roster.Add(BuildCohort(profile.races[idx], share, regionPopulation));
+                    roster.Add(new RegionCohort(profile.races[idx], BuildCohort(profile.races[idx], share, regionPopulation)));
                     named++;
                 }
                 else otherShare += share;
             }
             if (otherShare > 0f)
-            {
-                var other = BuildCohort(null, otherShare, regionPopulation);   // the tail, as baseliner
-                roster.Add(other);
-            }
+                roster.Add(new RegionCohort(null, BuildCohort(null, otherShare, regionPopulation)));   // the tail, as baseliner
             return roster;
         }
     }

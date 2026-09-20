@@ -32,7 +32,7 @@ namespace RegionsAndSocieties.Demographics
     {
         // --- intrinsic (Stock: from the xenotype's genes) ---
         public float lifespan = 80f, fragility = 0.02f, fertility = 0.45f, drugBurden = 0f;
-        public bool heritable = true, isBaseliner = false;
+        public bool heritable = true, isBaseliner = false, isHybrid = false;
         public float baseInit = 0.1f;        // the cohort's initial ideological preference
 
         // --- slow-carried between years ---
