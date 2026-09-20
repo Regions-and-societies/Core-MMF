@@ -126,10 +126,13 @@ net; region wealth is the aggregate.
 
 ## 6. Geographic scale → density, carrying capacity, food self-sufficiency
 The mod reads `planetCoverage` and `grid.TilesCount` but only counts tiles. This model gives tiles a physical size,
-**decoupled**: total tiles come from the real world; **per-tile scale is a tunable constant, default ≈4 km²/tile**
-(≈2 km across — the scale at which the game's ~450-per-tile cap can feed itself). RimWorld's "planet" framing is not
-physically self-consistent, so we pick a playable scale rather than Earth-sized (absurd density) or the rendered map
-(too small).
+**decoupled**: total tiles come from the real world; **per-tile scale is the district model's tile area** —
+**23.4 km²/tile** (6 km across, ~374 local maps), from `WorldScaleRules.TileAreaKm2`, derived from RimWorld's own
+marching clock (#67/#77). *(This supersedes the original ≈4 km²/tile placeholder, which was picked against the dead
+~450-per-tile settlement cap. Settlements are now 100..6,100 (district model, #30) and the countryside carries a
+~30/tile Frontier floor (#79); at 23.4 km²/tile food is rarely the binding constraint — regions sit well below
+carrying capacity and growth is governed by birth/migration rates, not starvation. The C# geo module reads
+`WorldScaleRules.TileAreaKm2`, never a hardcoded constant.)*
 - Region area = tiles × km²/tile. **Food capacity** = area × arable-fraction(biome fertility) × people-per-arable-km²
   (rises with education). Replaces the constant carrying-capacity **K** for #36; population saturates at what the land
   (plus road/trade imports) can feed. Answers #54 region-size and gives **population density** for free.

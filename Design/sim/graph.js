@@ -170,11 +170,14 @@ const CONTEXT = ['FactionRigidity','SlaveryStance','Conflict','Roads','BiomeFert
 // ---------- geographic scale (derive real area from world size; feed density + food) ----------
 // RimWorld's "planet" framing is not physically self-consistent (a full world is ~100k tiles yet the
 // rendered map is only 275x275 m). We DECOUPLE: total tiles come from the real world (TilesCount /
-// coverage), but per-tile physical scale is a documented, tunable constant chosen so population density
-// and agricultural carrying capacity come out playable. Default ~4 km^2/tile (~2 km across) — the size
-// at which the game's ~450-per-tile settlement cap can actually feed itself at realistic yields.
+// coverage), but per-tile physical scale is a fixed constant. This is now the DISTRICT-MODEL scale
+// (#67/#77): a world tile is 23.4 km^2 (6 km across, ~374 local maps), derived from RimWorld's own
+// marching clock — WorldScaleRules.TileAreaKm2 in C#. (Superseded the old ~4 km^2/tile placeholder,
+// which was chosen against the dead ~450-per-tile settlement cap; settlements are now 100..6,100 and
+// the countryside carries a ~30/tile Frontier floor, so at this scale food is rarely the binding
+// constraint — regions sit well below carrying capacity and growth is governed by birth/migration rates.)
 const GEO = {
-  km2PerTile: 4.0,
+  km2PerTile: 23.4,
   arableFraction: fert => clamp(0.05 + 0.35 * fert, 0.02, 0.45),      // poor biome ~5% arable, rich ~40%
   // people one km^2 of arable land can feed per year — subsistence farming feeds far fewer than industrial.
   peoplePerArableKm2: r => 50 + 450 * clamp(r.Education.Secondary + r.Education.Undergrad + r.Education.Postgrad, 0, 1),
