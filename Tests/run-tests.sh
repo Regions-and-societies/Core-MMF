@@ -138,6 +138,11 @@ run_suite wealth Exe \
     Tests/WealthRulesTests.cs \
     $SRC/Demographics/WealthRules.cs
 
+# Pure, no game — the per-cohort vital-statistics decomposition (#58 §4).
+run_suite vitals Exe \
+    Tests/VitalsRulesTests.cs \
+    $SRC/Demographics/VitalsRules.cs
+
 run_suite populationcap Exe \
     Tests/PopulationCapRulesTests.cs \
     $SRC/Sizing/PopulationCapRules.cs $SRC/Sizing/TierPyramidRules.cs $SRC/Sizing/SettlementTier.cs \
