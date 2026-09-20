@@ -148,6 +148,11 @@ run_suite geoscale Exe \
     Tests/GeographicScaleRulesTests.cs \
     $SRC/Demographics/GeographicScaleRules.cs $SRC/Sizing/WorldScaleRules.cs
 
+# Pure, no game — reproduction & germline inheritance (#58 §8).
+run_suite reproduction Exe \
+    Tests/ReproductionRulesTests.cs \
+    $SRC/Demographics/ReproductionRules.cs
+
 run_suite populationcap Exe \
     Tests/PopulationCapRulesTests.cs \
     $SRC/Sizing/PopulationCapRules.cs $SRC/Sizing/TierPyramidRules.cs $SRC/Sizing/SettlementTier.cs \
