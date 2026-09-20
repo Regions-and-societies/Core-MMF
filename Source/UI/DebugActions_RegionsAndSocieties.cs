@@ -87,6 +87,30 @@ namespace RegionsAndSocieties.UI
             Log.Message(RegionDebugReports.HoldingsReport());
         }
 
+        [DebugAction("Regions and Societies", "R&S: cohort roster (#58)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        private static void CohortRoster()
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("=== R&S cohort roster (#58) — top-N xenotype cohorts + gene-read intrinsics ===");
+            var factions = Find.FactionManager?.AllFactionsListForReading;
+            if (factions == null) { Log.Message(sb.ToString()); return; }
+            int shown = 0;
+            foreach (Faction f in factions)
+            {
+                if (f == null || f.IsPlayer || f.def == null || f.Hidden || f.defeated) continue;
+                if (shown++ >= 8) break;
+                var roster = Demographics.CohortFactory.BuildRoster(f, 10000f);
+                sb.AppendLine($"-- {f.Name} ({f.def.defName}, tech {f.def.techLevel}) — {roster.Count} cohort(s) --");
+                foreach (Demographics.CohortState c in roster)
+                {
+                    string kind = c.isBaseliner ? "Baseliner/other" : "xenotype";
+                    sb.AppendLine($"   {kind}: share {c.share:P0}  pop {c.pop:0}  lifespan {c.lifespan:0}"
+                        + $"  drugBurden {c.drugBurden:0.0}  fragility {c.fragility:0.00}  heritable {c.heritable}");
+                }
+            }
+            Log.Message(sb.ToString());
+        }
+
         [DebugAction("Regions and Societies", "R&S: placement probe (#61)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void PlacementProbe()
         {
