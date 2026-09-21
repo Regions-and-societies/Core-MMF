@@ -98,9 +98,27 @@ namespace RegionsAndSocieties.Demographics
         // Derived from the province's stable ownership, not the cullable source list, so it is identical
         // under full and culled aggregation — VerifyCulling stays result-identical.
         private static readonly Dictionary<int, Faction> ambientCache = new Dictionary<int, Faction>();
+        // #33: per-region density stats (its densest tile's population + population-weighted mean urbanity),
+        // so a per-tile local demographic read is O(1) after the region is first touched.
+        private static readonly Dictionary<int, RegionUrbanity> urbanityCache = new Dictionary<int, RegionUrbanity>();
         private static List<PressureSource> sources;
         private static int cacheVersion = -1;
         private static float avgTileSize = -1f;
+
+        private struct RegionUrbanity { public float maxTilePop; public float meanUrbanity; }
+
+        /// <summary>#33: one tile's location-based demographics — the region aggregate skewed by how densely
+        /// that tile is settled (denser = younger, better educated, wealthier, more employed). The
+        /// population-weighted mean of these over a region equals the region aggregate.</summary>
+        public struct LocalDemographicSample
+        {
+            public int medianAge;
+            public int educationIndex;
+            public int overallWealth;
+            public int employmentRate;
+            public float urbanity;       // 0 rural .. 1 the region's densest tile
+            public int localPopulation;  // dwellings modelled on this tile
+        }
 
         public static void InvalidateCache()
         {
@@ -108,6 +126,7 @@ namespace RegionsAndSocieties.Demographics
             regionCache.Clear();
             factionCache.Clear();
             ambientCache.Clear();
+            urbanityCache.Clear();
             sources = null;
             cacheVersion = -1;
         }
@@ -117,6 +136,7 @@ namespace RegionsAndSocieties.Demographics
         {
             regionCache.Clear();
             ambientCache.Clear();
+            urbanityCache.Clear();
         }
 
         private static void EnsureFresh()
@@ -128,6 +148,7 @@ namespace RegionsAndSocieties.Demographics
                 regionCache.Clear();
                 factionCache.Clear();
                 ambientCache.Clear();
+                urbanityCache.Clear();
                 sources = null;
                 cacheVersion = v;
             }
@@ -436,6 +457,67 @@ namespace RegionsAndSocieties.Demographics
             RegionDemographicsStress.Apply(province.id, demo);   // sparse overrides on top of the baseline
             regionCache[province.id] = demo;
             return demo;
+        }
+
+        /// <summary>
+        /// #33: one tile's LOCATION-BASED demographics — the region's (population-weighted) aggregate skewed
+        /// by how densely this particular tile is settled. A city tile reads younger, better educated,
+        /// wealthier and more employed than its region's rural fringe; the population-weighted mean of all a
+        /// region's tiles reproduces the region aggregate (see <see cref="LocationalDemographicsRules"/>), so
+        /// the per-tile read and the region overlay never disagree. Returns the plain region aggregate when
+        /// the region is unsettled or Societies is off.
+        /// </summary>
+        public static LocalDemographicSample LocalDemographics(int tileId)
+        {
+            var mgr = Find.World?.GetComponent<SynapseRegionManager>();
+            GeographicProvince province = mgr?.GetProvinceForTile(tileId);
+            RegionDemographics demo = ForRegion(province);
+            var sample = new LocalDemographicSample
+            {
+                medianAge = demo.medianAge,
+                educationIndex = demo.educationIndex,
+                overallWealth = demo.overallMedianWealth,
+                employmentRate = demo.employmentRate,
+                urbanity = 0f,
+                localPopulation = PopulationDensityUtility.GetSourcePopulationAtTile(tileId),
+            };
+            if (province == null || demo.settledTiles <= 0) return sample;   // no gradient to apply
+
+            RegionUrbanity u = UrbanityStats(province);
+            float ur = LocationalDemographicsRules.Urbanity(sample.localPopulation, u.maxTilePop);
+            sample.urbanity = ur;
+            sample.medianAge = LocationalDemographicsRules.LocalMedianAge(demo.medianAge, ur, u.meanUrbanity);
+            sample.educationIndex = LocationalDemographicsRules.LocalEducationIndex(demo.educationIndex, ur, u.meanUrbanity);
+            sample.overallWealth = LocationalDemographicsRules.LocalWealth(demo.overallMedianWealth, ur, u.meanUrbanity);
+            sample.employmentRate = LocationalDemographicsRules.LocalEmploymentRate(demo.employmentRate, ur, u.meanUrbanity);
+            return sample;
+        }
+
+        /// <summary>A region's density stats for the location gradient (#33): its densest tile's population
+        /// and the population-weighted mean urbanity, computed once per region and cached with the demographic
+        /// caches. Reads the per-tile source-population field (<see cref="PopulationDensityUtility"/>).</summary>
+        private static RegionUrbanity UrbanityStats(GeographicProvince province)
+        {
+            if (urbanityCache.TryGetValue(province.id, out RegionUrbanity cached)) return cached;
+
+            List<int> tiles = province.tiles;
+            float max = 0f;
+            for (int i = 0; i < tiles.Count; i++)
+            {
+                float pop = PopulationDensityUtility.GetSourcePopulationAtTile(tiles[i]);
+                if (pop > max) max = pop;
+            }
+            float wsum = 0f, psum = 0f;
+            for (int i = 0; i < tiles.Count; i++)
+            {
+                float pop = PopulationDensityUtility.GetSourcePopulationAtTile(tiles[i]);
+                if (pop <= 0f) continue;
+                wsum += pop * LocationalDemographicsRules.Urbanity(pop, max);
+                psum += pop;
+            }
+            var u = new RegionUrbanity { maxTilePop = max, meanUrbanity = psum > 0f ? wsum / psum : 0f };
+            urbanityCache[province.id] = u;
+            return u;
         }
 
         /// <summary>

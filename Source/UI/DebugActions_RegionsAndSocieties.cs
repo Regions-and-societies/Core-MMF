@@ -105,6 +105,61 @@ namespace RegionsAndSocieties.UI
             Log.Message(sb.ToString());
         }
 
+        [DebugAction("Regions and Societies", "R&S: location-based demographics (#33)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        private static void LocationBasedDemographics()
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("=== R&S location-based demographics (#33) — per-tile gradient vs region aggregate ===");
+            var mgr = Find.World?.GetComponent<SynapseRegionManager>();
+            if (mgr?.Provinces == null) { Log.Message("[R&S] no region manager"); return; }
+
+            // Pick the most-urban settled land region (its densest tile has the largest population) — the
+            // region that best shows the gradient.
+            GeographicProvince prov = null; int bestMax = -1;
+            foreach (GeographicProvince p in mgr.Provinces)
+            {
+                if (p == null || p.provinceType != ProvinceType.Land || p.tiles == null || p.tiles.Count < 2) continue;
+                int m = 0;
+                for (int i = 0; i < p.tiles.Count; i++) { int pop = PopulationDensityUtility.GetSourcePopulationAtTile(p.tiles[i]); if (pop > m) m = pop; }
+                if (m > bestMax && Demographics.RegionDemographicsUtility.ForRegion(p).settledTiles > 0) { bestMax = m; prov = p; }
+            }
+            if (prov == null) { Log.Message("[R&S] no settled land region found"); return; }
+
+            var demo = Demographics.RegionDemographicsUtility.ForRegion(prov);
+            sb.AppendLine($"region #{prov.id}: {prov.tiles.Count} tiles, settled {demo.settledTiles}");
+            sb.AppendLine($"  AGGREGATE:  age {demo.medianAge}  eduIndex {demo.educationIndex}  wealth {demo.overallMedianWealth}  employment {demo.employmentRate}%");
+
+            int dense = -1, sparse = -1, densePop = -1, sparsePop = int.MaxValue;
+            for (int i = 0; i < prov.tiles.Count; i++)
+            {
+                int t = prov.tiles[i], pop = PopulationDensityUtility.GetSourcePopulationAtTile(t);
+                if (pop > densePop) { densePop = pop; dense = t; }
+                if (pop > 0 && pop < sparsePop) { sparsePop = pop; sparse = t; }
+            }
+            if (dense >= 0)
+            {
+                var d = Demographics.RegionDemographicsUtility.LocalDemographics(dense);
+                sb.AppendLine($"  DENSEST  tile {dense} (pop {d.localPopulation}, urbanity {d.urbanity:0.00}):  age {d.medianAge}  edu {d.educationIndex}  wealth {d.overallWealth}  emp {d.employmentRate}%");
+            }
+            if (sparse >= 0)
+            {
+                var s = Demographics.RegionDemographicsUtility.LocalDemographics(sparse);
+                sb.AppendLine($"  SPARSEST tile {sparse} (pop {s.localPopulation}, urbanity {s.urbanity:0.00}):  age {s.medianAge}  edu {s.educationIndex}  wealth {s.overallWealth}  emp {s.employmentRate}%");
+            }
+
+            double wAcc = 0, eAcc = 0, empAcc = 0, ageAcc = 0, psum = 0;
+            for (int i = 0; i < prov.tiles.Count; i++)
+            {
+                int t = prov.tiles[i], pop = PopulationDensityUtility.GetSourcePopulationAtTile(t);
+                if (pop <= 0) continue;
+                var l = Demographics.RegionDemographicsUtility.LocalDemographics(t);
+                wAcc += pop * l.overallWealth; eAcc += pop * l.educationIndex; empAcc += pop * l.employmentRate; ageAcc += pop * l.medianAge; psum += pop;
+            }
+            if (psum > 0)
+                sb.AppendLine($"  POP-WEIGHTED MEAN (should ≈ aggregate):  age {ageAcc / psum:0.0}  edu {eAcc / psum:0.0}  wealth {wAcc / psum:0.0}  emp {empAcc / psum:0.0}%");
+            Log.Message(sb.ToString());
+        }
+
         [DebugAction("Regions and Societies", "R&S: cohort roster (#58)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void CohortRoster()
         {
@@ -327,6 +382,88 @@ namespace RegionsAndSocieties.UI
         private static void RegenerateProvinces()
         {
             Log.Message(RegionDebugReports.RegenerateAndAudit());
+        }
+
+        [DebugAction("Regions and Societies", "R&S: TEST colony influence x30 (#81)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap)]
+        private static void TestColonyInfluence()
+        {
+            var mgr = Find.World?.GetComponent<SynapseRegionManager>();
+            Map map = Find.AnyPlayerHomeMap ?? Find.CurrentMap;
+            if (mgr == null || map == null) { Log.Message("[R&S] no manager/map"); return; }
+
+            // The player's statement: a FREE custom-xenotype colonist ("Testlings can live free here").
+            var genes = new System.Collections.Generic.List<GeneDef>();
+            XenotypeDef donor = DefDatabase<XenotypeDef>.GetNamedSilentFail("Genie") ?? DefDatabase<XenotypeDef>.GetNamedSilentFail("Hussar");
+            if (donor?.genes != null) for (int i = 0; i < donor.genes.Count && genes.Count < 2; i++) if (donor.genes[i] != null) genes.Add(donor.genes[i]);
+            var custom = new CustomXenotype { name = "Testling", inheritable = true, genes = genes };
+            var req = new PawnGenerationRequest(PawnKindDefOf.Colonist, Faction.OfPlayer, forceGenerateNewPawn: true);
+            req.ForcedCustomXenotype = custom;
+            Pawn pawn = PawnGenerator.GeneratePawn(req);
+            GenSpawn.Spawn(pawn, CellFinder.RandomClosewalkCellNear(map.Center, map, 8), map);
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("=== R&S colony influence x30 (#81) — a FREE 'Testling' colonist, 30 demographic years ===");
+            GeographicProvince home = mgr.GetProvinceForTile(map.Tile.tileId);
+            for (int y = 0; y < 30; y++) mgr.AdvanceCohortYear();
+            if (home == null) { sb.AppendLine("(no player region)"); Log.Message(sb.ToString()); return; }
+
+            home.xenotypeAcceptance.TryGetValue("Testling", out float acc);
+            sb.AppendLine($"home region #{home.id}: acceptance[Testling] = {acc:0.00}  (target +1 = all free)");
+            if (home.cohorts?.cohorts != null)
+                foreach (var c in home.cohorts.cohorts)
+                    if (c.xenoDefName == "Testling")
+                        sb.AppendLine($"  Testling cohort: share {c.state.share:P0}  pop {c.state.pop:0}  standing {c.state.standing:0.00}  offset {c.state.acceptanceOffset:0.00}");
+
+            sb.AppendLine("spread to neighbours (should be positive but trailing home):");
+            int shown = 0;
+            foreach (int nb in ProvinceAdjacency.NeighboursOf(mgr, home.id))
+            {
+                GeographicProvince np = mgr.GetProvince(nb);
+                if (np == null || np.provinceType != ProvinceType.Land) continue;
+                np.xenotypeAcceptance.TryGetValue("Testling", out float na);
+                sb.AppendLine($"  neighbour #{nb}: acceptance[Testling] = {na:0.00}");
+                if (++shown >= 4) break;
+            }
+            Log.Message(sb.ToString());
+        }
+
+        [DebugAction("Regions and Societies", "R&S: TEST dynamics x8 + fusion (#36)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        private static void TestDynamicsAndFusion()
+        {
+            var mgr = Find.World?.GetComponent<SynapseRegionManager>();
+            if (mgr == null) { Log.Message("[R&S] no region manager"); return; }
+            mgr.StrictTerritorialOwnership = true;   // dynamics gate
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("=== R&S dynamics x8 + fusion (#36) ===");
+            int colony = Integration.PopulationDynamics.ColonyRegion(mgr);
+            GeographicProvince colonyProv = mgr.GetProvince(colony);
+            sb.AppendLine($"colony region #{colony} (base {colonyProv?.currentPopulation:0}), governance now {mgr.StrictTerritorialOwnership}");
+            for (int pass = 0; pass < 8; pass++)
+            {
+                float moved = mgr.RunPopulationDynamicsNow();
+                sb.AppendLine($"  pass {pass + 1}: migrated {moved:0.0}   colony delta now {mgr.PopulationDeltaOf(colony):0.0}");
+            }
+
+            var land = mgr.Provinces.FindAll(p => p.provinceType == ProvinceType.Land);
+            land.Sort((a, b) => mgr.PopulationDeltaOf(a.id).CompareTo(mgr.PopulationDeltaOf(b.id)));
+            sb.AppendLine("biggest population LOSSES (migration out toward colony):");
+            for (int i = 0; i < 5 && i < land.Count; i++)
+                sb.AppendLine($"   #{land[i].id} delta {mgr.PopulationDeltaOf(land[i].id):0.0} (base {land[i].currentPopulation:0})");
+            sb.AppendLine("biggest population GAINS (colony pull + hinterland accretion):");
+            for (int i = land.Count - 1; i >= 0 && i >= land.Count - 5; i--)
+                sb.AppendLine($"   #{land[i].id} delta {mgr.PopulationDeltaOf(land[i].id):0.0} (base {land[i].currentPopulation:0})");
+
+            // fusion: base vs effective on the colony region's densest tile
+            if (colonyProv != null)
+            {
+                int dense = -1, densePop = -1;
+                for (int i = 0; i < colonyProv.tiles.Count; i++)
+                { int t = colonyProv.tiles[i], p = PopulationDensityUtility.GetSourcePopulationAtTile(t); if (p > densePop) { densePop = p; dense = t; } }
+                if (dense >= 0)
+                    sb.AppendLine($"fusion @colony densest tile {dense}: base {PopulationDensityUtility.GetSourcePopulationAtTile(dense)} -> effective {PopulationDensityUtility.GetEffectivePopulationAtTile(dense)} (delta share {PopulationDensityUtility.PopulationDeltaShareAtTile(dense, PopulationDensityUtility.GetSourcePopulationAtTile(dense))})");
+            }
+            Log.Message(sb.ToString());
         }
 
         [DebugAction("Regions and Societies", "R&S: run population dynamics pass (#5/#8)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]

@@ -39,6 +39,13 @@ namespace RegionsAndSocieties.Demographics
         public float basePreference = 0.1f;  // drifts toward familiarity
         public float pop, share, assets;
 
+        // --- external influence, set before Step each year (#81) ---
+        // A per-xenotype acceptance offset the region applies to this cohort's standing: the player's
+        // example (accepting a xenotype as free vs enslaving it) raises or lowers how welcome that xenotype
+        // is, spreading region to region. Transient (recomputed each year from the region's acceptance map),
+        // so it is not scribed. Zero = no influence.
+        public float acceptanceOffset;
+
         // --- derived each year (outputs) ---
         public float standing, eduIndex, slaveShare, wealthLevel;
         public float[] education = new float[5];
@@ -86,7 +93,10 @@ namespace RegionsAndSocieties.Demographics
             // --- standing: familiarity drift, then contextual lift from the surrounding ideology ---
             float familiar = x.baseInit + 0.5f * Clamp(x.share * 2f - 0.2f, -0.3f, 0.5f);
             x.basePreference += 0.05f * (familiar - x.basePreference);
-            x.standing = Clamp(x.basePreference + r.ideoTolerance, -1f, 1f);
+            // #81: the region's acceptance of THIS xenotype (from the player's example, spread region to
+            // region) shifts its standing — an accepted caste is more welcome (more births, freer, attracts
+            // migrants), a degraded one less.
+            x.standing = Clamp(x.basePreference + r.ideoTolerance + x.acceptanceOffset, -1f, 1f);
             float standFac = (x.standing + 1f) / 2f;
 
             // --- socioeconomics: education index, slave share, stratified wealth level, slave floor ---

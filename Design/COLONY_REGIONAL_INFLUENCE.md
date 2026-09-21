@@ -1,7 +1,14 @@
 # Colony → Regional Influence (design note, #58 follow-on)
 
-**Status:** agreed direction 2026-09-21, not yet built. Builds on the #58 cohort engine
-(`Design/DEMOGRAPHIC_MODEL.md`) and the colony-read seeding already landed on `feature/issue-58`.
+**Status:** BUILT + validated in-game 2026-09-21 (#81, on the #33/#36/#81 cluster branch). The mechanic
+below is implemented in `ColonyInfluenceRules` (pure), `CohortState.acceptanceOffset` →
+`CohortYearRules.Step`, `GeographicProvince.xenotypeAcceptance` (scribed) and
+`SynapseRegionManager.UpdateColonyInfluence` (colony example → self-relax → neighbour diffusion). What
+remains from this note is the **infographic panel** (still TODO — see below). Builds on the #58 cohort
+engine (`Design/DEMOGRAPHIC_MODEL.md`) and the colony-read seeding landed with #58.
+
+Validation: a free "Testling" colonist over 30 years → home region acceptance 0.76, that cohort's standing
+maxed and its share grew 25%→39%, acceptance radiating to neighbours decaying with distance (0.37/0.24/0.21/0.17).
 
 ## The idea (thematic)
 

@@ -124,6 +124,10 @@ namespace RegionsAndSocieties
         public float PopulationDeltaOf(int regionId)
             => regionPopulationDelta != null && regionPopulationDelta.TryGetValue(regionId, out float v) ? v : 0f;
 
+        /// <summary>True once any region has drifted from migration/accretion (#5/#8) — the fast path so the
+        /// per-tile density read skips region lookups entirely on a world where nothing has moved yet.</summary>
+        public bool HasPopulationDelta => regionPopulationDelta != null && regionPopulationDelta.Count > 0;
+
         /// <summary>Run a population-dynamics pass right now (the on-request path for the #5 endpoint and the
         /// debug action), so a consumer never reads a stale number after an event. Returns people migrated.</summary>
         public float RunPopulationDynamicsNow() => Integration.PopulationDynamics.RunPasses(this, regionPopulationDelta);
@@ -573,6 +577,12 @@ namespace RegionsAndSocieties
         {
             var provs = Provinces;
             if (provs == null) return;
+
+            // #81 colony → regional influence: the player's TREATMENT of each xenotype (free vs enslaved)
+            // updates the acceptance of the region their colony sits in, then that acceptance spreads outward
+            // to neighbours — so what the player does bends who is welcome across the map, over years.
+            UpdateColonyInfluence(provs);
+
             for (int i = 0; i < provs.Count; i++)
             {
                 GeographicProvince p = provs[i];
@@ -595,12 +605,77 @@ namespace RegionsAndSocieties
                     p.cohorts.SetRoster(roster);
                 }
                 Demographics.RegionStage stage = Demographics.RegionStageBuilder.Build(p);
-                p.cohorts.AdvanceYear(stage);
+                p.cohorts.AdvanceYear(stage, p.xenotypeAcceptance);   // #81: acceptance shifts cohort standing
             }
             // #58: the cohorts just moved, so the cached region aggregates that overlay them (ForRegion) are
             // now stale — drop them so the overlays and panels rebuild from the freshly evolved cohorts on
             // next read. A once-a-year invalidation; regions recompute lazily, only what is actually looked at.
             Demographics.RegionDemographicsUtility.InvalidateRegionCache();
+        }
+
+        /// <summary>#81: fold the player's colony example into regional acceptance, then diffuse it outward.
+        /// (A) the region holding the colony relaxes its per-xenotype acceptance toward the colony's free/slave
+        /// treatment signal; (B) every region then drifts a little toward its neighbours' acceptance, so the
+        /// example radiates over years. Cheap and skipped entirely until the colony expresses a preference.</summary>
+        private void UpdateColonyInfluence(List<GeographicProvince> provs)
+        {
+            // (A) player example → the colony's region.
+            Dictionary<string, int[]> treatment = Demographics.CohortFactory.ColonyXenotypeTreatment();
+            bool anyAcceptance = false;
+            for (int i = 0; i < provs.Count; i++)
+                if (provs[i] != null && provs[i].xenotypeAcceptance != null && provs[i].xenotypeAcceptance.Count > 0) { anyAcceptance = true; break; }
+
+            if (treatment.Count > 0)
+            {
+                for (int i = 0; i < provs.Count; i++)
+                {
+                    GeographicProvince p = provs[i];
+                    if (p == null || p.provinceType != ProvinceType.Land || !ProvinceContainsPlayerColony(p)) continue;
+                    foreach (var kv in treatment)
+                    {
+                        float sig = Demographics.ColonyInfluenceRules.TreatmentSignal(kv.Value[0], kv.Value[1]);
+                        p.xenotypeAcceptance.TryGetValue(kv.Key, out float cur);
+                        p.xenotypeAcceptance[kv.Key] = Demographics.ColonyInfluenceRules.Relax(cur, sig, Demographics.ColonyInfluenceRules.SelfRelaxRate);
+                    }
+                    anyAcceptance = true;
+                }
+            }
+            if (!anyAcceptance) return;   // nothing to spread yet
+
+            // (B) spread: each region drifts toward its neighbours' mean acceptance, per xenotype. Double-buffered
+            // so the year's diffusion doesn't depend on iteration order.
+            var next = new Dictionary<int, Dictionary<string, float>>();
+            for (int i = 0; i < provs.Count; i++)
+            {
+                GeographicProvince p = provs[i];
+                if (p == null || p.provinceType != ProvinceType.Land) continue;
+
+                var keys = new HashSet<string>(p.xenotypeAcceptance.Keys);
+                var neighbours = new List<GeographicProvince>();
+                foreach (int nb in ProvinceAdjacency.NeighboursOf(this, p.id))
+                {
+                    GeographicProvince np = GetProvince(nb);
+                    if (np != null && np.provinceType == ProvinceType.Land) { neighbours.Add(np); foreach (string k in np.xenotypeAcceptance.Keys) keys.Add(k); }
+                }
+                if (keys.Count == 0) continue;
+
+                var updated = new Dictionary<string, float>();
+                foreach (string k in keys)
+                {
+                    p.xenotypeAcceptance.TryGetValue(k, out float cur);
+                    float sum = 0f; int n = 0;
+                    for (int j = 0; j < neighbours.Count; j++) { neighbours[j].xenotypeAcceptance.TryGetValue(k, out float nv); sum += nv; n++; }
+                    float mean = n > 0 ? sum / n : 0f;
+                    float val = Demographics.ColonyInfluenceRules.Relax(cur, mean, Demographics.ColonyInfluenceRules.SpreadRate);
+                    if (System.Math.Abs(val) > 0.0005f || p.xenotypeAcceptance.ContainsKey(k)) updated[k] = val;
+                }
+                next[p.id] = updated;
+            }
+            foreach (var kv in next)
+            {
+                GeographicProvince p = GetProvince(kv.Key);
+                if (p != null) p.xenotypeAcceptance = kv.Value;
+            }
         }
 
         /// <summary>#58: true when a player home map sits on one of this province's tiles — i.e. the player's

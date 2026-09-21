@@ -183,6 +183,45 @@ namespace RegionsAndSocieties.Demographics
             return roster;
         }
 
+        /// <summary>The colony's free vs enslaved head-count per NON-baseliner xenotype (#81) — the raw
+        /// treatment signal for colony → regional influence. Key = xenoDefName / custom xenotype name (matching
+        /// the cohort identities BuildRosterFromColony stores); value = [freeCount, slaveCount].</summary>
+        public static Dictionary<string, int[]> ColonyXenotypeTreatment()
+        {
+            var map = new Dictionary<string, int[]>();
+            TallyTreatment(map, PawnsFinder.AllMaps_FreeColonists, 0);   // free members
+            var maps = Find.Maps;
+            if (maps != null)
+                for (int i = 0; i < maps.Count; i++)
+                    TallyTreatment(map, maps[i]?.mapPawns?.SlavesOfColonySpawned, 1);   // enslaved members
+            return map;
+        }
+
+        private static void TallyTreatment(Dictionary<string, int[]> map, List<Pawn> pawns, int slot)
+        {
+            if (pawns == null) return;
+            for (int i = 0; i < pawns.Count; i++)
+            {
+                string id = TreatmentIdentityOf(pawns[i]);
+                if (id == null) continue;   // a plain baseliner — the player is making no xenotype statement
+                if (!map.TryGetValue(id, out int[] c)) { c = new int[2]; map[id] = c; }
+                c[slot]++;
+            }
+        }
+
+        /// <summary>The non-baseliner xenotype identity a pawn carries (defName, or a custom xenotype's name),
+        /// or null for a plain baseliner — same identity <see cref="BuildRosterFromColony"/> stores, so
+        /// acceptance keys line up with cohort xenoDefNames.</summary>
+        public static string TreatmentIdentityOf(Pawn pawn)
+        {
+            Pawn_GeneTracker g = pawn?.genes;
+            if (g == null) return null;
+            XenotypeDef xd = g.Xenotype;
+            if (xd != null && !IsBaseliner(xd)) return xd.defName;
+            CustomXenotype cx = g.CustomXenotype;
+            return cx?.name ?? (!string.IsNullOrEmpty(g.xenotypeName) && g.xenotypeName != "Baseliner" ? g.xenotypeName : null);
+        }
+
         /// <summary>The gene defs a pawn actually carries as endogenes — the intrinsic gene set of a custom
         /// (unique) xenotype when no <see cref="CustomXenotype"/> object is available to read from.</summary>
         private static List<GeneDef> EndogeneDefs(Pawn_GeneTracker g)

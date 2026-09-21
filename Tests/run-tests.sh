@@ -158,6 +158,21 @@ run_suite indicators Exe \
     Tests/IndicatorsRulesTests.cs \
     $SRC/Demographics/IndicatorsRules.cs
 
+# Pure, no game — location-based (population-weighted) demographic gradient (#33).
+run_suite locational Exe \
+    Tests/LocationalDemographicsRulesTests.cs \
+    $SRC/Demographics/LocationalDemographicsRules.cs
+
+# Pure, no game — population-dynamics tuning math: migration falloff/ceiling, accretion bounds (#36).
+run_suite popdynamics Exe \
+    Tests/PopulationDynamicsRulesTests.cs \
+    $SRC/Integration/PopulationDynamicsRules.cs
+
+# Pure, no game — colony -> regional influence: treatment signal + acceptance diffusion (#81).
+run_suite colonyinfluence Exe \
+    Tests/ColonyInfluenceRulesTests.cs \
+    $SRC/Demographics/ColonyInfluenceRules.cs
+
 # Pure, no game — the per-cohort year step composing all six modules (#58 spine).
 run_suite cohortyear Exe \
     Tests/CohortYearRulesTests.cs \

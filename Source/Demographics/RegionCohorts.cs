@@ -74,8 +74,10 @@ namespace RegionsAndSocieties.Demographics
             seeded = true;
         }
 
-        /// <summary>Advance every cohort one demographic year against the region stage, then move populations.</summary>
-        public void AdvanceYear(RegionStage stage)
+        /// <summary>Advance every cohort one demographic year against the region stage, then move populations.
+        /// <paramref name="acceptance"/> (#81, optional) is the region's per-xenotype acceptance the player's
+        /// example has built up; it shifts each matching cohort's standing before its year steps.</summary>
+        public void AdvanceYear(RegionStage stage, Dictionary<string, float> acceptance = null)
         {
             if (cohorts == null || cohorts.Count == 0) return;
             CohortYearRules.PrepareRegion(stage);
@@ -83,8 +85,10 @@ namespace RegionsAndSocieties.Demographics
             float total = TotalPopulation; if (total <= 0f) total = 1f;
             for (int i = 0; i < cohorts.Count; i++)
             {
-                cohorts[i].state.share = cohorts[i].state.pop / total;
-                CohortYearRules.Step(cohorts[i].state, stage);
+                CohortState s = cohorts[i].state;
+                s.share = s.pop / total;
+                s.acceptanceOffset = (acceptance != null && acceptance.TryGetValue(cohorts[i].xenoDefName, out float a)) ? a : 0f;
+                CohortYearRules.Step(s, stage);
             }
             MoveStocks(stage);
         }
