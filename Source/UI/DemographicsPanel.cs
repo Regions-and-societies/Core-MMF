@@ -129,13 +129,19 @@ namespace RegionsAndSocieties.UI
             if (demo.biotechActive)
             {
                 y += SectionGap;
-                if (demo.raceShares.Count == 0)
+                if (demo.raceShares.Count == 0 && demo.customRaceShares.Count == 0)
                     y = NoteSection(rect, y, "Xenotypes", "No data.");
                 else
-                    y = PieSection(rect, y, "Xenotypes", demo.raceShares
+                {
+                    var slices = demo.raceShares
                         .OrderByDescending(k => k.Value)
                         .Select(k => new PieSlice { label = k.Key.LabelCap, fraction = k.Value, color = DemographicColors.Xenotype(k.Key) })
-                        .ToList(), cacheKeyBase + "_xeno");
+                        .ToList();
+                    // Def-less xenotypes (player custom xenotypes / removed-mod) shown by their own name (#58).
+                    foreach (var kv in demo.customRaceShares.OrderByDescending(k => k.Value))
+                        slices.Add(new PieSlice { label = kv.Key, fraction = kv.Value, color = DemographicColors.Xenotype(kv.Key) });
+                    y = PieSection(rect, y, "Xenotypes", slices, cacheKeyBase + "_xeno");
+                }
             }
 
             if (demo.ideologyActive)

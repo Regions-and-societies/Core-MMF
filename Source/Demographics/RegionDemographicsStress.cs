@@ -43,6 +43,12 @@ namespace RegionsAndSocieties.Demographics
                 var keys = new List<XenotypeDefKey>();
                 foreach (var kv in demo.medianWealthByRace) keys.Add(new XenotypeDefKey(kv.Key));
                 foreach (var k in keys) demo.medianWealthByRace[k.def] = (int)(demo.medianWealthByRace[k.def] * ov.wealthMultiplier);
+                // Def-less (custom / removed-mod) xenotypes carry their own wealth map; stress it the same (#58).
+                if (demo.customMedianWealthByName.Count > 0)
+                {
+                    var names = new List<string>(demo.customMedianWealthByName.Keys);
+                    foreach (var n in names) demo.customMedianWealthByName[n] = (int)(demo.customMedianWealthByName[n] * ov.wealthMultiplier);
+                }
             }
 
             float sexDelta = ov.CurrentFemaleDelta();

@@ -31,6 +31,12 @@ namespace RegionsAndSocieties.Demographics
         public readonly Dictionary<Faction, float> factionShares = new Dictionary<Faction, float>();   // dominant-pressure owner per tile
         public readonly Dictionary<XenotypeDef, float> raceShares = new Dictionary<XenotypeDef, float>();
         public readonly Dictionary<XenotypeDef, int> medianWealthByRace = new Dictionary<XenotypeDef, int>();
+        // Def-less xenotypes — a player custom xenotype (in-game editor) or one whose defining mod was
+        // removed — keyed by name, since they have no XenotypeDef. Only OverlayCohorts fills these (from the
+        // living cohorts); the derived tile path has defs only, so they stay empty there and in VerifyCulling.
+        // Surfaced alongside raceShares in the panel and reports (#58 combine-the-lists custom-xenotype support).
+        public readonly Dictionary<string, float> customRaceShares = new Dictionary<string, float>();
+        public readonly Dictionary<string, int> customMedianWealthByName = new Dictionary<string, int>();
         public readonly Dictionary<MemeDef, float> memeShares = new Dictionary<MemeDef, float>();
         // Ideology structure (#13): the share of settled tiles under each ideo (primary + minor), the
         // deepening of the meme layer into an ethnicity-style breakdown. Empty with Ideology off.
@@ -426,6 +432,7 @@ namespace RegionsAndSocieties.Demographics
             if (regionCache.TryGetValue(province.id, out RegionDemographics cached)) return cached;
 
             var demo = Aggregate(province);
+            OverlayCohorts(demo, province);                      // #58: living cohorts are the source of truth for the people-axes
             RegionDemographicsStress.Apply(province.id, demo);   // sparse overrides on top of the baseline
             regionCache[province.id] = demo;
             return demo;
@@ -541,6 +548,144 @@ namespace RegionsAndSocieties.Demographics
             }
 
             return demo;
+        }
+
+        /// <summary>
+        /// #58 aggregation replace: once a region's per-xenotype cohorts are seeded and evolving, THEY — not
+        /// the per-tile derived draw — are the <b>source of truth</b> for the region's PEOPLE axes. This
+        /// rewrites the freshly derived baseline's race, age, education, sex and per-race wealth from the
+        /// cohorts (population-weighted), so the overlays and panels show the living population as it drifts:
+        /// a germline caste grows its share, a drug-dependent one fades, elders accumulate where lifespans
+        /// are long. The PLACE-derived axes (ideology, meme, faction, occupation, overall wealth/SES) are
+        /// left untouched — the cohort model does not track them (§13/§16 stay derived, per the design lock).
+        ///
+        /// <para>The per-tile aggregate remains the cold-start seed (the cohorts were built from it) and the
+        /// fallback for a region not yet ticked. Applied in <see cref="ForRegion"/> ONLY, after
+        /// <see cref="Aggregate"/> and before the stress layer — so <see cref="VerifyCulling"/> (which
+        /// compares two <see cref="AggregateWith"/> runs) never sees it and stays result-identical, and a
+        /// region with no seeded cohorts reads exactly the pre-cohort numbers (the no-Biotech regression).</para>
+        /// </summary>
+        private static void OverlayCohorts(RegionDemographics demo, GeographicProvince province)
+        {
+            if (demo == null || demo.settledTiles <= 0) return;   // only refine a region that already reads populated
+            RegionCohorts rc = province?.cohorts;
+            if (rc == null || !rc.seeded || rc.cohorts == null || rc.cohorts.Count == 0) return;
+            float total = rc.TotalPopulation;
+            if (total <= 0f) return;
+
+            var racePop = new Dictionary<XenotypeDef, float>();
+            var raceWealthAcc = new Dictionary<XenotypeDef, double>();   // pop-weighted 0..1 wealth level, per race
+            var customPop = new Dictionary<string, float>();            // def-less xenotypes (custom / removed-mod), by name
+            var customWealthAcc = new Dictionary<string, double>();
+            float ageChild = 0f, ageWorking = 0f, ageElder = 0f;
+            var edu = new float[EducationRules.TierCount];
+            float female = 0f, longevityAcc = 0f;
+            bool biotech = demo.biotechActive;
+
+            for (int i = 0; i < rc.cohorts.Count; i++)
+            {
+                RegionCohort c = rc.cohorts[i];
+                if (c?.state == null) continue;
+                float pop = c.state.pop;
+                if (pop <= 0f) continue;
+
+                if (biotech)
+                {
+                    ClassifyCohortRace(c.xenoDefName, out XenotypeDef xeno, out string customName);
+                    if (xeno != null)
+                    {
+                        racePop.TryGetValue(xeno, out float rp); racePop[xeno] = rp + pop;
+                        raceWealthAcc.TryGetValue(xeno, out double wa); raceWealthAcc[xeno] = wa + pop * c.state.wealthLevel;
+                    }
+                    else if (customName != null)
+                    {
+                        customPop.TryGetValue(customName, out float cp); customPop[customName] = cp + pop;
+                        customWealthAcc.TryGetValue(customName, out double cwa); customWealthAcc[customName] = cwa + pop * c.state.wealthLevel;
+                    }
+                }
+
+                ageChild += pop * c.state.ageChild;
+                ageWorking += pop * c.state.ageWorking;
+                ageElder += pop * c.state.ageElder;
+                float[] ce = c.state.education;
+                if (ce != null)
+                    for (int t = 0; t < edu.Length && t < ce.Length; t++) edu[t] += pop * ce[t];
+                female += pop * c.state.femaleFraction;
+                longevityAcc += pop * LongevitySkew(c.state.lifespan);
+            }
+
+            // The per-year derived fields (age, education, sex, wealth level) are NOT scribed — only the
+            // cohorts' intrinsics and populations survive a save. So after a load a region's cohorts carry
+            // headcounts but zeroed derived fields until the next demographic-year tick re-steps them. A
+            // present age pyramid is the "has been stepped this session" signal: without it, keep the whole
+            // coherent derived baseline rather than overwriting axes with stale zeros (which would read as an
+            // all-male, ageless, uneducated region for up to a year after load).
+            float ageSum = ageChild + ageWorking + ageElder;
+            if (ageSum <= 0f) return;
+
+            // --- age structure (#10): pop-weighted cohort pyramids, median stretched by cohort longevity ---
+            demo.ageShares[(int)AgeBucket.Child] = ageChild / ageSum;
+            demo.ageShares[(int)AgeBucket.WorkingAge] = ageWorking / ageSum;
+            demo.ageShares[(int)AgeBucket.Elder] = ageElder / ageSum;
+            demo.medianAge = AgeStructureRules.MedianAge(demo.ageShares, longevityAcc / total);
+
+            // --- education (#15): pop-weighted cohort distributions ---
+            float eduSum = 0f; for (int t = 0; t < edu.Length; t++) eduSum += edu[t];
+            if (eduSum > 0f)
+            {
+                for (int t = 0; t < EducationRules.TierCount; t++) demo.educationShares[t] = edu[t] / eduSum;
+                demo.educationIndex = EducationRules.Index(demo.educationShares);
+            }
+
+            // --- sex ratio (#11): pop-weighted cohort female fraction (stress adds its skew on top, later) ---
+            demo.femaleFraction = Mathf.Clamp01(female / total);
+
+            // --- xenotypes (#12) + per-race wealth (#14). Biotech only; the region's overall wealth stays the
+            // derived regional anchor, per-race relative wealth comes from the cohort's evolved wealth level. ---
+            if (biotech && (racePop.Count > 0 || customPop.Count > 0))
+            {
+                demo.raceShares.Clear();
+                demo.medianWealthByRace.Clear();
+                demo.customRaceShares.Clear();
+                demo.customMedianWealthByName.Clear();
+                int anchor = demo.overallMedianWealth > 0 ? demo.overallMedianWealth : 300;
+                foreach (var kv in racePop)
+                {
+                    demo.raceShares[kv.Key] = kv.Value / total;
+                    double wl = raceWealthAcc[kv.Key] / kv.Value;                 // avg 0..1 wealth level for the race
+                    demo.medianWealthByRace[kv.Key] = (int)System.Math.Round(anchor * (0.4 + 1.2 * wl));
+                }
+                foreach (var kv in customPop)
+                {
+                    demo.customRaceShares[kv.Key] = kv.Value / total;
+                    double wl = customWealthAcc[kv.Key] / kv.Value;
+                    demo.customMedianWealthByName[kv.Key] = (int)System.Math.Round(anchor * (0.4 + 1.2 * wl));
+                }
+            }
+        }
+
+        /// <summary>Classify a cohort's <c>xenoDefName</c> for the race axis. Three cases (Biotech only):
+        /// an empty name is the baseliner / hybrid / "other" bucket (→ Baseliner def); a name that resolves
+        /// is that xenotype (→ <paramref name="def"/>); a non-empty name that does NOT resolve is a def-less
+        /// xenotype — a player custom xenotype or one whose mod was removed — surfaced by name
+        /// (→ <paramref name="customName"/>) rather than silently folded into Baseliner. Both out-params are
+        /// null when Biotech is off, so the race axis stays empty exactly as the derived path leaves it.</summary>
+        private static void ClassifyCohortRace(string xenoDefName, out XenotypeDef def, out string customName)
+        {
+            def = null; customName = null;
+            if (!ModLister.BiotechInstalled) return;
+            if (string.IsNullOrEmpty(xenoDefName)) { def = XenotypeDefOf.Baseliner; return; }
+            XenotypeDef d = DefDatabase<XenotypeDef>.GetNamedSilentFail(xenoDefName);
+            if (d != null) { def = d; return; }
+            customName = xenoDefName;
+        }
+
+        /// <summary>Map a cohort's intrinsic lifespan to the 0..1 elder-band stretch the age median uses:
+        /// a human (~80) reads 0, a longevity/ageless caste reads 1.</summary>
+        private static float LongevitySkew(float lifespan)
+        {
+            float t = (lifespan - CohortFactory.BaselineLifespan) / (CohortFactory.LongevityLifespan - CohortFactory.BaselineLifespan);
+            return t < 0f ? 0f : (t > 1f ? 1f : t);
         }
 
         /// <summary>
@@ -1123,6 +1268,9 @@ namespace RegionsAndSocieties.Demographics
             if (!DictEqF(a.factionShares, b.factionShares) || !DictEqF(a.raceShares, b.raceShares)) return false;
             if (!DictEqF(a.ideoShares, b.ideoShares) || !DictEqF(a.memeShares, b.memeShares)) return false;
             if (!DictEqI(a.medianWealthByRace, b.medianWealthByRace)) return false;
+            // Custom (def-less) xenotypes are only ever filled by the cohort overlay in ForRegion, never by
+            // AggregateWith — so they are empty on both sides here; compared for completeness/future-proofing.
+            if (!DictEqF(a.customRaceShares, b.customRaceShares) || !DictEqI(a.customMedianWealthByName, b.customMedianWealthByName)) return false;
             return true;
         }
 
@@ -1577,10 +1725,8 @@ namespace RegionsAndSocieties.Demographics
         private static Dictionary<XenotypeDef, float> XenotypesFor(Faction faction)
         {
             if (!ModLister.BiotechInstalled) return null;
-            // Many factions define their pawns through pawnGroupMakers rather than basicMemberKind;
-            // fall back to a generic kind so XenotypesAvailableFor can still read the faction's set.
-            PawnKindDef kind = faction.def?.basicMemberKind ?? PawnKindDefOf.Colonist;
-            if (kind == null) return null;
+            FactionDef fdef = faction?.def;
+            if (fdef == null) return null;
 
             if (!xenoResolved)
             {
@@ -1590,8 +1736,49 @@ namespace RegionsAndSocieties.Demographics
             }
             if (xenoAvailMethod == null) return null;
 
-            try { return xenoAvailMethod.Invoke(null, new object[] { kind, faction.def, faction }) as Dictionary<XenotypeDef, float>; }
-            catch { return null; }
+            // A faction fields its members through many pawnkinds — its basicMemberKind AND every pawnkind
+            // in its pawnGroupMakers (options, guards, traders, carriers). A modded faction that assigns its
+            // xenotypes only through pawnGroupMakers (VFE-style) is invisible to basicMemberKind alone, which
+            // is why such a faction read as plain Baseliner. Union the xenotype table over ALL its kinds so
+            // the faction's real genetic spread surfaces (#58 modded-xenotype support). Cached per faction.
+            var kinds = new HashSet<PawnKindDef>();
+            if (fdef.basicMemberKind != null) kinds.Add(fdef.basicMemberKind);
+            if (fdef.pawnGroupMakers != null)
+            {
+                for (int i = 0; i < fdef.pawnGroupMakers.Count; i++)
+                {
+                    PawnGroupMaker pgm = fdef.pawnGroupMakers[i];
+                    if (pgm == null) continue;
+                    AddKinds(kinds, pgm.options);
+                    AddKinds(kinds, pgm.guards);
+                    AddKinds(kinds, pgm.traders);
+                    AddKinds(kinds, pgm.carriers);
+                }
+            }
+            if (kinds.Count == 0) kinds.Add(PawnKindDefOf.Colonist);   // last-resort generic kind
+
+            var union = new Dictionary<XenotypeDef, float>();
+            foreach (PawnKindDef kind in kinds)
+            {
+                if (kind == null) continue;
+                Dictionary<XenotypeDef, float> table;
+                try { table = xenoAvailMethod.Invoke(null, new object[] { kind, fdef, faction }) as Dictionary<XenotypeDef, float>; }
+                catch { continue; }
+                if (table == null) continue;
+                foreach (var kv in table)
+                {
+                    if (kv.Key == null || kv.Value <= 0f) continue;
+                    union.TryGetValue(kv.Key, out float w); union[kv.Key] = w + kv.Value;
+                }
+            }
+            return union.Count > 0 ? union : null;
+        }
+
+        private static void AddKinds(HashSet<PawnKindDef> set, List<PawnGenOption> options)
+        {
+            if (options == null) return;
+            for (int i = 0; i < options.Count; i++)
+                if (options[i]?.kind != null) set.Add(options[i].kind);
         }
     }
 }

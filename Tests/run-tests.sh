@@ -128,6 +128,43 @@ run_suite wilderness Exe \
     Tests/WildernessPopulationRulesTests.cs \
     $SRC/Sizing/WildernessPopulationRules.cs
 
+# Pure, no game — the influence-graph step primitives (#58 keystone) use only System.Math.
+run_suite influencegraph Exe \
+    Tests/InfluenceGraphRulesTests.cs \
+    $SRC/Demographics/InfluenceGraphRules.cs
+
+# Pure, no game — the per-cohort wealth decomposition (#58 §5).
+run_suite wealth Exe \
+    Tests/WealthRulesTests.cs \
+    $SRC/Demographics/WealthRules.cs
+
+# Pure, no game — the per-cohort vital-statistics decomposition (#58 §4).
+run_suite vitals Exe \
+    Tests/VitalsRulesTests.cs \
+    $SRC/Demographics/VitalsRules.cs
+
+# Pure, no game — geographic scale/food/carrying-capacity (#58 §6), reads WorldScaleRules.
+run_suite geoscale Exe \
+    Tests/GeographicScaleRulesTests.cs \
+    $SRC/Demographics/GeographicScaleRules.cs $SRC/Sizing/WorldScaleRules.cs
+
+# Pure, no game — reproduction & germline inheritance (#58 §8).
+run_suite reproduction Exe \
+    Tests/ReproductionRulesTests.cs \
+    $SRC/Demographics/ReproductionRules.cs
+
+# Pure, no game — the added societal indicators (#58 §7).
+run_suite indicators Exe \
+    Tests/IndicatorsRulesTests.cs \
+    $SRC/Demographics/IndicatorsRules.cs
+
+# Pure, no game — the per-cohort year step composing all six modules (#58 spine).
+run_suite cohortyear Exe \
+    Tests/CohortYearRulesTests.cs \
+    $SRC/Demographics/CohortYearRules.cs $SRC/Demographics/InfluenceGraphRules.cs $SRC/Demographics/WealthRules.cs \
+    $SRC/Demographics/VitalsRules.cs $SRC/Demographics/GeographicScaleRules.cs $SRC/Demographics/IndicatorsRules.cs \
+    $SRC/Sizing/WorldScaleRules.cs
+
 run_suite populationcap Exe \
     Tests/PopulationCapRulesTests.cs \
     $SRC/Sizing/PopulationCapRules.cs $SRC/Sizing/TierPyramidRules.cs $SRC/Sizing/SettlementTier.cs \
@@ -278,6 +315,9 @@ run_suite typecheck Library \
     $SRC/WorldObjectPlacementUtility.cs $SRC/OutpostPlacementUtility.cs \
     $SRC/RegionalOwnershipUtility.cs \
     $SRC/GeographicProvince.cs $SRC/BiomeSafe.cs $SRC/IRegionDemographicProvider.cs \
+    $SRC/Demographics/RegionCohorts.cs $SRC/Demographics/CohortYearRules.cs \
+    $SRC/Demographics/InfluenceGraphRules.cs $SRC/Demographics/WealthRules.cs $SRC/Demographics/VitalsRules.cs \
+    $SRC/Demographics/GeographicScaleRules.cs $SRC/Demographics/ReproductionRules.cs $SRC/Demographics/IndicatorsRules.cs \
     $SRC/Demographics/AgeStructureRules.cs \
     $SRC/Demographics/EducationRules.cs \
     $SRC/Demographics/FactionCharacterRules.cs \

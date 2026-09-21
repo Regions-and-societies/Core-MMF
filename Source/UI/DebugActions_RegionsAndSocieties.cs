@@ -87,6 +87,203 @@ namespace RegionsAndSocieties.UI
             Log.Message(RegionDebugReports.HoldingsReport());
         }
 
+        [DebugAction("Regions and Societies", "R&S: xenotype intrinsics (#58)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        private static void XenotypeIntrinsics()
+        {
+            // Validates CohortFactory's gene reading (§1: per-xenotype constants from genes) against EVERY
+            // real xenotype in the database — the multi-cohort variety the all-baseliner faction rosters
+            // can't show. Expect e.g. Hussar/Waster drugBurden > 0, Sanguophage heritable false, a
+            // longevity xenotype lifespan > 80.
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("=== R&S xenotype intrinsics (#58) — gene-read cohort constants per xenotype ===");
+            foreach (XenotypeDef x in DefDatabase<XenotypeDef>.AllDefsListForReading)
+            {
+                Demographics.CohortState c = Demographics.CohortFactory.BuildCohort(x, 0f, 0f);
+                sb.AppendLine($"   {x.defName,-18} lifespan {c.lifespan,4:0}  drugBurden {c.drugBurden:0.0}"
+                    + $"  fragility {c.fragility:0.00}  heritable {c.heritable}  baseliner {c.isBaseliner}");
+            }
+            Log.Message(sb.ToString());
+        }
+
+        [DebugAction("Regions and Societies", "R&S: cohort roster (#58)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        private static void CohortRoster()
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("=== R&S cohort roster (#58) — top-N xenotype cohorts + gene-read intrinsics ===");
+            var factions = Find.FactionManager?.AllFactionsListForReading;
+            if (factions == null) { Log.Message(sb.ToString()); return; }
+            int shown = 0;
+            foreach (Faction f in factions)
+            {
+                if (f == null || f.IsPlayer || f.def == null || f.Hidden || f.defeated) continue;
+                if (shown++ >= 8) break;
+                var roster = Demographics.CohortFactory.BuildRoster(f, 10000f);
+                sb.AppendLine($"-- {f.Name} ({f.def.defName}, tech {f.def.techLevel}) — {roster.Count} cohort(s) --");
+                foreach (Demographics.RegionCohort rc in roster)
+                {
+                    Demographics.CohortState c = rc.state;
+                    string kind = rc.IsXeno ? rc.xenoDefName : (c.isHybrid ? "Hybrid" : "Baseliner/other");
+                    sb.AppendLine($"   {kind}: share {c.share:P0}  pop {c.pop:0}  lifespan {c.lifespan:0}"
+                        + $"  drugBurden {c.drugBurden:0.0}  fragility {c.fragility:0.00}  heritable {c.heritable}");
+                }
+            }
+            Log.Message(sb.ToString());
+        }
+
+        [DebugAction("Regions and Societies", "R&S: player region demographics (#58)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap)]
+        private static void PlayerRegionDemographics()
+        {
+            // #58 combine-the-lists: the player's region is seeded from the ACTUAL colony, so its people are
+            // whatever xenotypes the colonists are — including player-made CUSTOM xenotypes (no XenotypeDef).
+            // Dumps the colony pawn-by-pawn, the roster it produces, and the region aggregate's def-backed AND
+            // def-less (custom) race axes, so the whole custom path can be validated on a real colony.
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("=== R&S player region demographics (#58) — colony-read roster incl. custom xenotypes ===");
+
+            var colonists = RimWorld.PawnsFinder.AllMaps_FreeColonists;
+            sb.AppendLine($"free colonists: {colonists.Count}");
+            foreach (Pawn p in colonists)
+            {
+                Pawn_GeneTracker g = p?.genes;
+                string xeno = g?.CustomXenotype != null
+                    ? ((g.CustomXenotype.name ?? g.xenotypeName) + " (custom)")
+                    : (g?.Xenotype?.defName ?? "Baseliner");
+                sb.AppendLine($"   {p?.LabelShort}: {xeno}");
+            }
+
+            var roster = Demographics.CohortFactory.BuildRosterFromColony(10000f);
+            sb.AppendLine($"colony roster: {roster.Count} cohort(s)");
+            foreach (Demographics.RegionCohort rc in roster)
+            {
+                Demographics.CohortState c = rc.state;
+                string id = rc.IsXeno ? rc.xenoDefName : (c.isBaseliner ? "Baseliner/other" : "?");
+                sb.AppendLine($"   {id}: share {c.share:P0}  lifespan {c.lifespan:0}  drugBurden {c.drugBurden:0.0}  heritable {c.heritable}");
+            }
+
+            var mgr = Find.World?.GetComponent<SynapseRegionManager>();
+            Map map = Find.AnyPlayerHomeMap ?? Find.CurrentMap;
+            GeographicProvince prov = (mgr != null && map != null) ? mgr.GetProvinceForTile(map.Tile.tileId) : null;
+            if (prov != null)
+            {
+                var demo = Demographics.RegionDemographicsUtility.ForRegion(prov);
+                sb.AppendLine($"player region #{prov.id}: settledTiles {demo.settledTiles}  cohortsSeeded {(prov.cohorts?.seeded ?? false)}");
+                sb.AppendLine("  raceShares (def-backed):");
+                foreach (var kv in demo.raceShares) sb.AppendLine($"    {kv.Key.LabelCap}: {kv.Value:P0}");
+                sb.AppendLine("  customRaceShares (def-less / custom):");
+                foreach (var kv in demo.customRaceShares) sb.AppendLine($"    {kv.Key}: {kv.Value:P0}");
+            }
+            else sb.AppendLine("(player region not found)");
+
+            Log.Message(sb.ToString());
+        }
+
+        [DebugAction("Regions and Societies", "R&S: TEST spawn custom-xenotype colonist (#58)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap)]
+        private static void TestSpawnCustomColonist()
+        {
+            // Validation aid: spawn a free colonist carrying a player-editor-style CUSTOM xenotype (no
+            // XenotypeDef) so the def-less demographic path can be exercised on a real pawn. Then re-seed the
+            // player region (advance cohort year) and read it back — the custom xenotype should appear by name.
+            Map map = Find.CurrentMap;
+            if (map == null) { Log.Message("[R&S] no current map"); return; }
+
+            // Real distinguishing genes (a PARTIAL set from an existing xenotype, so the pawn is "unique" —
+            // not matching any XenotypeDef — and thus reads as a genuine custom xenotype, not baseliner).
+            var genes = new System.Collections.Generic.List<GeneDef>();
+            XenotypeDef donor = DefDatabase<XenotypeDef>.GetNamedSilentFail("Genie") ?? DefDatabase<XenotypeDef>.GetNamedSilentFail("Hussar");
+            if (donor?.genes != null)
+                for (int i = 0; i < donor.genes.Count && genes.Count < 2; i++)
+                    if (donor.genes[i] != null) genes.Add(donor.genes[i]);
+            if (genes.Count == 0)
+            {
+                var allGenes = DefDatabase<GeneDef>.AllDefsListForReading;
+                if (allGenes.Count > 0) genes.Add(allGenes[0]);
+            }
+            var custom = new CustomXenotype { name = "Testling", inheritable = true, genes = genes };
+
+            var req = new PawnGenerationRequest(PawnKindDefOf.Colonist, Faction.OfPlayer, forceGenerateNewPawn: true);
+            req.ForcedCustomXenotype = custom;
+            Pawn p = PawnGenerator.GeneratePawn(req);
+            IntVec3 cell = CellFinder.RandomClosewalkCellNear(map.Center, map, 8);
+            GenSpawn.Spawn(p, cell, map);
+
+            Log.Message($"[R&S] spawned {p.LabelShort}: CustomXenotype={(p.genes?.CustomXenotype?.name ?? "null")}  xenotypeName={p.genes?.xenotypeName}  xenotype={p.genes?.Xenotype?.defName}");
+        }
+
+        [DebugAction("Regions and Societies", "R&S: advance cohort year (#58)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        private static void AdvanceCohortYear()
+        {
+            // Drives the LIVE per-province cohort tick once (the same call the yearly WorldComponentTick makes),
+            // so the stored, scribed cohort state can be validated without waiting an in-game year.
+            var mgr = Find.World?.GetComponent<SynapseRegionManager>();
+            if (mgr == null) { Log.Message("[R&S] no region manager."); return; }
+            mgr.AdvanceCohortYear();
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("=== R&S advance cohort year (#58) — LIVE stored per-province cohorts ===");
+            var provs = mgr.Provinces;
+            int seeded = 0, shown = 0; float worldPop = 0f;
+            if (provs != null)
+                foreach (GeographicProvince p in provs)
+                {
+                    if (p == null || p.provinceType != ProvinceType.Land || p.cohorts == null || !p.cohorts.seeded) continue;
+                    seeded++;
+                    worldPop += p.cohorts.TotalPopulation;
+                    if (shown++ < 6)
+                        sb.AppendLine($"   region #{p.id}: {p.cohorts.cohorts.Count} cohort(s), pop {p.cohorts.TotalPopulation:0}");
+                }
+            sb.AppendLine($"seeded regions: {seeded}   total modelled world population: {worldPop:0}");
+            Log.Message(sb.ToString());
+        }
+
+        [DebugAction("Regions and Societies", "R&S: cohort projection (#58)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        private static void CohortProjection()
+        {
+            // Runs the stateful cohort container forward against a LIVE region stage (RegionStageBuilder),
+            // to validate that AdvanceYear (step + births/deaths/migration/inheritance) evolves populations
+            // sanely on real regions. Uses the selected world tile's province, else a sample of land regions.
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("=== R&S cohort projection (#58) — 50 demographic years on live region stages ===");
+            var mgr = Find.World?.GetComponent<SynapseRegionManager>();
+            if (mgr?.Provinces == null) { sb.AppendLine("no region manager."); Log.Message(sb.ToString()); return; }
+
+            var targets = new System.Collections.Generic.List<GeographicProvince>();
+            int selTile = (Find.WorldSelector != null && Find.WorldSelector.SelectedTile != PlanetTile.Invalid)
+                ? Find.WorldSelector.SelectedTile.tileId : -1;
+            GeographicProvince selected = selTile >= 0 ? mgr.GetProvinceForTile(selTile) : null;
+            if (selected != null && selected.provinceType == ProvinceType.Land) targets.Add(selected);
+            else
+            {
+                int shown = 0;
+                foreach (GeographicProvince p in mgr.Provinces)
+                {
+                    if (p == null || p.provinceType != ProvinceType.Land || p.currentPopulation <= 0) continue;
+                    targets.Add(p);
+                    if (++shown >= 4) break;
+                }
+            }
+
+            foreach (GeographicProvince province in targets)
+            {
+                Demographics.RegionStage stage = Demographics.RegionStageBuilder.Build(province);
+                Faction owner = Demographics.RegionStageBuilder.OwnerOf(province);
+                var region = new Demographics.RegionCohorts();
+                region.SetRoster(Demographics.CohortFactory.BuildRoster(owner, stage.population));
+                float p0 = region.TotalPopulation;
+                for (int y = 1; y <= 50; y++) region.AdvanceYear(stage);
+                string oname = owner != null ? owner.Name : "unowned";
+                sb.AppendLine($"-- region #{province.id} ({oname}): {province.tiles.Count}t, wealth {stage.wealth:0.00}, edu-idx, "
+                    + $"pop {p0:0} -> {region.TotalPopulation:0} over 50yr ({region.cohorts.Count} cohort(s))");
+                foreach (Demographics.RegionCohort rc in region.cohorts)
+                {
+                    Demographics.CohortState c = rc.state;
+                    string kind = rc.IsXeno ? rc.xenoDefName : (c.isHybrid ? "Hybrid" : "Baseliner/other");
+                    sb.AppendLine($"      {kind}: share {c.share:P0}  pop {c.pop:0}  birth {c.birthRate:0.000}"
+                        + $"  lifeExp {c.lifeExpectancy}  cause {c.leadingCause}  content {c.contentment:0.00}");
+                }
+            }
+            Log.Message(sb.ToString());
+        }
+
         [DebugAction("Regions and Societies", "R&S: placement probe (#61)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void PlacementProbe()
         {

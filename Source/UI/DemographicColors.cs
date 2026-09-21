@@ -54,10 +54,15 @@ namespace RegionsAndSocieties.UI
 
         /// <summary>The xenotype's stable colour — the same FNV-1a defName hash the xenotype overlay
         /// uses, so a caste keeps one recognisable colour in the panel and on the map.</summary>
-        public static Color Xenotype(XenotypeDef xenotype)
+        public static Color Xenotype(XenotypeDef xenotype) => Xenotype(xenotype?.defName ?? "");
+
+        /// <summary>Deterministic colour for a xenotype by its name/identity — used for def-less xenotypes
+        /// (player custom xenotypes, or one whose defining mod was removed) that have no <see cref="XenotypeDef"/>.
+        /// Same hash as the def overload, so a def and a custom sharing a name map alike (harmless).</summary>
+        public static Color Xenotype(string name)
         {
             uint h = 2166136261u;
-            string name = xenotype?.defName ?? "";
+            name = name ?? "";
             for (int i = 0; i < name.Length; i++) { h ^= name[i]; h *= 16777619u; }
             float hue = (h % 3600u) / 3600f;                 // 0..1 around the wheel
             float sat = 0.55f + ((h >> 12) % 100u) / 400f;   // 0.55..0.80
