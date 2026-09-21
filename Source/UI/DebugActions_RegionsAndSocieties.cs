@@ -105,6 +105,61 @@ namespace RegionsAndSocieties.UI
             Log.Message(sb.ToString());
         }
 
+        [DebugAction("Regions and Societies", "R&S: location-based demographics (#33)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        private static void LocationBasedDemographics()
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("=== R&S location-based demographics (#33) — per-tile gradient vs region aggregate ===");
+            var mgr = Find.World?.GetComponent<SynapseRegionManager>();
+            if (mgr?.Provinces == null) { Log.Message("[R&S] no region manager"); return; }
+
+            // Pick the most-urban settled land region (its densest tile has the largest population) — the
+            // region that best shows the gradient.
+            GeographicProvince prov = null; int bestMax = -1;
+            foreach (GeographicProvince p in mgr.Provinces)
+            {
+                if (p == null || p.provinceType != ProvinceType.Land || p.tiles == null || p.tiles.Count < 2) continue;
+                int m = 0;
+                for (int i = 0; i < p.tiles.Count; i++) { int pop = PopulationDensityUtility.GetSourcePopulationAtTile(p.tiles[i]); if (pop > m) m = pop; }
+                if (m > bestMax && Demographics.RegionDemographicsUtility.ForRegion(p).settledTiles > 0) { bestMax = m; prov = p; }
+            }
+            if (prov == null) { Log.Message("[R&S] no settled land region found"); return; }
+
+            var demo = Demographics.RegionDemographicsUtility.ForRegion(prov);
+            sb.AppendLine($"region #{prov.id}: {prov.tiles.Count} tiles, settled {demo.settledTiles}");
+            sb.AppendLine($"  AGGREGATE:  age {demo.medianAge}  eduIndex {demo.educationIndex}  wealth {demo.overallMedianWealth}  employment {demo.employmentRate}%");
+
+            int dense = -1, sparse = -1, densePop = -1, sparsePop = int.MaxValue;
+            for (int i = 0; i < prov.tiles.Count; i++)
+            {
+                int t = prov.tiles[i], pop = PopulationDensityUtility.GetSourcePopulationAtTile(t);
+                if (pop > densePop) { densePop = pop; dense = t; }
+                if (pop > 0 && pop < sparsePop) { sparsePop = pop; sparse = t; }
+            }
+            if (dense >= 0)
+            {
+                var d = Demographics.RegionDemographicsUtility.LocalDemographics(dense);
+                sb.AppendLine($"  DENSEST  tile {dense} (pop {d.localPopulation}, urbanity {d.urbanity:0.00}):  age {d.medianAge}  edu {d.educationIndex}  wealth {d.overallWealth}  emp {d.employmentRate}%");
+            }
+            if (sparse >= 0)
+            {
+                var s = Demographics.RegionDemographicsUtility.LocalDemographics(sparse);
+                sb.AppendLine($"  SPARSEST tile {sparse} (pop {s.localPopulation}, urbanity {s.urbanity:0.00}):  age {s.medianAge}  edu {s.educationIndex}  wealth {s.overallWealth}  emp {s.employmentRate}%");
+            }
+
+            double wAcc = 0, eAcc = 0, empAcc = 0, ageAcc = 0, psum = 0;
+            for (int i = 0; i < prov.tiles.Count; i++)
+            {
+                int t = prov.tiles[i], pop = PopulationDensityUtility.GetSourcePopulationAtTile(t);
+                if (pop <= 0) continue;
+                var l = Demographics.RegionDemographicsUtility.LocalDemographics(t);
+                wAcc += pop * l.overallWealth; eAcc += pop * l.educationIndex; empAcc += pop * l.employmentRate; ageAcc += pop * l.medianAge; psum += pop;
+            }
+            if (psum > 0)
+                sb.AppendLine($"  POP-WEIGHTED MEAN (should ≈ aggregate):  age {ageAcc / psum:0.0}  edu {eAcc / psum:0.0}  wealth {wAcc / psum:0.0}  emp {empAcc / psum:0.0}%");
+            Log.Message(sb.ToString());
+        }
+
         [DebugAction("Regions and Societies", "R&S: cohort roster (#58)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void CohortRoster()
         {
