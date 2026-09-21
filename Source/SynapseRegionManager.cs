@@ -581,7 +581,16 @@ namespace RegionsAndSocieties
                 if (!p.cohorts.seeded)
                 {
                     Faction owner = Demographics.RegionStageBuilder.OwnerOf(p);
-                    p.cohorts.SetRoster(Demographics.CohortFactory.BuildRoster(owner, p.currentPopulation > 0 ? p.currentPopulation : 1f));
+                    float pop = p.currentPopulation > 0 ? p.currentPopulation : 1f;
+                    // #58 combine-the-lists: the player's own region is seeded from the ACTUAL colony — its
+                    // real xenotypes, custom ones included — falling back to the faction roster if there are
+                    // no colonists yet. NPC regions use their faction's (now pawnGroupMaker-wide) roster.
+                    List<Demographics.RegionCohort> roster = null;
+                    if (owner != null && owner.IsPlayer)
+                        roster = Demographics.CohortFactory.BuildRosterFromColony(pop);
+                    if (roster == null || roster.Count == 0)
+                        roster = Demographics.CohortFactory.BuildRoster(owner, pop);
+                    p.cohorts.SetRoster(roster);
                 }
                 Demographics.RegionStage stage = Demographics.RegionStageBuilder.Build(p);
                 p.cohorts.AdvanceYear(stage);

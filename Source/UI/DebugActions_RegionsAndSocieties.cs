@@ -130,6 +130,53 @@ namespace RegionsAndSocieties.UI
             Log.Message(sb.ToString());
         }
 
+        [DebugAction("Regions and Societies", "R&S: player region demographics (#58)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap)]
+        private static void PlayerRegionDemographics()
+        {
+            // #58 combine-the-lists: the player's region is seeded from the ACTUAL colony, so its people are
+            // whatever xenotypes the colonists are — including player-made CUSTOM xenotypes (no XenotypeDef).
+            // Dumps the colony pawn-by-pawn, the roster it produces, and the region aggregate's def-backed AND
+            // def-less (custom) race axes, so the whole custom path can be validated on a real colony.
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("=== R&S player region demographics (#58) — colony-read roster incl. custom xenotypes ===");
+
+            var colonists = RimWorld.PawnsFinder.AllMaps_FreeColonists;
+            sb.AppendLine($"free colonists: {colonists.Count}");
+            foreach (Pawn p in colonists)
+            {
+                Pawn_GeneTracker g = p?.genes;
+                string xeno = g?.CustomXenotype != null
+                    ? ((g.CustomXenotype.name ?? g.xenotypeName) + " (custom)")
+                    : (g?.Xenotype?.defName ?? "Baseliner");
+                sb.AppendLine($"   {p?.LabelShort}: {xeno}");
+            }
+
+            var roster = Demographics.CohortFactory.BuildRosterFromColony(10000f);
+            sb.AppendLine($"colony roster: {roster.Count} cohort(s)");
+            foreach (Demographics.RegionCohort rc in roster)
+            {
+                Demographics.CohortState c = rc.state;
+                string id = rc.IsXeno ? rc.xenoDefName : (c.isBaseliner ? "Baseliner/other" : "?");
+                sb.AppendLine($"   {id}: share {c.share:P0}  lifespan {c.lifespan:0}  drugBurden {c.drugBurden:0.0}  heritable {c.heritable}");
+            }
+
+            var mgr = Find.World?.GetComponent<SynapseRegionManager>();
+            Map map = Find.AnyPlayerHomeMap ?? Find.CurrentMap;
+            GeographicProvince prov = (mgr != null && map != null) ? mgr.GetProvinceForTile(map.Tile.tileId) : null;
+            if (prov != null)
+            {
+                var demo = Demographics.RegionDemographicsUtility.ForRegion(prov);
+                sb.AppendLine($"player region #{prov.id}: settledTiles {demo.settledTiles}  cohortsSeeded {(prov.cohorts?.seeded ?? false)}");
+                sb.AppendLine("  raceShares (def-backed):");
+                foreach (var kv in demo.raceShares) sb.AppendLine($"    {kv.Key.LabelCap}: {kv.Value:P0}");
+                sb.AppendLine("  customRaceShares (def-less / custom):");
+                foreach (var kv in demo.customRaceShares) sb.AppendLine($"    {kv.Key}: {kv.Value:P0}");
+            }
+            else sb.AppendLine("(player region not found)");
+
+            Log.Message(sb.ToString());
+        }
+
         [DebugAction("Regions and Societies", "R&S: advance cohort year (#58)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void AdvanceCohortYear()
         {

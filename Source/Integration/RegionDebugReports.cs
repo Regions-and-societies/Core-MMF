@@ -1400,11 +1400,17 @@ namespace RegionsAndSocieties.Integration
                 sb.AppendLine($"  {kv.Key.Name}: {kv.Value:P0}");
 
             sb.AppendLine("races (share — median wealth, low = underclass):");
-            if (demo.raceShares.Count == 0) sb.AppendLine("  (plain human — no Biotech, or unsettled)");
+            if (demo.raceShares.Count == 0 && demo.customRaceShares.Count == 0) sb.AppendLine("  (plain human — no Biotech, or unsettled)");
             foreach (var kv in demo.raceShares)
             {
                 demo.medianWealthByRace.TryGetValue(kv.Key, out int w);
                 sb.AppendLine($"  {kv.Key.LabelCap}: {kv.Value:P0}    wealth {w}");
+            }
+            // Def-less xenotypes: player custom xenotypes (from the colony) or removed-mod ones, shown by name (#58).
+            foreach (var kv in demo.customRaceShares)
+            {
+                demo.customMedianWealthByName.TryGetValue(kv.Key, out int w);
+                sb.AppendLine($"  {kv.Key} (custom): {kv.Value:P0}    wealth {w}");
             }
 
             if (demo.ideoShares.Count > 0)

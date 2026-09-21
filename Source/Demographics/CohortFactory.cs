@@ -29,13 +29,26 @@ namespace RegionsAndSocieties.Demographics
         public const float BaseFragility = 0.02f, FrailFragility = 0.12f;
 
         /// <summary>The intrinsic lifespan a xenotype's genes imply.</summary>
-        public static float LifespanOf(XenotypeDef xeno)
+        public static float LifespanOf(XenotypeDef xeno) => LifespanFromGenes(xeno?.genes);
+
+        /// <summary>The genetic drug burden a xenotype carries: a chemical-dependency gene (Hussar, Waster…)
+        /// coerces its labour and drains its wealth.</summary>
+        public static float DrugBurdenOf(XenotypeDef xeno) => DrugBurdenFromGenes(xeno?.genes);
+
+        /// <summary>Genetic fragility (raises infant mortality), from frailty-style genes.</summary>
+        public static float FragilityOf(XenotypeDef xeno) => FragilityFromGenes(xeno?.genes);
+
+        // The intrinsic-reading core works on a raw gene list, so it serves both a XenotypeDef's genes and a
+        // CustomXenotype's genes (player-editor / xenogerm xenotypes) identically — the same keyword/geneClass
+        // detection, zero knowledge of any specific xenotype required.
+
+        public static float LifespanFromGenes(List<GeneDef> genes)
         {
-            if (xeno?.genes == null) return BaselineLifespan;
+            if (genes == null) return BaselineLifespan;
             float best = BaselineLifespan;
-            for (int i = 0; i < xeno.genes.Count; i++)
+            for (int i = 0; i < genes.Count; i++)
             {
-                string n = xeno.genes[i]?.defName;
+                string n = genes[i]?.defName;
                 if (n == null) continue;
                 if (n.IndexOf("Ageless", StringComparison.OrdinalIgnoreCase) >= 0 || n.IndexOf("Deathless", StringComparison.OrdinalIgnoreCase) >= 0)
                     return ImmortalLifespan;
@@ -45,26 +58,23 @@ namespace RegionsAndSocieties.Demographics
             return best;
         }
 
-        /// <summary>The genetic drug burden a xenotype carries: a chemical-dependency gene (Hussar, Waster…)
-        /// coerces its labour and drains its wealth.</summary>
-        public static float DrugBurdenOf(XenotypeDef xeno)
+        public static float DrugBurdenFromGenes(List<GeneDef> genes)
         {
-            if (xeno?.genes == null) return 0f;
-            for (int i = 0; i < xeno.genes.Count; i++)
+            if (genes == null) return 0f;
+            for (int i = 0; i < genes.Count; i++)
             {
-                Type cls = xeno.genes[i]?.geneClass;
+                Type cls = genes[i]?.geneClass;
                 if (cls != null && cls.Name.IndexOf("ChemicalDependency", StringComparison.Ordinal) >= 0) return DependencyBurden;
             }
             return 0f;
         }
 
-        /// <summary>Genetic fragility (raises infant mortality), from frailty-style genes.</summary>
-        public static float FragilityOf(XenotypeDef xeno)
+        public static float FragilityFromGenes(List<GeneDef> genes)
         {
-            if (xeno?.genes == null) return BaseFragility;
-            for (int i = 0; i < xeno.genes.Count; i++)
+            if (genes == null) return BaseFragility;
+            for (int i = 0; i < genes.Count; i++)
             {
-                string n = xeno.genes[i]?.defName;
+                string n = genes[i]?.defName;
                 if (n == null) continue;
                 if (n.IndexOf("Frail", StringComparison.OrdinalIgnoreCase) >= 0
                     || n.IndexOf("Fragile", StringComparison.OrdinalIgnoreCase) >= 0
@@ -83,14 +93,19 @@ namespace RegionsAndSocieties.Demographics
 
         /// <summary>Build one cohort's intrinsic state from its xenotype and its share of the region.</summary>
         public static CohortState BuildCohort(XenotypeDef xeno, float share, float regionPopulation)
+            => BuildCohortFromGenes(xeno?.genes, IsHeritable(xeno), IsBaseliner(xeno), share, regionPopulation);
+
+        /// <summary>Build one cohort's intrinsic state from a raw gene list — the shared core, so a def-less
+        /// xenotype (a player custom xenotype read off a colonist) is built exactly like a def-backed one.</summary>
+        public static CohortState BuildCohortFromGenes(List<GeneDef> genes, bool heritable, bool isBaseliner, float share, float regionPopulation)
         {
             var c = new CohortState
             {
-                lifespan = LifespanOf(xeno),
-                fragility = FragilityOf(xeno),
-                drugBurden = DrugBurdenOf(xeno),
-                heritable = IsHeritable(xeno),
-                isBaseliner = IsBaseliner(xeno),
+                lifespan = LifespanFromGenes(genes),
+                fragility = FragilityFromGenes(genes),
+                drugBurden = DrugBurdenFromGenes(genes),
+                heritable = heritable,
+                isBaseliner = isBaseliner,
                 fertility = 0.45f,
                 baseInit = 0.1f,
                 basePreference = 0.1f,
@@ -98,6 +113,63 @@ namespace RegionsAndSocieties.Demographics
             };
             c.pop = regionPopulation * c.share;
             return c;
+        }
+
+        /// <summary>
+        /// The cohort roster for the PLAYER'S region, read from the ACTUAL colony (#58 combine-the-lists): the
+        /// player's people are whatever xenotypes their colonists are — including player-made <b>custom
+        /// xenotypes</b> (the in-game editor) that have no <see cref="XenotypeDef"/> and so never appear in any
+        /// faction table. Each distinct xenotype among the free colonists becomes a cohort whose share is its
+        /// head-count fraction, scaled to the region's modelled population; a custom xenotype keeps its own
+        /// name as identity (displayed as itself, not folded into Baseliner) and reads its intrinsics from its
+        /// genes like any other. Returns empty when there are no colonists, so the caller falls back to the
+        /// faction roster.
+        /// </summary>
+        public static List<RegionCohort> BuildRosterFromColony(float regionPopulation)
+        {
+            var roster = new List<RegionCohort>();
+            List<Pawn> colonists;
+            try { colonists = PawnsFinder.AllMaps_FreeColonists; } catch { colonists = null; }
+            if (colonists == null || colonists.Count == 0) return roster;
+
+            var count = new Dictionary<string, int>();
+            var genesOf = new Dictionary<string, List<GeneDef>>();
+            var heritableOf = new Dictionary<string, bool>();
+            var baselinerOf = new Dictionary<string, bool>();
+            int total = 0;
+
+            for (int i = 0; i < colonists.Count; i++)
+            {
+                Pawn_GeneTracker g = colonists[i]?.genes;
+                string id; List<GeneDef> genes; bool heritable, baseliner;
+                CustomXenotype cx = g?.CustomXenotype;
+                if (cx != null)
+                {
+                    id = "custom:" + (cx.name ?? g.xenotypeName ?? "Custom xenotype");
+                    genes = cx.genes; heritable = cx.inheritable; baseliner = false;
+                }
+                else
+                {
+                    XenotypeDef xd = g?.Xenotype;
+                    id = xd?.defName ?? "";                                        // "" → baseliner bucket
+                    genes = xd?.genes; heritable = xd == null || xd.inheritable; baseliner = IsBaseliner(xd);
+                }
+                count.TryGetValue(id, out int n); count[id] = n + 1; total++;
+                if (!genesOf.ContainsKey(id)) { genesOf[id] = genes; heritableOf[id] = heritable; baselinerOf[id] = baseliner; }
+            }
+            if (total == 0) return roster;
+
+            foreach (var kv in count)
+            {
+                float share = (float)kv.Value / total;
+                bool baseliner = baselinerOf[kv.Key];
+                // Store the identity the overlay will read: "" for baseliner, the defName for a def-backed
+                // xenotype, or the custom xenotype's own name (marker stripped) so it surfaces by name.
+                string identity = baseliner ? "" : (kv.Key.StartsWith("custom:") ? kv.Key.Substring("custom:".Length) : kv.Key);
+                roster.Add(new RegionCohort(identity,
+                    BuildCohortFromGenes(genesOf[kv.Key], heritableOf[kv.Key], baseliner, share, regionPopulation)));
+            }
+            return roster;
         }
 
         /// <summary>
