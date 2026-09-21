@@ -586,6 +586,10 @@ namespace RegionsAndSocieties
                 Demographics.RegionStage stage = Demographics.RegionStageBuilder.Build(p);
                 p.cohorts.AdvanceYear(stage);
             }
+            // #58: the cohorts just moved, so the cached region aggregates that overlay them (ForRegion) are
+            // now stale — drop them so the overlays and panels rebuild from the freshly evolved cohorts on
+            // next read. A once-a-year invalidation; regions recompute lazily, only what is actually looked at.
+            Demographics.RegionDemographicsUtility.InvalidateRegionCache();
         }
 
         private void AdvanceSettlementGrowth(int intervalTicks)
