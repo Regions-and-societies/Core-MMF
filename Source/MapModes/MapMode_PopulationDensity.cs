@@ -84,7 +84,10 @@ namespace RegionsAndSocieties
             // Colour by the smeared influence field so the heatmap still fades outward from cities.
             // #79: the whole map now has a Frontier baseline, so the palette reads the countryside and
             // empty land alike as clear, and only settlement concentrations up the ramp to the peak.
-            int pop = PopulationDensityUtility.GetPopulationAtTile(tile);
+            // #36: fold in the migration/accretion drift so the heatmap actually moves with play. The share
+            // is 0 (fast path) until a dynamics pass has run, so an undrifted world looks exactly as before.
+            int pop = PopulationDensityUtility.GetPopulationAtTile(tile)
+                + PopulationDensityUtility.PopulationDeltaShareAtTile(tile, PopulationDensityUtility.GetSourcePopulationAtTile(tile));
             int band = PopulationOverlayPalette.Band(pop, PopulationOverlayPalette.FrontierCeiling,
                 PopulationDensityUtility.MaxTilePopulation());
 
@@ -112,7 +115,7 @@ namespace RegionsAndSocieties
             // settlement-scale tiles get a label — the countryside carries people everywhere now, so
             // labelling every tile buries the map. The threshold is the same Frontier ceiling that gives
             // a tile a colour, so labels appear exactly where the ramp does.
-            int pop = PopulationDensityUtility.GetSourcePopulationAtTile(tile);
+            int pop = PopulationDensityUtility.GetEffectivePopulationAtTile(tile);
             return pop >= PopulationOverlayPalette.FrontierCeiling ? pop.ToString() : null;
         }
 

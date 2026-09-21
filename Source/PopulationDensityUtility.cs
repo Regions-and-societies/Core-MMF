@@ -385,6 +385,37 @@ namespace RegionsAndSocieties
             return cachedTileSourcePopulations[targetTile];
         }
 
+        /// <summary>
+        /// #36: the dwellings on a tile INCLUDING the drift the population-dynamics passes have accumulated —
+        /// its deterministic base plus this tile's share of its region's migration/accretion delta,
+        /// distributed proportionally to where people already live (a region that gained migrants grows its
+        /// towns, not its empty moors). This is the number the visible heatmap, labels and tooltip read, so
+        /// play-driven drift actually shows; <see cref="GetSourcePopulationAtTile"/> stays the pristine base.
+        /// </summary>
+        public static int GetEffectivePopulationAtTile(int targetTile)
+        {
+            int baseP = GetSourcePopulationAtTile(targetTile);
+            int share = PopulationDeltaShareAtTile(targetTile, baseP);
+            int eff = baseP + share;
+            return eff < 0 ? 0 : eff;
+        }
+
+        /// <summary>This tile's slice of its region's population delta (#36), proportional to its base share of
+        /// the region's people. Zero on a world where nothing has drifted (the fast path), so the overlay pays
+        /// no region lookup until the first dynamics pass moves someone.</summary>
+        public static int PopulationDeltaShareAtTile(int targetTile, int baseTilePopulation)
+        {
+            var mgr = Find.World?.GetComponent<SynapseRegionManager>();
+            if (mgr == null || !mgr.HasPopulationDelta || baseTilePopulation <= 0) return 0;
+            GeographicProvince prov = mgr.GetProvinceForTile(targetTile);
+            if (prov == null) return 0;
+            float delta = mgr.PopulationDeltaOf(prov.id);
+            if (delta == 0f) return 0;
+            float regionBase = prov.currentPopulation;
+            if (regionBase <= 0f) return 0;
+            return (int)UnityEngine.Mathf.Round(delta * (baseTilePopulation / regionBase));
+        }
+
         /// <summary>Whether pawns could dwell on this tile at all: land, passable, a survivable biome.</summary>
         public static bool IsHabitableTile(int tileId)
         {
@@ -437,7 +468,7 @@ namespace RegionsAndSocieties
                 if (slot < 0) slot += 8;
 
                 string value = IsHabitable(Find.WorldGrid[neighbor.tileId])
-                    ? GetSourcePopulationAtTile(neighbor.tileId).ToString()
+                    ? GetEffectivePopulationAtTile(neighbor.tileId).ToString()
                     : "-";
                 // Two neighbours can round to the same compass point on the icosahedral grid; show both.
                 slots[slot] = slots[slot] == null ? value : slots[slot] + "/" + value;
@@ -446,7 +477,7 @@ namespace RegionsAndSocieties
             var sb = new StringBuilder();
             sb.AppendLine("Pawn dwellings");
             AppendCompassRow(sb, CompassCell(slots, 7), CompassCell(slots, 0), CompassCell(slots, 1));
-            AppendCompassRow(sb, CompassCell(slots, 6), "<b>Here " + GetSourcePopulationAtTile(tileId) + "</b>", CompassCell(slots, 2));
+            AppendCompassRow(sb, CompassCell(slots, 6), "<b>Here " + GetEffectivePopulationAtTile(tileId) + "</b>", CompassCell(slots, 2));
             AppendCompassRow(sb, CompassCell(slots, 5), CompassCell(slots, 4), CompassCell(slots, 3));
 
             displayCachedTileId = tileId;

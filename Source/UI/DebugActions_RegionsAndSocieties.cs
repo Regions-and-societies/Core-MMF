@@ -384,6 +384,45 @@ namespace RegionsAndSocieties.UI
             Log.Message(RegionDebugReports.RegenerateAndAudit());
         }
 
+        [DebugAction("Regions and Societies", "R&S: TEST dynamics x8 + fusion (#36)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        private static void TestDynamicsAndFusion()
+        {
+            var mgr = Find.World?.GetComponent<SynapseRegionManager>();
+            if (mgr == null) { Log.Message("[R&S] no region manager"); return; }
+            mgr.StrictTerritorialOwnership = true;   // dynamics gate
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("=== R&S dynamics x8 + fusion (#36) ===");
+            int colony = Integration.PopulationDynamics.ColonyRegion(mgr);
+            GeographicProvince colonyProv = mgr.GetProvince(colony);
+            sb.AppendLine($"colony region #{colony} (base {colonyProv?.currentPopulation:0}), governance now {mgr.StrictTerritorialOwnership}");
+            for (int pass = 0; pass < 8; pass++)
+            {
+                float moved = mgr.RunPopulationDynamicsNow();
+                sb.AppendLine($"  pass {pass + 1}: migrated {moved:0.0}   colony delta now {mgr.PopulationDeltaOf(colony):0.0}");
+            }
+
+            var land = mgr.Provinces.FindAll(p => p.provinceType == ProvinceType.Land);
+            land.Sort((a, b) => mgr.PopulationDeltaOf(a.id).CompareTo(mgr.PopulationDeltaOf(b.id)));
+            sb.AppendLine("biggest population LOSSES (migration out toward colony):");
+            for (int i = 0; i < 5 && i < land.Count; i++)
+                sb.AppendLine($"   #{land[i].id} delta {mgr.PopulationDeltaOf(land[i].id):0.0} (base {land[i].currentPopulation:0})");
+            sb.AppendLine("biggest population GAINS (colony pull + hinterland accretion):");
+            for (int i = land.Count - 1; i >= 0 && i >= land.Count - 5; i--)
+                sb.AppendLine($"   #{land[i].id} delta {mgr.PopulationDeltaOf(land[i].id):0.0} (base {land[i].currentPopulation:0})");
+
+            // fusion: base vs effective on the colony region's densest tile
+            if (colonyProv != null)
+            {
+                int dense = -1, densePop = -1;
+                for (int i = 0; i < colonyProv.tiles.Count; i++)
+                { int t = colonyProv.tiles[i], p = PopulationDensityUtility.GetSourcePopulationAtTile(t); if (p > densePop) { densePop = p; dense = t; } }
+                if (dense >= 0)
+                    sb.AppendLine($"fusion @colony densest tile {dense}: base {PopulationDensityUtility.GetSourcePopulationAtTile(dense)} -> effective {PopulationDensityUtility.GetEffectivePopulationAtTile(dense)} (delta share {PopulationDensityUtility.PopulationDeltaShareAtTile(dense, PopulationDensityUtility.GetSourcePopulationAtTile(dense))})");
+            }
+            Log.Message(sb.ToString());
+        }
+
         [DebugAction("Regions and Societies", "R&S: run population dynamics pass (#5/#8)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void RunPopulationDynamicsPass()
         {

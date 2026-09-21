@@ -124,6 +124,10 @@ namespace RegionsAndSocieties
         public float PopulationDeltaOf(int regionId)
             => regionPopulationDelta != null && regionPopulationDelta.TryGetValue(regionId, out float v) ? v : 0f;
 
+        /// <summary>True once any region has drifted from migration/accretion (#5/#8) — the fast path so the
+        /// per-tile density read skips region lookups entirely on a world where nothing has moved yet.</summary>
+        public bool HasPopulationDelta => regionPopulationDelta != null && regionPopulationDelta.Count > 0;
+
         /// <summary>Run a population-dynamics pass right now (the on-request path for the #5 endpoint and the
         /// debug action), so a consumer never reads a stale number after an event. Returns people migrated.</summary>
         public float RunPopulationDynamicsNow() => Integration.PopulationDynamics.RunPasses(this, regionPopulationDelta);
