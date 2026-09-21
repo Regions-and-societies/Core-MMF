@@ -582,11 +582,13 @@ namespace RegionsAndSocieties
                 {
                     Faction owner = Demographics.RegionStageBuilder.OwnerOf(p);
                     float pop = p.currentPopulation > 0 ? p.currentPopulation : 1f;
-                    // #58 combine-the-lists: the player's own region is seeded from the ACTUAL colony — its
-                    // real xenotypes, custom ones included — falling back to the faction roster if there are
-                    // no colonists yet. NPC regions use their faction's (now pawnGroupMaker-wide) roster.
+                    // #58 combine-the-lists: the region that CONTAINS the player's colony reads its people from
+                    // the ACTUAL colonists — real xenotypes, custom ones included — regardless of who politically
+                    // owns/contests the territory (a fresh colony's province is often still an NPC's claim). Falls
+                    // back to the faction roster if there are no colonists. NPC regions use their faction's (now
+                    // pawnGroupMaker-wide) roster.
                     List<Demographics.RegionCohort> roster = null;
-                    if (owner != null && owner.IsPlayer)
+                    if (ProvinceContainsPlayerColony(p))
                         roster = Demographics.CohortFactory.BuildRosterFromColony(pop);
                     if (roster == null || roster.Count == 0)
                         roster = Demographics.CohortFactory.BuildRoster(owner, pop);
@@ -599,6 +601,20 @@ namespace RegionsAndSocieties
             // now stale — drop them so the overlays and panels rebuild from the freshly evolved cohorts on
             // next read. A once-a-year invalidation; regions recompute lazily, only what is actually looked at.
             Demographics.RegionDemographicsUtility.InvalidateRegionCache();
+        }
+
+        /// <summary>#58: true when a player home map sits on one of this province's tiles — i.e. the player's
+        /// colony physically lives in this region, whoever holds the territory politically.</summary>
+        private static bool ProvinceContainsPlayerColony(GeographicProvince p)
+        {
+            var maps = Find.Maps;
+            if (maps == null || p?.tiles == null || p.tiles.Count == 0) return false;
+            for (int i = 0; i < maps.Count; i++)
+            {
+                Map m = maps[i];
+                if (m != null && m.IsPlayerHome && p.tiles.Contains(m.Tile.tileId)) return true;
+            }
+            return false;
         }
 
         private void AdvanceSettlementGrowth(int intervalTicks)

@@ -177,6 +177,38 @@ namespace RegionsAndSocieties.UI
             Log.Message(sb.ToString());
         }
 
+        [DebugAction("Regions and Societies", "R&S: TEST spawn custom-xenotype colonist (#58)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap)]
+        private static void TestSpawnCustomColonist()
+        {
+            // Validation aid: spawn a free colonist carrying a player-editor-style CUSTOM xenotype (no
+            // XenotypeDef) so the def-less demographic path can be exercised on a real pawn. Then re-seed the
+            // player region (advance cohort year) and read it back — the custom xenotype should appear by name.
+            Map map = Find.CurrentMap;
+            if (map == null) { Log.Message("[R&S] no current map"); return; }
+
+            // Real distinguishing genes (a PARTIAL set from an existing xenotype, so the pawn is "unique" —
+            // not matching any XenotypeDef — and thus reads as a genuine custom xenotype, not baseliner).
+            var genes = new System.Collections.Generic.List<GeneDef>();
+            XenotypeDef donor = DefDatabase<XenotypeDef>.GetNamedSilentFail("Genie") ?? DefDatabase<XenotypeDef>.GetNamedSilentFail("Hussar");
+            if (donor?.genes != null)
+                for (int i = 0; i < donor.genes.Count && genes.Count < 2; i++)
+                    if (donor.genes[i] != null) genes.Add(donor.genes[i]);
+            if (genes.Count == 0)
+            {
+                var allGenes = DefDatabase<GeneDef>.AllDefsListForReading;
+                if (allGenes.Count > 0) genes.Add(allGenes[0]);
+            }
+            var custom = new CustomXenotype { name = "Testling", inheritable = true, genes = genes };
+
+            var req = new PawnGenerationRequest(PawnKindDefOf.Colonist, Faction.OfPlayer, forceGenerateNewPawn: true);
+            req.ForcedCustomXenotype = custom;
+            Pawn p = PawnGenerator.GeneratePawn(req);
+            IntVec3 cell = CellFinder.RandomClosewalkCellNear(map.Center, map, 8);
+            GenSpawn.Spawn(p, cell, map);
+
+            Log.Message($"[R&S] spawned {p.LabelShort}: CustomXenotype={(p.genes?.CustomXenotype?.name ?? "null")}  xenotypeName={p.genes?.xenotypeName}  xenotype={p.genes?.Xenotype?.defName}");
+        }
+
         [DebugAction("Regions and Societies", "R&S: advance cohort year (#58)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void AdvanceCohortYear()
         {

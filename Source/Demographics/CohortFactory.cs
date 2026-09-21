@@ -142,17 +142,28 @@ namespace RegionsAndSocieties.Demographics
             {
                 Pawn_GeneTracker g = colonists[i]?.genes;
                 string id; List<GeneDef> genes; bool heritable, baseliner;
-                CustomXenotype cx = g?.CustomXenotype;
-                if (cx != null)
+                XenotypeDef xd = g?.Xenotype;
+                if (xd != null && !IsBaseliner(xd))
                 {
-                    id = "custom:" + (cx.name ?? g.xenotypeName ?? "Custom xenotype");
-                    genes = cx.genes; heritable = cx.inheritable; baseliner = false;
+                    // A def-backed xenotype (vanilla or modded).
+                    id = xd.defName; genes = xd.genes; heritable = xd.inheritable; baseliner = false;
                 }
                 else
                 {
-                    XenotypeDef xd = g?.Xenotype;
-                    id = xd?.defName ?? "";                                        // "" → baseliner bucket
-                    genes = xd?.genes; heritable = xd == null || xd.inheritable; baseliner = IsBaseliner(xd);
+                    // Baseliner base xenotype — but it may be a player CUSTOM (unique) xenotype. Prefer the
+                    // CustomXenotype the tracker surfaces; otherwise a non-baseliner xenotypeName is itself the
+                    // signal (an editor-applied custom sets it), so a def-less xenotype is caught either way.
+                    CustomXenotype cx = g?.CustomXenotype;
+                    string cname = cx?.name
+                        ?? (g != null && !string.IsNullOrEmpty(g.xenotypeName) && g.xenotypeName != "Baseliner" ? g.xenotypeName : null);
+                    if (!string.IsNullOrEmpty(cname))
+                    {
+                        id = "custom:" + cname;
+                        genes = cx?.genes ?? EndogeneDefs(g);
+                        heritable = cx?.inheritable ?? true;
+                        baseliner = false;
+                    }
+                    else { id = ""; genes = xd?.genes; heritable = true; baseliner = true; }   // "" → baseliner bucket
                 }
                 count.TryGetValue(id, out int n); count[id] = n + 1; total++;
                 if (!genesOf.ContainsKey(id)) { genesOf[id] = genes; heritableOf[id] = heritable; baselinerOf[id] = baseliner; }
@@ -161,7 +172,7 @@ namespace RegionsAndSocieties.Demographics
 
             foreach (var kv in count)
             {
-                float share = (float)kv.Value / total;
+                float share = (float)kv.Value / total;   // head-count fraction of the colony
                 bool baseliner = baselinerOf[kv.Key];
                 // Store the identity the overlay will read: "" for baseliner, the defName for a def-backed
                 // xenotype, or the custom xenotype's own name (marker stripped) so it surfaces by name.
@@ -170,6 +181,18 @@ namespace RegionsAndSocieties.Demographics
                     BuildCohortFromGenes(genesOf[kv.Key], heritableOf[kv.Key], baseliner, share, regionPopulation)));
             }
             return roster;
+        }
+
+        /// <summary>The gene defs a pawn actually carries as endogenes — the intrinsic gene set of a custom
+        /// (unique) xenotype when no <see cref="CustomXenotype"/> object is available to read from.</summary>
+        private static List<GeneDef> EndogeneDefs(Pawn_GeneTracker g)
+        {
+            var list = new List<GeneDef>();
+            List<Gene> endo = g?.Endogenes;
+            if (endo != null)
+                for (int i = 0; i < endo.Count; i++)
+                    if (endo[i]?.def != null) list.Add(endo[i].def);
+            return list;
         }
 
         /// <summary>
