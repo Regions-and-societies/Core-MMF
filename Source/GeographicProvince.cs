@@ -60,6 +60,11 @@ namespace RegionsAndSocieties
         // with the province so the living population persists across saves.
         public Demographics.RegionCohorts cohorts = new Demographics.RegionCohorts();
 
+        // #81 colony → regional influence: how welcome each xenotype (by defName) is in this region, −1..1,
+        // seeded from the player's example in the region holding the colony and spread outward year by year.
+        // Scribed so the acceptance a region has built up persists; empty = neutral (no influence yet).
+        public Dictionary<string, float> xenotypeAcceptance = new Dictionary<string, float>();
+
         // Population and dwellings are a materialized aggregate: summed once from the per-tile
         // density cache and re-summed only when that cache is invalidated (a population-bearing
         // world object added or removed), tracked by PopulationDensityUtility.CacheVersion. The old
@@ -253,6 +258,8 @@ namespace RegionsAndSocieties
             Scribe_Collections.Look(ref activeCrises, "activeCrises", LookMode.Deep);
             Scribe_Deep.Look(ref cohorts, "cohorts");
             if (Scribe.mode == LoadSaveMode.PostLoadInit && cohorts == null) cohorts = new Demographics.RegionCohorts();
+            Scribe_Collections.Look(ref xenotypeAcceptance, "xenotypeAcceptance", LookMode.Value, LookMode.Value);
+            if (Scribe.mode == LoadSaveMode.PostLoadInit && xenotypeAcceptance == null) xenotypeAcceptance = new Dictionary<string, float>();
             if (activeCrises == null)
             {
                 activeCrises = new List<SettlementCrisis>();

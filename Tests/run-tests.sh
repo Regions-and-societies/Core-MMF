@@ -168,6 +168,11 @@ run_suite popdynamics Exe \
     Tests/PopulationDynamicsRulesTests.cs \
     $SRC/Integration/PopulationDynamicsRules.cs
 
+# Pure, no game — colony -> regional influence: treatment signal + acceptance diffusion (#81).
+run_suite colonyinfluence Exe \
+    Tests/ColonyInfluenceRulesTests.cs \
+    $SRC/Demographics/ColonyInfluenceRules.cs
+
 # Pure, no game — the per-cohort year step composing all six modules (#58 spine).
 run_suite cohortyear Exe \
     Tests/CohortYearRulesTests.cs \

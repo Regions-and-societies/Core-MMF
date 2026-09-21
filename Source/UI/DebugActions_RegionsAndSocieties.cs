@@ -384,6 +384,49 @@ namespace RegionsAndSocieties.UI
             Log.Message(RegionDebugReports.RegenerateAndAudit());
         }
 
+        [DebugAction("Regions and Societies", "R&S: TEST colony influence x30 (#81)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap)]
+        private static void TestColonyInfluence()
+        {
+            var mgr = Find.World?.GetComponent<SynapseRegionManager>();
+            Map map = Find.AnyPlayerHomeMap ?? Find.CurrentMap;
+            if (mgr == null || map == null) { Log.Message("[R&S] no manager/map"); return; }
+
+            // The player's statement: a FREE custom-xenotype colonist ("Testlings can live free here").
+            var genes = new System.Collections.Generic.List<GeneDef>();
+            XenotypeDef donor = DefDatabase<XenotypeDef>.GetNamedSilentFail("Genie") ?? DefDatabase<XenotypeDef>.GetNamedSilentFail("Hussar");
+            if (donor?.genes != null) for (int i = 0; i < donor.genes.Count && genes.Count < 2; i++) if (donor.genes[i] != null) genes.Add(donor.genes[i]);
+            var custom = new CustomXenotype { name = "Testling", inheritable = true, genes = genes };
+            var req = new PawnGenerationRequest(PawnKindDefOf.Colonist, Faction.OfPlayer, forceGenerateNewPawn: true);
+            req.ForcedCustomXenotype = custom;
+            Pawn pawn = PawnGenerator.GeneratePawn(req);
+            GenSpawn.Spawn(pawn, CellFinder.RandomClosewalkCellNear(map.Center, map, 8), map);
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("=== R&S colony influence x30 (#81) — a FREE 'Testling' colonist, 30 demographic years ===");
+            GeographicProvince home = mgr.GetProvinceForTile(map.Tile.tileId);
+            for (int y = 0; y < 30; y++) mgr.AdvanceCohortYear();
+            if (home == null) { sb.AppendLine("(no player region)"); Log.Message(sb.ToString()); return; }
+
+            home.xenotypeAcceptance.TryGetValue("Testling", out float acc);
+            sb.AppendLine($"home region #{home.id}: acceptance[Testling] = {acc:0.00}  (target +1 = all free)");
+            if (home.cohorts?.cohorts != null)
+                foreach (var c in home.cohorts.cohorts)
+                    if (c.xenoDefName == "Testling")
+                        sb.AppendLine($"  Testling cohort: share {c.state.share:P0}  pop {c.state.pop:0}  standing {c.state.standing:0.00}  offset {c.state.acceptanceOffset:0.00}");
+
+            sb.AppendLine("spread to neighbours (should be positive but trailing home):");
+            int shown = 0;
+            foreach (int nb in ProvinceAdjacency.NeighboursOf(mgr, home.id))
+            {
+                GeographicProvince np = mgr.GetProvince(nb);
+                if (np == null || np.provinceType != ProvinceType.Land) continue;
+                np.xenotypeAcceptance.TryGetValue("Testling", out float na);
+                sb.AppendLine($"  neighbour #{nb}: acceptance[Testling] = {na:0.00}");
+                if (++shown >= 4) break;
+            }
+            Log.Message(sb.ToString());
+        }
+
         [DebugAction("Regions and Societies", "R&S: TEST dynamics x8 + fusion (#36)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void TestDynamicsAndFusion()
         {
