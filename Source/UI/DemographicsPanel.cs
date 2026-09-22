@@ -162,7 +162,15 @@ namespace RegionsAndSocieties.UI
         /// <summary>The hover context for an education band: the skills and passion a pawn of that level
         /// brings (feeds #28) and the economic capability it unlocks (feeds the 0.4.0 economy).</summary>
         private static string EduTip(EducationProfile[] p, int tier)
-            => $"skills {p[tier].skillLow}–{p[tier].skillHigh}, {p[tier].passion}\n{p[tier].economicRole}";
+        {
+            EducationProfile e = p[tier];
+            string skills = e.specialties <= 0
+                ? $"no specialties (all skills ≤{e.skillCap})"
+                : $"{e.specialties} deep skill(s) at {e.specialtyLow}–{e.specialtyHigh}"
+                  + (e.burningPassions > 0 ? $", {e.burningPassions} burning" : "")
+                  + (e.minorPassions > 0 ? $", {e.minorPassions} minor" : "");
+            return $"{skills}\neconomic value {e.economicValue:0.##}× illiterate\n{e.economicRole}";
+        }
 
         /// <summary>Index of the largest share — the tier/band most people fall in.</summary>
         private static int ModalIndex(float[] shares)

@@ -15,17 +15,30 @@ namespace RegionsAndSocieties.Demographics
         Postgrad = 4     // research elite — postgraduate
     }
 
-    /// <summary>What one education level means for the people in it and for the economy (#26 → #28).
-    /// The skill range and passion are the guidance a pawn-generation consumer applies (#28); the
-    /// economic role is the capability that level unlocks for the regional economy (0.4.0). Plain data,
-    /// so it lives in the pure rules layer and is the single source of truth both consumers read.</summary>
+    /// <summary>
+    /// What one education level means for the people in it and for the economy (#26 → #28/#29). A
+    /// machine-usable skill shape a pawn-generation consumer applies: how many skills the pawn is deep in,
+    /// their level range, how many carry a burning vs minor passion, what the rest sit at, and a hard cap.
+    /// Plus the per-capita <see cref="economicValue"/> that drives regional economic efficiency. Single
+    /// source of truth for the pawn-gen hook (#28), the economy read (#29) and the region panel.
+    ///
+    /// <para><b>Which</b> skills a pawn specialises in is not fixed here — the consumer picks them from the
+    /// region's dominant sector (a mining region's specialists are miners/crafters, an agri region's are
+    /// growers), so blue-collar depth is still high skill. This struct is the DEPTH; the sector is the domain.</para>
+    /// </summary>
     public struct EducationProfile
     {
-        public string label;         // the real-world schooling level
-        public int skillLow;         // typical skill points a pawn of this level brings to a specialty
-        public int skillHigh;
-        public string passion;       // how passion tends to show up
-        public string economicRole;  // the economic capability this level unlocks
+        public string label;             // the real-world schooling level
+        public int specialties;          // how many skills a pawn of this level is genuinely deep in
+        public int specialtyLow;         // the level range of those specialties
+        public int specialtyHigh;
+        public int burningPassions;      // burning (major) passions among the specialties
+        public int minorPassions;        // minor passions among the specialties / rest
+        public int baselineLow;          // every OTHER skill sits in this range
+        public int baselineHigh;
+        public int skillCap;             // hard cap on any single skill at this level (illiterate ≤ 3)
+        public float economicValue;      // per-capita economic value, illiterate = 1 (geometric ×1.67 / step)
+        public string economicRole;      // the economic capability this level unlocks (display)
     }
 
     /// <summary>
@@ -49,18 +62,53 @@ namespace RegionsAndSocieties.Demographics
         // A 0-100 attainment score per tier, used to collapse a distribution to one index for shading.
         private static readonly float[] TierScore = { 0f, 25f, 50f, 75f, 100f };
 
-        /// <summary>The meaning of each <see cref="EducationTier"/>, indexed by tier ordinal. First-pass
-        /// values, tunable; the skill ranges and passions feed the pawn-generation hook (#28) and the
-        /// economic roles gate what the regional economy can do (industrial growth needs Secondary+,
-        /// critical-systems resiliency needs Undergrad+, high-tech needs Postgrad).</summary>
+        /// <summary>The per-step economic-value multiplier between education tiers (#28): each level of
+        /// schooling is worth ~⅔ more than the one below. Compounding, deliberately — in RimWorld a
+        /// specialist doesn't just work faster, they MONOPOLISE the job (a mediocre pawn means botched
+        /// surgeries, food poisoning, junk goods — mistakes whose costs compound), so a skilled worker's
+        /// value is super-linear. Postgrad therefore lands ~7.75× an illiterate.</summary>
+        public const float ValueStep = 1.6667f;
+
+        /// <summary>The meaning of each <see cref="EducationTier"/>, indexed by tier ordinal. Calibrated
+        /// against real-world compensation-by-attainment (OECD relative earnings + World-Bank returns-to-
+        /// schooling) then set to a clean geometric ×<see cref="ValueStep"/> per step; first-pass and tunable.
+        /// The skill shape feeds the pawn-gen hook (#28); economicValue drives the economy read (#29); the
+        /// economic role gates capability (industrial growth needs Secondary+, critical systems Undergrad+,
+        /// high-tech Postgrad).</summary>
         public static readonly EducationProfile[] Profiles =
         {
-            new EducationProfile { label = "Illiterate",  skillLow = 0,  skillHigh = 1,  passion = "none",                       economicRole = "Subsistence labour only — cannot operate machinery" },
-            new EducationProfile { label = "Primary",     skillLow = 1,  skillHigh = 2,  passion = "none",                       economicRole = "Manual & agricultural labour" },
-            new EducationProfile { label = "Secondary",   skillLow = 5,  skillHigh = 6,  passion = "one specialty passion",      economicRole = "Runs industrial workshops — production output" },
-            new EducationProfile { label = "Undergrad",   skillLow = 7,  skillHigh = 10, passion = "a burning passion",          economicRole = "Runs & maintains critical systems (hydroponics, power) — industrial growth & resiliency" },
-            new EducationProfile { label = "Postgrad",    skillLow = 11, skillHigh = 15, passion = "multiple burning passions",  economicRole = "R&D — unlocks high-tech production & innovation" },
+            new EducationProfile { label = "Illiterate", specialties = 0, specialtyLow = 0,  specialtyHigh = 0,  burningPassions = 0, minorPassions = 0, baselineLow = 0, baselineHigh = 3, skillCap = 3,  economicValue = 1.00f, economicRole = "Subsistence labour only — cannot operate machinery" },
+            new EducationProfile { label = "Primary",    specialties = 1, specialtyLow = 3,  specialtyHigh = 5,  burningPassions = 0, minorPassions = 1, baselineLow = 0, baselineHigh = 3, skillCap = 6,  economicValue = 1.67f, economicRole = "Manual & agricultural labour" },
+            new EducationProfile { label = "Secondary",  specialties = 2, specialtyLow = 6,  specialtyHigh = 9,  burningPassions = 0, minorPassions = 1, baselineLow = 1, baselineHigh = 4, skillCap = 10, economicValue = 2.78f, economicRole = "Runs industrial workshops — production output" },
+            new EducationProfile { label = "Undergrad",  specialties = 2, specialtyLow = 9,  specialtyHigh = 12, burningPassions = 1, minorPassions = 1, baselineLow = 2, baselineHigh = 5, skillCap = 14, economicValue = 4.64f, economicRole = "Runs & maintains critical systems (hydroponics, power) — industrial growth & resiliency" },
+            new EducationProfile { label = "Postgrad",   specialties = 3, specialtyLow = 12, specialtyHigh = 16, burningPassions = 2, minorPassions = 1, baselineLow = 3, baselineHigh = 6, skillCap = 20, economicValue = 7.75f, economicRole = "R&D — unlocks high-tech production & innovation" },
         };
+
+        /// <summary>The per-capita economic value of an education tier (illiterate = 1). See
+        /// <see cref="Profiles"/> / <see cref="ValueStep"/>.</summary>
+        public static float EconomicValue(int tier)
+            => (tier >= 0 && tier < TierCount) ? Profiles[tier].economicValue : 1f;
+
+        /// <summary>The population-weighted per-capita economic value of a region's education distribution —
+        /// how much economic capacity its people carry, before condition (labour efficiency) is applied. A
+        /// polarised region with a hollow middle reads low; a broadly-schooled one high (#28/#29).</summary>
+        public static float RegionEconomicValue(float[] eduShares)
+        {
+            if (eduShares == null || eduShares.Length < TierCount) return 1f;
+            float v = 0f, total = 0f;
+            for (int i = 0; i < TierCount; i++) { v += eduShares[i] * Profiles[i].economicValue; total += eduShares[i]; }
+            return total > 0f ? v / total : 1f;
+        }
+
+        /// <summary>Labour efficiency 0.15..1 — how much of a person's skill is actually REALISED, from their
+        /// condition (#29): a free, healthy, content worker performs near their capacity; a coerced, sick,
+        /// miserable one (a slave) performs far below it whatever their skill. Orthogonal to education, so
+        /// applying both is not double-counting. Floored so even the worst still produces something.</summary>
+        public static float LabourEfficiency(float freedom, float health, float contentment)
+        {
+            float e = 0.45f * Clamp01(freedom) + 0.35f * Clamp01(health) + 0.20f * Clamp01(contentment);
+            return e < 0.15f ? 0.15f : (e > 1f ? 1f : e);
+        }
 
         /// <summary>
         /// The baseline distribution for a tech level, as normalized [illiterate, basic, skilled,

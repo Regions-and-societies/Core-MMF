@@ -49,6 +49,29 @@ namespace EducationRulesTests
             Check("null -> 0", EducationRules.Index(null) == 0);
             Check("empty -> 0", EducationRules.Index(new[] { 0f, 0f, 0f, 0f, 0f }) == 0);
 
+            Section("economic value: geometric x1.67 per education step (#28)");
+            Check("illiterate = 1", Close(EducationRules.EconomicValue(0), 1f));
+            Check("each step is ~1.67x the one below",
+                Close(EducationRules.EconomicValue(1) / EducationRules.EconomicValue(0), EducationRules.ValueStep, 0.03f)
+                && Close(EducationRules.EconomicValue(4) / EducationRules.EconomicValue(3), EducationRules.ValueStep, 0.03f));
+            Check("postgrad lands ~7.75x an illiterate", Close(EducationRules.EconomicValue(4), 7.75f, 0.2f));
+            Check("value is monotonic up the ladder",
+                EducationRules.EconomicValue(0) < EducationRules.EconomicValue(1)
+                && EducationRules.EconomicValue(3) < EducationRules.EconomicValue(4));
+            Check("the specialty depth rises with tier (illiterate none, postgrad several at 12+)",
+                EducationRules.Profiles[0].specialties == 0 && EducationRules.Profiles[0].skillCap <= 3
+                && EducationRules.Profiles[4].specialties >= 2 && EducationRules.Profiles[4].specialtyLow >= 12
+                && EducationRules.Profiles[4].burningPassions >= 2);
+
+            Section("region economic value & labour efficiency (#28/#29)");
+            float eduLow = EducationRules.RegionEconomicValue(new[] { 0.7f, 0.3f, 0f, 0f, 0f });   // illiterate/primary
+            float eduHigh = EducationRules.RegionEconomicValue(new[] { 0f, 0f, 0.2f, 0.4f, 0.4f }); // skilled/advanced
+            Check("a schooled region carries far more economic value", eduHigh > eduLow * 3f);
+            Check("a free, healthy, content worker realises most of their skill", EducationRules.LabourEfficiency(1f, 1f, 1f) > 0.95f);
+            Check("a coerced, sick, miserable one (a slave) realises far less",
+                EducationRules.LabourEfficiency(0.1f, 0.2f, 0.2f) < EducationRules.LabourEfficiency(1f, 1f, 1f) * 0.5f);
+            Check("efficiency is floored, never zero", EducationRules.LabourEfficiency(0f, 0f, 0f) >= 0.15f - 1e-4f);
+
             Console.WriteLine();
             Console.WriteLine(failures == 0 ? "ALL EDUCATION TESTS PASSED" : failures + " EDUCATION TEST(S) FAILED");
             return failures == 0 ? 0 : 1;
@@ -68,6 +91,7 @@ namespace EducationRulesTests
         }
 
         private static bool Close(float a, float b) => Math.Abs(a - b) < 0.0005f;
+        private static bool Close(float a, float b, float tol) => Math.Abs(a - b) <= tol;
 
         private static void Section(string name)
         {
