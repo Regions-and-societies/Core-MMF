@@ -173,11 +173,17 @@ run_suite colonyinfluence Exe \
     Tests/ColonyInfluenceRulesTests.cs \
     $SRC/Demographics/ColonyInfluenceRules.cs
 
+# Pure, no game — social stratification & balance: shape, skilled middle, growth capacity (#29).
+run_suite stratification Exe \
+    Tests/StratificationRulesTests.cs \
+    $SRC/Demographics/StratificationRules.cs
+
 # Pure, no game — the per-cohort year step composing all six modules (#58 spine).
 run_suite cohortyear Exe \
     Tests/CohortYearRulesTests.cs \
     $SRC/Demographics/CohortYearRules.cs $SRC/Demographics/InfluenceGraphRules.cs $SRC/Demographics/WealthRules.cs \
     $SRC/Demographics/VitalsRules.cs $SRC/Demographics/GeographicScaleRules.cs $SRC/Demographics/IndicatorsRules.cs \
+    $SRC/Demographics/StratificationRules.cs \
     $SRC/Sizing/WorldScaleRules.cs
 
 run_suite populationcap Exe \
@@ -335,6 +341,7 @@ run_suite typecheck Library \
     $SRC/Demographics/GeographicScaleRules.cs $SRC/Demographics/ReproductionRules.cs $SRC/Demographics/IndicatorsRules.cs \
     $SRC/Demographics/AgeStructureRules.cs \
     $SRC/Demographics/EducationRules.cs \
+    $SRC/Demographics/StratificationRules.cs \
     $SRC/Demographics/FactionCharacterRules.cs \
     $SRC/Demographics/SocioeconomicRules.cs \
     $SRC/Demographics/EmploymentRules.cs \

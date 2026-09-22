@@ -18,11 +18,14 @@ namespace RegionsAndSocieties.Demographics
         public float[] education = new float[5];   // [Illiterate, Primary, Secondary, Undergrad, Postgrad]
         public float sectorServices, sectorManufacturing, sectorPublic, sectorMilitary;
 
+        public float stratification;   // #29: 0..1 from the owning faction's character; polarises the shape
+
         public int tiles = 1;
         public float population = 1f;
 
         // derived by PrepareRegion
         public float developmentLevel, sanitation, skilledEduShare, foodSelfSufficiency;
+        public float growthCapacity = 1f;   // #29: the missing-middle throttle on growth (1 = balanced/full)
     }
 
     /// <summary>One xenotype cohort's state (DEMOGRAPHIC_MODEL §1): its intrinsic Stock (from genes), the
@@ -80,9 +83,15 @@ namespace RegionsAndSocieties.Demographics
         /// food self-sufficiency). Call once per region per year before stepping its cohorts.</summary>
         public static void PrepareRegion(RegionStage r)
         {
+            // #29: a stratified society's education shape polarises toward a bimodal elite+underclass, hollowing
+            // the skilled middle. Do this first so everything downstream (skilled share, growth capacity, the
+            // cohorts' own education drawn from this stage) reads the real, distorted shape.
+            if (r.stratification > 0f) StratificationRules.Polarize(r.education, r.stratification, r.education);
+
             r.developmentLevel = IndicatorsRules.DevelopmentLevel(r.urbanisation, r.wealth);
             r.sanitation = IndicatorsRules.Sanitation(r.developmentLevel, r.wealth);
             r.skilledEduShare = r.education[Secondary] + r.education[Undergrad] + r.education[Postgrad];
+            r.growthCapacity = StratificationRules.GrowthCapacity(r.education);   // #29: missing middle throttles growth
             float food = GeographicScaleRules.FoodCapacity(r.tiles, r.biomeFertility, r.skilledEduShare);
             r.foodSelfSufficiency = GeographicScaleRules.FoodSelfSufficiency(food, r.population);
         }
@@ -158,7 +167,9 @@ namespace RegionsAndSocieties.Demographics
             float birth = 0.02f + 0.40f * r.ageWorking + 0.30f * r.natalism + 0.30f * x.fertility
                 - 0.20f * InfluenceGraphRules.Curve(InfluenceCurve.Saturating, r.wealth)
                 - 0.20f * r.education[Undergrad] - 0.15f * r.conflict + 0.15f * x.strataUnderclass;
-            x.birthRate = Clamp(birth, 0f, 0.06f) * x.birthMult;
+            // #29: the region's balance throttles births — a polarised, missing-middle society has no engine
+            // to grow, however educated its elite.
+            x.birthRate = Clamp(birth, 0f, 0.06f) * x.birthMult * r.growthCapacity;
 
             // --- fight / flight (derived, emergent) and net migration ---
             x.fight = Clamp(0.6f * x.drugBurden + 0.5f * r.sectorPublic + 0.7f * r.sectorMilitary + 0.3f * x.standing + 0.3f * x.strataElite, 0f, 1.5f);

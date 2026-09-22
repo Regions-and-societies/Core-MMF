@@ -38,27 +38,38 @@ namespace RegionsAndSocieties.Demographics
         {
             public float knowledgeSkew;
             public float wealthMultiplier;
-            public Character(float knowledgeSkew, float wealthMultiplier)
+            // #29: how rigidly stratified the society is, 0 (egalitarian, broad middle) to 1 (a rigid
+            // noble/commoner/serf order). Higher = the education/wealth shape reads bimodal — a thin elite
+            // over a large underclass with the skilled middle hollowed — which throttles growth.
+            public float stratification;
+            // #29: how much the faction represses an underclass into slavery/serfdom (0..1). Feeds the
+            // stage's slavery stance, which caps enslaved cohorts' education at Primary — hollowing the
+            // middle from the bottom, on top of the stratification reshaping from the top.
+            public float slaveryStance;
+            public Character(float knowledgeSkew, float wealthMultiplier, float stratification = 0.2f, float slaveryStance = 0f)
             {
                 this.knowledgeSkew = knowledgeSkew;
                 this.wealthMultiplier = wealthMultiplier;
+                this.stratification = stratification;
+                this.slaveryStance = slaveryStance;
             }
         }
 
-        /// <summary>The modifiers for an archetype. Raiders and cults read down, traders and empires up.</summary>
+        /// <summary>The modifiers for an archetype. Raiders and cults read down, traders and empires up;
+        /// stratification and slavery are highest for rigid, repressive polities (Empire, raiders, cults).</summary>
         public static Character CharacterOf(FactionArchetype a)
         {
             switch (a)
             {
-                case FactionArchetype.Outlander:    return new Character(+0.10f, 1.05f);
-                case FactionArchetype.Tribe:        return new Character(-0.15f, 0.85f);
-                case FactionArchetype.Raider:       return new Character(-0.60f, 0.65f);   // loot, don't school or produce
-                case FactionArchetype.Imperial:     return new Character(+0.45f, 1.30f);   // educated, stratified, wealthy
-                case FactionArchetype.Merchant:     return new Character(+0.20f, 1.45f);   // rich traders
-                case FactionArchetype.Scavenger:    return new Character(-0.05f, 0.95f);   // practical, not academic
-                case FactionArchetype.AncientElite: return new Character(+0.50f, 1.15f);   // ancient knowledge
-                case FactionArchetype.Cult:         return new Character(-0.35f, 0.80f);   // anti-rational
-                default:                            return new Character(0f, 1f);
+                case FactionArchetype.Outlander:    return new Character(+0.10f, 1.05f, 0.15f, 0.00f);   // fairly egalitarian townsfolk
+                case FactionArchetype.Tribe:        return new Character(-0.15f, 0.85f, 0.10f, 0.05f);   // egalitarian kin society
+                case FactionArchetype.Raider:       return new Character(-0.60f, 0.65f, 0.45f, 0.45f);   // warlord over enslaved grunts
+                case FactionArchetype.Imperial:     return new Character(+0.45f, 1.30f, 0.80f, 0.35f);   // rigid order, serfs/slaves
+                case FactionArchetype.Merchant:     return new Character(+0.20f, 1.45f, 0.35f, 0.10f);   // wealth gradient, working middle
+                case FactionArchetype.Scavenger:    return new Character(-0.05f, 0.95f, 0.15f, 0.05f);   // practical, flat
+                case FactionArchetype.AncientElite: return new Character(+0.50f, 1.15f, 0.70f, 0.20f);   // an elite over few
+                case FactionArchetype.Cult:         return new Character(-0.35f, 0.80f, 0.55f, 0.30f);   // priesthood over followers
+                default:                            return new Character(0f, 1f, 0.20f, 0.00f);
             }
         }
 

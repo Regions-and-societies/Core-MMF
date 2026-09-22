@@ -54,6 +54,34 @@ namespace RegionsAndSocieties.Demographics
             float sexDelta = ov.CurrentFemaleDelta();
             if (sexDelta != 0f)
                 demo.femaleFraction = Mathf.Clamp(demo.femaleFraction + sexDelta, MinFemaleFraction, MaxFemaleFraction);
+
+            // #29: a decapitated region — a toppled nation whose elite fled or were killed — is shoved
+            // bottom-heavy, losing its top strata. The balance/growth read (computed after this in ForRegion)
+            // then reflects the collapse until a new middle regrows.
+            if (ov.eduBottomHeavy > 0f && demo.educationShares != null)
+            {
+                StratificationRules.ShiftBottomHeavy(demo.educationShares, ov.eduBottomHeavy, demo.educationShares);
+                demo.educationIndex = EducationRules.Index(demo.educationShares);
+            }
+        }
+
+        /// <summary>Shove a region bottom-heavy — the World-Domination-CP "elite flight on conquest" case
+        /// (#29). <paramref name="strength"/> 0..1 is how thoroughly the top strata are lost; 0 clears it.
+        /// Persists until changed or cleared, like the wealth stress.</summary>
+        public static void ShiftEducationBottomHeavy(int regionId, float strength)
+        {
+            if (strength <= 0f) { ClearEducationShift(regionId); return; }
+            GetOrCreate(regionId).eduBottomHeavy = Mathf.Clamp01(strength);
+            RegionDemographicsUtility.InvalidateRegionCache();
+        }
+
+        /// <summary>Clear a region's bottom-heavy education shift (a new middle has regrown).</summary>
+        public static void ClearEducationShift(int regionId)
+        {
+            if (!overrides.TryGetValue(regionId, out DemographicOverride ov) || ov == null || ov.eduBottomHeavy == 0f) return;
+            ov.eduBottomHeavy = 0f;
+            if (ov.IsEmpty) overrides.Remove(regionId);
+            RegionDemographicsUtility.InvalidateRegionCache();
         }
 
         // --- sex-ratio skews (the #11 hook surface) ---------------------------
@@ -251,10 +279,11 @@ namespace RegionsAndSocieties.Demographics
     public class DemographicOverride : IExposable
     {
         public float wealthMultiplier = 1f;
+        public float eduBottomHeavy;   // #29: 0 = none; >0 shoves the education shape bottom-heavy (decapitation)
         public List<DemographicSkew> sexSkews = new List<DemographicSkew>();
 
-        /// <summary>Nothing left to store: baseline wealth and no live sex skews. Such an override is pruned.</summary>
-        public bool IsEmpty => wealthMultiplier == 1f && (sexSkews == null || sexSkews.Count == 0);
+        /// <summary>Nothing left to store: baseline wealth, no bottom-heavy shift, and no live sex skews.</summary>
+        public bool IsEmpty => wealthMultiplier == 1f && eduBottomHeavy == 0f && (sexSkews == null || sexSkews.Count == 0);
 
         /// <summary>The net current sex delta from all this region's skews.</summary>
         public float CurrentFemaleDelta()
@@ -320,6 +349,7 @@ namespace RegionsAndSocieties.Demographics
         public void ExposeData()
         {
             Scribe_Values.Look(ref wealthMultiplier, "wealthMultiplier", 1f);
+            Scribe_Values.Look(ref eduBottomHeavy, "eduBottomHeavy", 0f);
             Scribe_Collections.Look(ref sexSkews, "sexSkews", LookMode.Deep);
             if (sexSkews == null) sexSkews = new List<DemographicSkew>();
         }
