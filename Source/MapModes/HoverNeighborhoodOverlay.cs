@@ -60,16 +60,34 @@ namespace RegionsAndSocieties
                 Vector2 ui = GenWorldUI.WorldToUIPosition(center);
                 var rect = new Rect(ui.x - half, ui.y - 11f, half * 2f, 22f);
                 bool hovered = t == mouse.tileId;
-                // A dark plate behind the text so it reads over any terrain colour, brighter for the hovered tile.
-                GUI.color = new Color(0f, 0f, 0f, hovered ? 0.55f : 0.35f);
-                GUI.DrawTexture(rect, BaseContent.BlackTex);
-                GUI.color = hovered ? Color.white : new Color(1f, 1f, 1f, 0.8f);
-                Widgets.Label(rect, hovered ? "<b>" + val + "</b>" : val);
+                // Bare numbers with a dark outline so they read over any terrain colour without a backdrop
+                // shape that wouldn't match the hex. The hovered tile is bold and pure white; the rest a
+                // slightly softer white.
+                DrawOutlinedLabel(rect, hovered ? "<b>" + val + "</b>" : val,
+                    hovered ? Color.white : new Color(0.90f, 0.90f, 0.90f, 1f));
             }
 
             GUI.color = oldColor;
             Text.Anchor = oldAnchor;
             Text.Font = oldFont;
+        }
+
+        // Cardinal + diagonal 1px offsets for the text outline.
+        private static readonly Vector2[] OutlineOffsets =
+        {
+            new Vector2(-1f, 0f), new Vector2(1f, 0f), new Vector2(0f, -1f), new Vector2(0f, 1f),
+            new Vector2(-1f, -1f), new Vector2(1f, -1f), new Vector2(-1f, 1f), new Vector2(1f, 1f),
+        };
+
+        /// <summary>Draw a label with a 1px dark outline (drawn on all 8 sides, then the text on top) so it
+        /// stays legible over any terrain colour without a background plate.</summary>
+        private static void DrawOutlinedLabel(Rect rect, string text, Color color)
+        {
+            GUI.color = new Color(0f, 0f, 0f, 0.9f);
+            for (int i = 0; i < OutlineOffsets.Length; i++)
+                Widgets.Label(new Rect(rect.x + OutlineOffsets[i].x, rect.y + OutlineOffsets[i].y, rect.width, rect.height), text);
+            GUI.color = color;
+            Widgets.Label(rect, text);
         }
 
         /// <summary>All tiles within <paramref name="radius"/> adjacency hops of the centre (a disk), by BFS
