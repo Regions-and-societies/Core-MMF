@@ -1352,10 +1352,24 @@ namespace RegionsAndSocieties.Demographics
                 if (prov == null || prov.provinceType != ProvinceType.Land) continue;
                 if (!IsOwnOrNeutralTerritory(prov, o.Faction)) continue;
 
+                // An outpost/camp is an untiered holding, so the settlement-tier sizing returns 0 (the "no cap"
+                // homestead sentinel). Fall back to the same homestead-scale footprint the expired-site legacy
+                // uses — a persisted outpost projects the magnitude of the legacy it replaces, but live.
                 int pop = DemographicPopulation(o);
+                if (pop <= 0) pop = SettlementHistoryRules.LegacyPopulation(0f);
                 if (pop > 0)
                     sources.Add(new PressureSource { tile = pt.tileId, faction = o.Faction, population = pop, reach = InfluenceReach(pop) });
             }
+        }
+
+        /// <summary>#35 test probe: whether the current pressure-source set has any source at this tile. Crisp,
+        /// unambiguous signal for validating that a persisted outpost (or a legacy) actually joined the field.</summary>
+        internal static bool HasPressureSourceAtTile(int tile)
+        {
+            List<PressureSource> srcs = Sources();
+            for (int i = 0; i < srcs.Count; i++)
+                if (srcs[i].tile == tile) return true;
+            return false;
         }
 
         /// <summary>#35 shared territory gate: a site belongs in a province that is unclaimed/neutral, or that
