@@ -35,6 +35,11 @@ namespace RegionsAndSocieties
         protected override float[] BandUpperBounds => Uppers;
         protected override float ValueFor(RegionDemographics demo) => demo.educationIndex;
 
+        // #34/#33: hover shows each tile's LOCAL education index (higher toward the region's cities).
+        protected override bool ShowsLocalGradient => true;
+        protected override string LocalValueLabel(int tile)
+            => DemoForTile(tile) != null ? RegionDemographicsUtility.LocalDemographics(tile).educationIndex.ToString() : null;
+
         protected override string LabelForRegion(RegionDemographics demo) => demo.educationIndex.ToString();
 
         protected override string SummaryFor(GeographicProvince province)
