@@ -183,6 +183,11 @@ run_suite settlementcomposition Exe \
     Tests/SettlementCompositionRulesTests.cs \
     $SRC/Demographics/SettlementCompositionRules.cs
 
+# Pure, no game — settlement-history legacy sizing (#35).
+run_suite settlementhistory Exe \
+    Tests/SettlementHistoryRulesTests.cs \
+    $SRC/Demographics/SettlementHistoryRules.cs
+
 # Pure, no game — the per-cohort year step composing all six modules (#58 spine).
 run_suite cohortyear Exe \
     Tests/CohortYearRulesTests.cs \
@@ -342,6 +347,7 @@ run_suite typecheck Library \
     $SRC/RegionalOwnershipUtility.cs \
     $SRC/GeographicProvince.cs $SRC/BiomeSafe.cs $SRC/IRegionDemographicProvider.cs \
     $SRC/Demographics/RegionCohorts.cs $SRC/Demographics/CohortYearRules.cs \
+    $SRC/Demographics/SettlementHistorySource.cs \
     $SRC/Demographics/InfluenceGraphRules.cs $SRC/Demographics/WealthRules.cs $SRC/Demographics/VitalsRules.cs \
     $SRC/Demographics/GeographicScaleRules.cs $SRC/Demographics/ReproductionRules.cs $SRC/Demographics/IndicatorsRules.cs \
     $SRC/Demographics/AgeStructureRules.cs \

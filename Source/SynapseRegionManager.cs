@@ -128,6 +128,24 @@ namespace RegionsAndSocieties
         /// per-tile density read skips region lookups entirely on a world where nothing has moved yet.</summary>
         public bool HasPopulationDelta => regionPopulationDelta != null && regionPopulationDelta.Count > 0;
 
+        // #35: the permanent demographic legacies of timed sites the player let expire (settlement history).
+        // Scribed; read by RegionDemographicsUtility.Sources() as extra pressure sources.
+        private List<Demographics.SettlementHistorySource> settlementHistory = new List<Demographics.SettlementHistorySource>();
+
+        /// <summary>The expired-site legacies accumulated on this world (#35) — a permanent pressure source
+        /// each. Read-only view for the demographics field and reports.</summary>
+        public List<Demographics.SettlementHistorySource> SettlementHistory => settlementHistory;
+
+        /// <summary>Record a permanent demographic legacy at a tile (#35) — a timed site expired in friendly
+        /// or neutral territory. Drops the demographic caches so the new pressure source takes effect.</summary>
+        public void AddSettlementHistory(int tile, string factionId, int population)
+        {
+            if (population <= 0) return;
+            if (settlementHistory == null) settlementHistory = new List<Demographics.SettlementHistorySource>();
+            settlementHistory.Add(new Demographics.SettlementHistorySource(tile, factionId, population));
+            Demographics.RegionDemographicsUtility.InvalidateCache();   // rebuild Sources() with the new legacy
+        }
+
         /// <summary>Run a population-dynamics pass right now (the on-request path for the #5 endpoint and the
         /// debug action), so a consumer never reads a stale number after an event. Returns people migrated.</summary>
         public float RunPopulationDynamicsNow() => Integration.PopulationDynamics.RunPasses(this, regionPopulationDelta);
@@ -790,6 +808,8 @@ namespace RegionsAndSocieties
             // Dynamic population offsets accumulated by the #5/#8 passes — scribed so a save keeps how its
             // map has drifted from the derived baseline.
             Scribe_Collections.Look(ref regionPopulationDelta, "regionPopulationDelta", LookMode.Value, LookMode.Value);
+            Scribe_Collections.Look(ref settlementHistory, "settlementHistory", LookMode.Deep);
+            if (Scribe.mode == LoadSaveMode.PostLoadInit && settlementHistory == null) settlementHistory = new List<Demographics.SettlementHistorySource>();
             if (regionPopulationDelta == null)
             {
                 regionPopulationDelta = new Dictionary<int, float>();
