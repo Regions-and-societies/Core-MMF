@@ -1317,7 +1317,55 @@ namespace RegionsAndSocieties.Demographics
             // #35: expired-site legacies — the settlement history — are permanent pressure sources too, so the
             // people who stayed when the player ignored a timed site keep shaping the region's demographics.
             AddSettlementHistorySources(grid);
+
+            // #35 Phase 2 (opt-in): when persistent settlement history is on, a kept timerless outpost/camp is a
+            // LIVE source projecting its full make-up — not the faint legacy. This also naturally folds in any
+            // already-persistent outposts (e.g. VOE's) with no mod-specific code. A destroyed one is gone from
+            // the world (drops out here); a captured one reports its new faction (updated here) — no extra hook.
+            AddPersistentOutpostSources(grid);
             return sources;
+        }
+
+        /// <summary>#35 Phase 2: append timerless (kept) qualifying outposts/camps in their own or neutral
+        /// territory as live pressure sources. Gated on the per-world persistent-history flag; a no-op when it
+        /// is off (the 0.5.0 default), so base worlds see only settlements and expired legacies.</summary>
+        private static void AddPersistentOutpostSources(WorldGrid grid)
+        {
+            if (grid == null || Find.WorldObjects == null) return;
+            var mgr = Find.World?.GetComponent<SynapseRegionManager>();
+            if (mgr == null || !mgr.EffectivePersistentOutpostHistory) return;
+
+            List<WorldObject> all = Find.WorldObjects.AllWorldObjects;
+            for (int i = 0; i < all.Count; i++)
+            {
+                WorldObject o = all[i];
+                if (o == null || o.Faction == null) continue;
+                WorldObjectKind kind = WorldObjectClassifier.Classify(o);
+                if (kind != WorldObjectKind.Outpost && kind != WorldObjectKind.Camp) continue;
+                // Still counting down its timer — not yet a persistent bonus; it contributes only once kept.
+                var timeout = o.GetComponent<RimWorld.Planet.TimeoutComp>();
+                if (timeout != null && timeout.Active) continue;
+
+                PlanetTile pt = o.Tile;
+                if (!IsSurfaceSampleTile(pt)) continue;
+                GeographicProvince prov = mgr.GetProvinceForTile(pt.tileId);
+                if (prov == null || prov.provinceType != ProvinceType.Land) continue;
+                if (!IsOwnOrNeutralTerritory(prov, o.Faction)) continue;
+
+                int pop = DemographicPopulation(o);
+                if (pop > 0)
+                    sources.Add(new PressureSource { tile = pt.tileId, faction = o.Faction, population = pop, reach = InfluenceReach(pop) });
+            }
+        }
+
+        /// <summary>#35 shared territory gate: a site belongs in a province that is unclaimed/neutral, or that
+        /// its own faction holds. A rival's exclusively-held land is not "its own or neutral".</summary>
+        internal static bool IsOwnOrNeutralTerritory(GeographicProvince prov, Faction faction)
+        {
+            if (prov == null || faction == null) return false;
+            var owners = prov.owningFactionIds;
+            if (owners == null || owners.Count == 0) return true;   // neutral / unclaimed
+            return owners.Contains(faction.GetUniqueLoadID());       // its own territory
         }
 
         /// <summary>Append the world's settlement-history legacies (#35) to the pressure-source list. Each is a

@@ -75,6 +75,19 @@ namespace RegionsAndSocieties
         public static bool regionLockDefault = true;
 
         /// <summary>
+        /// #35 default for the per-world <b>persistent settlement history</b> mode — whether a timed site
+        /// (a raider camp, an ignored quest outpost) that expires on its own in friendly or neutral
+        /// territory is kept as a permanent, timerless world object that actively projects its make-up
+        /// into the region, instead of leaving only the faint one-time legacy of Phase 1.
+        ///
+        /// <para>Opt-in for 0.5.0 (off): the base behaviour is a faint legacy. Empire-CP and WD-CP force
+        /// it on, so occupied outposts leave a living mark until they are cleared or captured. The flag
+        /// itself lives on the world (SynapseRegionManager) and is toggleable mid-game, so changing this
+        /// default never rewrites a world that already decided — mirrors <c>regionLockDefault</c>.</para>
+        /// </summary>
+        public static bool persistentOutpostHistoryDefault = false;
+
+        /// <summary>
         /// Show the derivation breakdowns in region tooltips (ownership now; economics and produced
         /// goods later) so the numbers can be inspected without Development mode. Off by default (#54).
         /// </summary>
@@ -137,6 +150,7 @@ namespace RegionsAndSocieties
             Scribe_Values.Look(ref partitionAlgorithmId, "partitionAlgorithmId", Partition.RegionPartitionerRegistry.DefaultAlgorithmId);
             Scribe_Values.Look(ref strictTerritorialOwnershipDefault, "strictTerritorialOwnershipDefault", false);
             Scribe_Values.Look(ref regionLockDefault, "regionLockDefault", true);
+            Scribe_Values.Look(ref persistentOutpostHistoryDefault, "persistentOutpostHistoryDefault", false);
             Scribe_Values.Look(ref showCalculationBreakdowns, "showCalculationBreakdowns", false);
             Scribe_Values.Look(ref regionPanelUseShift, "regionPanelUseShift", false);
             Scribe_Values.Look(ref maxRegionPanels, "maxRegionPanels", 5);

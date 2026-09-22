@@ -229,6 +229,7 @@ namespace RegionsAndSocieties
         private int worldSeedingMaturityRaw = -1;   // -1 unset, else round(maturity*1000)
         private int worldHoldingSeedingRaw = -1;    // -1 unset, 0 off, 1 on
         private int regionLockRaw = -1;             // -1 unset (use setting default), 0 off, 1 on
+        private int persistentOutpostHistoryRaw = -1; // #35: -1 unset (use setting default), 0 off, 1 on
 
         /// <summary>Target tiles per region this world was cut with (stamped value, else the live setting).
         /// The subdivision aims for this (×biome weight); the merge floor is half of it.</summary>
@@ -292,6 +293,28 @@ namespace RegionsAndSocieties
         public bool EffectiveRegionLock
         {
             get { return regionLockRaw >= 0 ? regionLockRaw == 1 : FactionPlacementSettings.regionLockDefault; }
+        }
+
+        /// <summary>
+        /// #35 persistent settlement history: when ON, a timed site the player ignored that expires on its
+        /// own in friendly or neutral territory is kept as a permanent, timerless world object (its timer is
+        /// stopped) and projects its make-up into the region as a live pressure source, until it is cleared
+        /// or captured. When OFF (the 0.5.0 default), the site is removed and leaves only the faint one-time
+        /// legacy. Toggleable mid-game like <see cref="StrictTerritorialOwnership"/>; unset follows
+        /// <see cref="FactionPlacementSettings.persistentOutpostHistoryDefault"/>. Empire-CP and WD-CP set this
+        /// (the raw -1/0/1 + this setter is the seam) to force it on for occupied outposts.
+        /// </summary>
+        public bool PersistentOutpostHistory
+        {
+            get { return EffectivePersistentOutpostHistory; }
+            set { persistentOutpostHistoryRaw = value ? 1 : 0; }
+        }
+
+        /// <summary>The persistent-settlement-history flag in force for this world — the per-world choice, else
+        /// the default (#35).</summary>
+        public bool EffectivePersistentOutpostHistory
+        {
+            get { return persistentOutpostHistoryRaw >= 0 ? persistentOutpostHistoryRaw == 1 : FactionPlacementSettings.persistentOutpostHistoryDefault; }
         }
 
         /// <summary>
@@ -798,6 +821,7 @@ namespace RegionsAndSocieties
             Scribe_Values.Look(ref worldSeedingMaturityRaw, "worldSeedingMaturity", -1);
             Scribe_Values.Look(ref worldHoldingSeedingRaw, "worldHoldingSeeding", -1);
             Scribe_Values.Look(ref regionLockRaw, "regionLock", -1);
+            Scribe_Values.Look(ref persistentOutpostHistoryRaw, "persistentOutpostHistory", -1);
 
             Scribe_Collections.Look(ref provinces, "provinces", LookMode.Deep);
             if (provinces == null)

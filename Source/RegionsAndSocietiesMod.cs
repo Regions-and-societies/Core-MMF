@@ -113,6 +113,14 @@ namespace RegionsAndSocieties
                 l.CheckboxLabeled("Enforce region locks (this world)", ref locked,
                     "On: a faction (and holding seeding) is refused a settlement/outpost in a region a rival holds exclusively (≥71%). Off: that hard refusal stands down — buffers, spacing, supply range and footholds still apply. Safe to change mid-game.");
                 if (locked != beforeLock) mgr.RegionLock = locked;
+
+                if (FactionPlacementSettings.societiesEnabled)
+                {
+                    bool persist = mgr.PersistentOutpostHistory, beforePersist = persist;
+                    l.CheckboxLabeled("Ignored sites become permanent (this world)", ref persist,
+                        "On: a timed site (raider camp, quest outpost) you leave alone until it expires, in friendly or neutral territory, is KEPT as a permanent world object that projects its people into the region until you clear or capture it. Off (default): it is removed and leaves only a faint, lasting demographic legacy. Safe to change mid-game.");
+                    if (persist != beforePersist) mgr.PersistentOutpostHistory = persist;
+                }
             }
             else
             {
@@ -120,6 +128,9 @@ namespace RegionsAndSocieties
                     "Whether newly generated worlds enforce Regions & Societies' placement rules (buffers, supply range, footholds). Load a save to change that world's own setting.");
                 l.CheckboxLabeled("Enforce region locks (new worlds)", ref FactionPlacementSettings.regionLockDefault,
                     "Whether newly generated worlds refuse a holding in a region a rival holds exclusively. Load a save to change that world's own setting.");
+                if (FactionPlacementSettings.societiesEnabled)
+                    l.CheckboxLabeled("Ignored sites become permanent (new worlds)", ref FactionPlacementSettings.persistentOutpostHistoryDefault,
+                        "Whether an ignored timed site that expires in friendly/neutral territory is kept as a permanent demographic source (on) or leaves only a faint legacy (off). Load a save to change that world's own setting.");
             }
 
             l.CheckboxLabeled("Log world object types no integration recognises", ref Integration.WorldObjectIntegrationSettings.logUnknownWorldObjects,
