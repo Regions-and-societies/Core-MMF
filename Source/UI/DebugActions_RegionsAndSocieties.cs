@@ -302,6 +302,192 @@ namespace RegionsAndSocieties.UI
             Log.Message(sb.ToString());
         }
 
+        private static WorldObjectDef rsTestCampDef;
+
+        /// <summary>A throwaway WorldObjectDef whose defName contains "Camp" (so the classifier reads it as a
+        /// Camp) and carries a TimeoutComp (so it expires like a real timed site). Registered once; never
+        /// scribed (we remove every instance before the action returns).</summary>
+        private static WorldObjectDef EnsureTestCampDef()
+        {
+            if (rsTestCampDef != null) return rsTestCampDef;
+            WorldObjectDef existing = DefDatabase<WorldObjectDef>.GetNamedSilentFail("RS_TestCampMarker");
+            if (existing != null) { rsTestCampDef = existing; return existing; }
+
+            var def = new WorldObjectDef
+            {
+                defName = "RS_TestCampMarker",           // contains "Camp" -> WorldObjectClassifier => Camp
+                label = "test camp (R&S #35 P2)",
+                worldObjectClass = typeof(WorldObject),
+                canHaveFaction = true,
+                selectable = false,
+                useDynamicDrawer = false,
+            };
+            def.comps.Add(new WorldObjectCompProperties_Timeout());
+            def.PostLoad();
+            def.ResolveReferences();
+            DefDatabase<WorldObjectDef>.Add(def);
+            rsTestCampDef = def;
+            return def;
+        }
+
+        private static WorldObject SpawnTestCamp(WorldObjectDef def, Faction faction, int tile,
+            System.Collections.Generic.List<WorldObject> created)
+        {
+            WorldObject wo = WorldObjectMaker.MakeWorldObject(def);
+            wo.Tile = tile;
+            wo.SetFaction(faction);
+            Find.WorldObjects.Add(wo);
+            created.Add(wo);
+            return wo;
+        }
+
+        private static Faction FirstSettledNpc(Faction exclude)
+        {
+            var all = Find.FactionManager.AllFactionsListForReading;
+            for (int i = 0; i < all.Count; i++)
+            {
+                Faction f = all[i];
+                if (f == null || f.IsPlayer || f.defeated) continue;
+                if (f.def == null || f.def.hidden || !f.def.humanlikeFaction) continue;
+                if (exclude != null && f == exclude) continue;
+                return f;
+            }
+            return null;
+        }
+
+        /// <summary>The first land tile of a province that carries no pressure source yet and is a valid surface
+        /// sample tile — a clean slate so "source appeared / vanished" is unambiguous.</summary>
+        private static int PickCleanTile(GeographicProvince prov)
+        {
+            for (int i = 0; i < prov.tiles.Count; i++)
+            {
+                int t = prov.tiles[i];
+                if (Demographics.RegionDemographicsUtility.IsSurfaceSampleTile(t)
+                    && !Demographics.RegionDemographicsUtility.HasPressureSourceAtTile(t))
+                    return t;
+            }
+            return prov.tiles[prov.tiles.Count - 1];
+        }
+
+        [DebugAction("Regions and Societies", "R&S: TEST persist camp lifecycle (#35 P2)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        private static void TestPersistCampLifecycle()
+        {
+            var mgr = Find.World?.GetComponent<SynapseRegionManager>();
+            if (mgr?.Provinces == null || Find.WorldObjects == null || Find.FactionManager == null) { Log.Message("[R&S] no world"); return; }
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("=== R&S #35 P2 persist-camp lifecycle: spawn/expire/destroy + territory gate ===");
+            bool savedMode = mgr.PersistentOutpostHistory;
+            var created = new System.Collections.Generic.List<WorldObject>();
+            WorldObjectDef campDef = EnsureTestCampDef();
+
+            try
+            {
+                mgr.PersistentOutpostHistory = true;   // opt-in persistent mode ON for the test
+
+                // Locate a neutral (unclaimed) land province and an owned one.
+                GeographicProvince neutralProv = null, ownedProv = null; Faction ownerFac = null;
+                foreach (GeographicProvince p in mgr.Provinces)
+                {
+                    if (p == null || p.provinceType != ProvinceType.Land || p.tiles == null || p.tiles.Count == 0) continue;
+                    bool claimed = p.owningFactionIds != null && p.owningFactionIds.Count > 0;
+                    if (!claimed && neutralProv == null) neutralProv = p;
+                    if (claimed && ownedProv == null)
+                    {
+                        Faction o = Demographics.RegionStageBuilder.OwnerOf(p);
+                        if (o != null && !o.IsPlayer) { ownedProv = p; ownerFac = o; }
+                    }
+                    if (neutralProv != null && ownedProv != null) break;
+                }
+
+                Faction campFac = FirstSettledNpc(null);
+
+                // --- A. neutral territory: an ignored camp expires -> persists -> is a live source; destroy -> gone.
+                if (neutralProv != null && campFac != null)
+                {
+                    int tile = PickCleanTile(neutralProv);
+                    sb.AppendLine($"[A neutral persist] unclaimed province #{neutralProv.id}, camp faction {campFac.Name}, tile {tile}");
+                    bool before = Demographics.RegionDemographicsUtility.HasPressureSourceAtTile(tile);
+
+                    WorldObject camp = SpawnTestCamp(campDef, campFac, tile, created);
+                    var t = camp.GetComponent<RimWorld.Planet.TimeoutComp>();
+                    sb.AppendLine($"  spawned: classify={Integration.WorldObjectClassifier.Classify(camp)}, faction={camp.Faction?.Name ?? "null"}");
+
+                    t.StartTimeout(60000);   // timer running
+                    Demographics.RegionDemographicsUtility.InvalidateCache();
+                    bool duringTimer = Demographics.RegionDemographicsUtility.HasPressureSourceAtTile(tile);
+                    sb.AppendLine($"  while its timer runs -> source at tile: {duringTimer} (expect False)");
+
+                    t.StartTimeout(0);       // the player ignored it; it expires now
+                    camp.Destroy();          // natural-expiry removal -> prefix keeps it (StopTimeout + skip)
+                    bool kept = Find.WorldObjects.AllWorldObjects.Contains(camp);
+                    var t2 = camp.GetComponent<RimWorld.Planet.TimeoutComp>();
+                    Demographics.RegionDemographicsUtility.InvalidateCache();
+                    bool afterPersist = Demographics.RegionDemographicsUtility.HasPressureSourceAtTile(tile);
+                    sb.AppendLine($"  after natural expiry -> kept: {kept} (T), timer active: {t2?.Active} (F), source at tile: {afterPersist} (T); was-source-before: {before} (F)");
+                    sb.AppendLine((kept && afterPersist && !before) ? "  PASS: expired camp persisted and became a live pressure source." : "  *** FAIL ***");
+
+                    camp.Destroy();          // player clears / captures it -> normal removal
+                    bool gone = !Find.WorldObjects.AllWorldObjects.Contains(camp);
+                    Demographics.RegionDemographicsUtility.InvalidateCache();
+                    bool afterDestroy = Demographics.RegionDemographicsUtility.HasPressureSourceAtTile(tile);
+                    sb.AppendLine($"  after destroy/capture -> removed: {gone} (T), source at tile: {afterDestroy} (F)");
+                    sb.AppendLine((gone && !afterDestroy) ? "  PASS: destroyed camp dropped out and its pressure is gone." : "  *** FAIL ***");
+                    created.Remove(camp);
+                }
+                else sb.AppendLine("[A] skipped (no unclaimed land province, or no NPC faction)");
+
+                // --- B. rival territory: the gate must REJECT persistence AND the legacy.
+                if (ownedProv != null && ownerFac != null)
+                {
+                    Faction rival = FirstSettledNpc(ownerFac) ?? Find.FactionManager.OfPlayer;
+                    int tile = PickCleanTile(ownedProv);
+                    sb.AppendLine($"[B rival gate] province #{ownedProv.id} owned by {ownerFac.Name}, camp faction {rival.Name} (a rival), tile {tile}");
+                    WorldObject camp = SpawnTestCamp(campDef, rival, tile, created);
+                    camp.GetComponent<RimWorld.Planet.TimeoutComp>().StartTimeout(0);
+                    int histBefore = mgr.SettlementHistory.Count;
+                    camp.Destroy();          // expires in RIVAL land -> gate returns true (remove), no persist, no legacy
+                    bool gone = !Find.WorldObjects.AllWorldObjects.Contains(camp);
+                    int histAfter = mgr.SettlementHistory.Count;
+                    Demographics.RegionDemographicsUtility.InvalidateCache();
+                    bool src = Demographics.RegionDemographicsUtility.HasPressureSourceAtTile(tile);
+                    sb.AppendLine($"  after expiry in RIVAL land -> removed: {gone} (T), persisted-source: {src} (F), legacies added: {histAfter - histBefore} (0)");
+                    sb.AppendLine((gone && !src && histAfter == histBefore) ? "  PASS: rival-territory gate rejected both persistence and the legacy." : "  *** FAIL ***");
+                    created.Remove(camp);
+                }
+                else sb.AppendLine("[B] skipped (no owned land province)");
+
+                // --- C. own territory: a faction's own camp persists too.
+                if (ownedProv != null && ownerFac != null)
+                {
+                    int tile = PickCleanTile(ownedProv);
+                    sb.AppendLine($"[C own-territory persist] province #{ownedProv.id} owner {ownerFac.Name}, camp faction = owner, tile {tile}");
+                    WorldObject camp = SpawnTestCamp(campDef, ownerFac, tile, created);
+                    camp.GetComponent<RimWorld.Planet.TimeoutComp>().StartTimeout(0);
+                    camp.Destroy();
+                    bool kept = Find.WorldObjects.AllWorldObjects.Contains(camp);
+                    Demographics.RegionDemographicsUtility.InvalidateCache();
+                    bool src = Demographics.RegionDemographicsUtility.HasPressureSourceAtTile(tile);
+                    sb.AppendLine($"  after expiry in OWN land -> kept: {kept} (T), source at tile: {src} (T)");
+                    sb.AppendLine((kept && src) ? "  PASS: own-territory camp persisted as a source." : "  *** FAIL ***");
+                }
+                else sb.AppendLine("[C] skipped (no owned land province)");
+            }
+            catch (System.Exception e) { sb.AppendLine("EXCEPTION: " + e); }
+            finally
+            {
+                // Remove every test camp (created list + any def-matched leftover), restore the flag, drop caches.
+                foreach (WorldObject wo in created)
+                    if (wo != null && Find.WorldObjects.AllWorldObjects.Contains(wo)) Find.WorldObjects.Remove(wo);
+                var leftovers = Find.WorldObjects.AllWorldObjects.FindAll(w => w != null && w.def == campDef);
+                foreach (WorldObject wo in leftovers) Find.WorldObjects.Remove(wo);
+                mgr.PersistentOutpostHistory = savedMode;
+                Demographics.RegionDemographicsUtility.InvalidateCache();
+                sb.AppendLine($"cleanup: removed {leftovers.Count} leftover + tracked test camps, restored mode raw -> {savedMode}.");
+            }
+            Log.Message(sb.ToString());
+        }
+
         [DebugAction("Regions and Societies", "R&S: settlement composition variation (#74)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void SettlementCompositionReport()
         {
