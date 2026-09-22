@@ -123,38 +123,115 @@ namespace RegionsAndSocieties.UI
             }
             if (hi == null || lo == null) { Log.Message("[R&S] no settled regions"); return; }
 
-            // Reference consumer (demo only — a real one ships in a CP): region education index → Intellectual.
+            // Reference consumer (demo only — a real one ships in a CP): apply the tier's full skill SHAPE —
+            // specialties picked from the region's dominant sector, at the tier's level range, with its burning/
+            // minor passions; every other skill at the tier's baseline, capped. Depth from education, domain
+            // from sector.
             var prev = Demographics.PawnDemographicHooks.OnPawnGenerated;
-            Demographics.PawnDemographicHooks.OnPawnGenerated = ctx =>
-            {
-                SkillRecord sk = ctx.pawn.skills?.GetSkill(SkillDefOf.Intellectual);
-                if (sk != null) sk.Level = UnityEngine.Mathf.Clamp(4 + (ctx.demographics.educationIndex - 50) / 6, 0, 20);
-            };
+            Demographics.PawnDemographicHooks.OnPawnGenerated = ApplyDemographicSkills;
 
             var sb = new System.Text.StringBuilder();
-            sb.AppendLine("=== R&S pawn inherits demographics (#28) — education index -> Intellectual skill ===");
+            sb.AppendLine("=== R&S pawn inherits demographics (#28) — education shape -> skills + passions ===");
             try
             {
-                int hiSkill = GenIntellectualForTile(hi);
-                int loSkill = GenIntellectualForTile(lo);
-                sb.AppendLine($"HIGH-edu region #{hi.id} (eduIndex {hiIdx}) -> generated pawn Intellectual {hiSkill}");
-                sb.AppendLine($"LOW-edu  region #{lo.id} (eduIndex {loIdx}) -> generated pawn Intellectual {loSkill}");
-                sb.AppendLine(hiSkill > loSkill
-                    ? "  OK: a pawn from the more-educated region rolled a higher skill (the hook fired per region)."
-                    : "  (no skew — check the hook)");
+                DumpGeneratedPawn(sb, hi, "HIGH-edu", hiIdx);
+                DumpGeneratedPawn(sb, lo, "LOW-edu ", loIdx);
             }
             finally { Demographics.PawnDemographicHooks.OnPawnGenerated = prev; }
             Log.Message(sb.ToString());
         }
 
-        private static int GenIntellectualForTile(GeographicProvince p)
+        // The reference #28 consumer: education tier (sampled from the region's distribution) sets the skill
+        // shape; the region's dominant sector picks WHICH skills are the specialties.
+        private static void ApplyDemographicSkills(Demographics.PawnDemographicContext ctx)
+        {
+            Pawn_SkillTracker skills = ctx.pawn?.skills;
+            if (skills == null) return;
+            var demo = ctx.demographics;
+
+            int tier = WeightedTier(demo.educationShares);
+            Demographics.EducationProfile prof = Demographics.EducationRules.Profiles[tier];
+
+            // Everything to baseline first (no passion), capped.
+            for (int i = 0; i < skills.skills.Count; i++)
+            {
+                skills.skills[i].Level = UnityEngine.Mathf.Min(prof.skillCap, Rand.RangeInclusive(prof.baselineLow, prof.baselineHigh));
+                skills.skills[i].passion = Passion.None;
+            }
+
+            // Specialties: pick from the region's dominant sector, deep + passionate.
+            var candidates = SectorSkills(demo);
+            int burning = prof.burningPassions, minor = prof.minorPassions;
+            for (int s = 0; s < prof.specialties && candidates.Count > 0; s++)
+            {
+                SkillDef sd = candidates.RandomElement();
+                candidates.Remove(sd);
+                SkillRecord sr = skills.GetSkill(sd);
+                if (sr == null) continue;
+                sr.Level = UnityEngine.Mathf.Min(prof.skillCap, Rand.RangeInclusive(prof.specialtyLow, prof.specialtyHigh));
+                if (burning-- > 0) sr.passion = Passion.Major;
+                else if (minor-- > 0) sr.passion = Passion.Minor;
+            }
+        }
+
+        private static readonly string[][] SectorSkillNames =
+        {
+            new[] { "Plants", "Animals", "Cooking" },        // 0 Agriculture
+            new[] { "Mining", "Construction", "Crafting" },   // 1 Industry
+            new[] { "Shooting", "Melee" },                    // 2 Military
+            new[] { "Social", "Artistic", "Intellectual" },   // 3 Trade
+        };
+
+        private static System.Collections.Generic.List<SkillDef> SectorSkills(Demographics.RegionDemographics demo)
+        {
+            int dom = 0; float best = -1f;
+            if (demo.occupationShares != null)
+                for (int i = 0; i < demo.occupationShares.Length && i < SectorSkillNames.Length; i++)
+                    if (demo.occupationShares[i] > best) { best = demo.occupationShares[i]; dom = i; }
+
+            var list = new System.Collections.Generic.List<SkillDef>();
+            foreach (string n in SectorSkillNames[dom])
+            {
+                SkillDef sd = DefDatabase<SkillDef>.GetNamedSilentFail(n);
+                if (sd != null) list.Add(sd);
+            }
+            // top up with a couple of general skills so higher tiers always have enough specialty slots.
+            foreach (string n in new[] { "Medicine", "Intellectual", "Crafting" })
+            {
+                SkillDef sd = DefDatabase<SkillDef>.GetNamedSilentFail(n);
+                if (sd != null && !list.Contains(sd)) list.Add(sd);
+            }
+            return list;
+        }
+
+        private static int WeightedTier(float[] eduShares)
+        {
+            if (eduShares == null || eduShares.Length == 0) return 1;
+            float total = 0f; for (int i = 0; i < eduShares.Length; i++) total += eduShares[i];
+            if (total <= 0f) return 1;
+            float r = Rand.Value * total;
+            for (int i = 0; i < eduShares.Length; i++) { r -= eduShares[i]; if (r <= 0f) return i; }
+            return eduShares.Length - 1;
+        }
+
+        private static void DumpGeneratedPawn(System.Text.StringBuilder sb, GeographicProvince p, string tag, int eduIdx)
         {
             Faction owner = Demographics.RegionStageBuilder.OwnerOf(p) ?? Faction.OfPlayer;
             var req = new PawnGenerationRequest(PawnKindDefOf.Colonist, owner, forceGenerateNewPawn: true);
-            req.Tile = new RimWorld.Planet.PlanetTile(p.tiles[0]);   // generate "from" this region's tile
+            req.Tile = new RimWorld.Planet.PlanetTile(p.tiles[0]);
             Pawn pawn = PawnGenerator.GeneratePawn(req);
-            SkillRecord sk = pawn.skills?.GetSkill(SkillDefOf.Intellectual);
-            return sk?.Level ?? -1;
+            var demo = Demographics.RegionDemographicsUtility.ForRegion(p);
+            sb.AppendLine($"{tag} region #{p.id} (eduIndex {eduIdx}, econValue {demo.economicValue:0.00}, labourEff {demo.labourEfficiency:0.00}):");
+            if (pawn.skills == null) { sb.AppendLine("   (no skills)"); return; }
+            var top = new System.Collections.Generic.List<SkillRecord>(pawn.skills.skills);
+            top.Sort((a, b) => b.Level.CompareTo(a.Level));
+            var parts = new System.Collections.Generic.List<string>();
+            for (int i = 0; i < top.Count && i < 5; i++)
+            {
+                string flame = top[i].passion == Passion.Major ? "!!" : top[i].passion == Passion.Minor ? "!" : "";
+                parts.Add($"{top[i].def.skillLabel} {top[i].Level}{flame}");
+            }
+            sb.AppendLine("   top skills: " + string.Join(", ", parts));
         }
 
         [DebugAction("Regions and Societies", "R&S: stratification & balance (#29)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]

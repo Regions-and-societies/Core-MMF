@@ -56,6 +56,12 @@ namespace RegionsAndSocieties.Demographics
         // middle), growthCapacity 0.30..1 (the multiplier the growth/economy applies). Default 1 = unshaped.
         public float balanceIndex = 1f;
         public float growthCapacity = 1f;
+        // Economic read (#28/#29): labourEfficiency 0.15..1 is how much of the population's skill is realised
+        // given its condition (freedom/health/contentment — slaves read low); economicValue is the per-capita
+        // economic output = education's skill capacity × that efficiency (illiterate free ≈ 1). The number the
+        // regional economy consumes.
+        public float labourEfficiency = 1f;
+        public float economicValue = 1f;
         // Socioeconomic structure (#14): the share of settled tiles in each SES tier, indexed by
         // (int)SesTier [subsistence, modest, prosperous, affluent], plus the collapsed 0-100 index.
         public readonly float[] sesShares = new float[SocioeconomicRules.TierCount];
@@ -464,6 +470,9 @@ namespace RegionsAndSocieties.Demographics
             {
                 demo.balanceIndex = StratificationRules.BalanceIndex(demo.educationShares);
                 demo.growthCapacity = StratificationRules.GrowthCapacity(demo.educationShares);
+                // #28/#29 economic read: per-capita economic value = education skill capacity × realised
+                // labour condition. This is what the regional economy consumes.
+                demo.economicValue = EducationRules.RegionEconomicValue(demo.educationShares) * demo.labourEfficiency;
             }
             regionCache[province.id] = demo;
             return demo;
@@ -672,6 +681,7 @@ namespace RegionsAndSocieties.Demographics
             float ageChild = 0f, ageWorking = 0f, ageElder = 0f;
             var edu = new float[EducationRules.TierCount];
             float female = 0f, longevityAcc = 0f;
+            float condFreedom = 0f, condHealth = 0f, condContent = 0f;   // #29: pop-weighted labour condition
             bool biotech = demo.biotechActive;
 
             for (int i = 0; i < rc.cohorts.Count; i++)
@@ -704,7 +714,15 @@ namespace RegionsAndSocieties.Demographics
                     for (int t = 0; t < edu.Length && t < ce.Length; t++) edu[t] += pop * ce[t];
                 female += pop * c.state.femaleFraction;
                 longevityAcc += pop * LongevitySkew(c.state.lifespan);
+                condFreedom += pop * c.state.freedom;
+                condHealth += pop * c.state.healthEnv;
+                condContent += pop * c.state.contentment;
             }
+
+            // #29: realised labour condition — how freely, healthily and contentedly this population works.
+            // A slave-heavy region reads low here even where its skills are high, so its economic output is
+            // suppressed without an arbitrary penalty (orthogonal to education). Pop-weighted over cohorts.
+            demo.labourEfficiency = EducationRules.LabourEfficiency(condFreedom / total, condHealth / total, condContent / total);
 
             // The per-year derived fields (age, education, sex, wealth level) are NOT scribed — only the
             // cohorts' intrinsics and populations survive a save. So after a load a region's cohorts carry
