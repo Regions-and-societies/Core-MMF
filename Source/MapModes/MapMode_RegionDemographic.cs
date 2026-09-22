@@ -71,6 +71,18 @@ namespace RegionsAndSocieties
             return province != null ? SummaryFor(province) : null;
         }
 
+        // #34 + #33: overlays whose axis varies per tile (age, education, employment) opt in here to draw the
+        // hovered tile's LOCAL value in bold plus its neighbours' out to the adjustable radius, on the globe.
+        // Axes that are region-uniform or categorical (xenotype, ideology, sex) leave this off.
+        protected virtual bool ShowsLocalGradient => false;
+        protected virtual string LocalValueLabel(int tile) => null;
+
+        public override void MapModeOnGUI()
+        {
+            base.MapModeOnGUI();
+            if (ShowsLocalGradient) HoverNeighborhoodOverlay.Draw(LocalValueLabel);
+        }
+
         /// <summary>The overlay colour for a region, or null to leave it unshaded (e.g. an axis with no
         /// data because its DLC is off).</summary>
         protected abstract Material MaterialForRegion(RegionDemographics demo);

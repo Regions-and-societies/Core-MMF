@@ -35,6 +35,11 @@ namespace RegionsAndSocieties
         protected override Color[] BandColors => Bands;
         protected override float[] BandUpperBounds => Uppers;
         protected override float ValueFor(RegionDemographics demo) => demo.medianAge;
+
+        // #34/#33: hover shows each tile's LOCAL median age (younger toward the region's cities).
+        protected override bool ShowsLocalGradient => true;
+        protected override string LocalValueLabel(int tile)
+            => DemoForTile(tile) != null ? RegionDemographicsUtility.LocalDemographics(tile).medianAge.ToString() : null;
         protected override bool HasValue(RegionDemographics demo) => demo.medianAge > 0;
 
         protected override string LabelForRegion(RegionDemographics demo)

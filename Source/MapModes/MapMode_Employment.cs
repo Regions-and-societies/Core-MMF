@@ -65,6 +65,11 @@ namespace RegionsAndSocieties
             return sectorMats[(int)sector][BandForShare(share)];
         }
 
+        // #34/#33: hover shows each tile's LOCAL employment rate (higher toward the region's cities).
+        protected override bool ShowsLocalGradient => true;
+        protected override string LocalValueLabel(int tile)
+            => DemoForTile(tile) != null ? RegionDemographicsUtility.LocalDemographics(tile).employmentRate + "%" : null;
+
         protected override string LabelForRegion(RegionDemographics demo)
         {
             OccupationSector sector = RegionDemographicsUtility.DominantSector(demo, out float share);

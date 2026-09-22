@@ -126,5 +126,16 @@ namespace RegionsAndSocieties
             // not as the tooltip being broken. Ocean and ice still show nothing.
             return PopulationDensityUtility.GetDwellingsDisplay(tile);
         }
+
+        // #34: draw the hovered tile's dwellings in bold and its neighbours' out to the adjustable radius,
+        // on the globe itself, plus the radius panel — replacing the old hidden text tooltip block.
+        public override void MapModeOnGUI()
+        {
+            base.MapModeOnGUI();
+            HoverNeighborhoodOverlay.Draw(t =>
+                PopulationDensityUtility.IsHabitableTile(t)
+                    ? PopulationDensityUtility.GetEffectivePopulationAtTile(t).ToString()
+                    : null);
+        }
     }
 }
