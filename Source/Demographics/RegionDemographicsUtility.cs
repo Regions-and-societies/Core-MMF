@@ -1313,7 +1313,40 @@ namespace RegionsAndSocieties.Demographics
                     }
                 }
             }
+
+            // #35: expired-site legacies — the settlement history — are permanent pressure sources too, so the
+            // people who stayed when the player ignored a timed site keep shaping the region's demographics.
+            AddSettlementHistorySources(grid);
             return sources;
+        }
+
+        /// <summary>Append the world's settlement-history legacies (#35) to the pressure-source list. Each is a
+        /// permanent, low-population source at its tile, projecting its (resolved) faction's make-up.</summary>
+        private static void AddSettlementHistorySources(WorldGrid grid)
+        {
+            if (grid == null) return;
+            var mgr = Find.World?.GetComponent<SynapseRegionManager>();
+            var history = mgr?.SettlementHistory;
+            if (history == null || history.Count == 0) return;
+
+            var factionManager = Find.FactionManager;
+            for (int i = 0; i < history.Count; i++)
+            {
+                SettlementHistorySource h = history[i];
+                if (h == null || h.population <= 0 || h.tile < 0 || h.tile >= grid.TilesCount) continue;
+                Faction f = ResolveFactionId(factionManager, h.factionId);
+                if (f == null) continue;
+                sources.Add(new PressureSource { tile = h.tile, faction = f, population = h.population, reach = InfluenceReach(h.population) });
+            }
+        }
+
+        private static Faction ResolveFactionId(FactionManager fm, string id)
+        {
+            if (fm == null || string.IsNullOrEmpty(id)) return null;
+            List<Faction> all = fm.AllFactionsListForReading;
+            for (int i = 0; i < all.Count; i++)
+                if (all[i] != null && all[i].GetUniqueLoadID() == id) return all[i];
+            return null;
         }
 
         /// <summary>

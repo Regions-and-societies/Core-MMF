@@ -234,6 +234,38 @@ namespace RegionsAndSocieties.UI
             sb.AppendLine("   top skills: " + string.Join(", ", parts));
         }
 
+        [DebugAction("Regions and Societies", "R&S: TEST settlement-history legacy (#35)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        private static void TestSettlementHistory()
+        {
+            var mgr = Find.World?.GetComponent<SynapseRegionManager>();
+            if (mgr?.Provinces == null) { Log.Message("[R&S] no region manager"); return; }
+            GeographicProvince prov = null; Faction owner = null;
+            foreach (GeographicProvince p in mgr.Provinces)
+            {
+                if (p == null || p.provinceType != ProvinceType.Land || p.tiles == null || p.tiles.Count < 3) continue;
+                Faction o = Demographics.RegionStageBuilder.OwnerOf(p);
+                if (o != null && !o.IsPlayer) { prov = p; owner = o; break; }
+            }
+            if (prov == null) { Log.Message("[R&S] no owned land region"); return; }
+
+            int tile = prov.tiles[prov.tiles.Count - 1];   // a frontier-ish tile of the region
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("=== R&S settlement-history legacy (#35) — an expired site's permanent footprint ===");
+            var beforeDemo = Demographics.RegionDemographicsUtility.ForRegion(prov);
+            var beforeSample = Demographics.RegionDemographicsUtility.SampleTile(tile);
+            sb.AppendLine($"region #{prov.id} owner {owner.Name}: settledTiles {beforeDemo.settledTiles}; legacy tile {tile} owner BEFORE = {beforeSample.owner?.Name ?? "none"}");
+
+            int pop = Demographics.SettlementHistoryRules.LegacyPopulation(2000f);   // a large ignored site (capped)
+            mgr.AddSettlementHistory(tile, owner.GetUniqueLoadID(), pop);
+            sb.AppendLine($"added legacy pop {pop} at tile {tile}; settlementHistory count now {mgr.SettlementHistory.Count}");
+
+            var afterDemo = Demographics.RegionDemographicsUtility.ForRegion(prov);
+            var afterSample = Demographics.RegionDemographicsUtility.SampleTile(tile);
+            sb.AppendLine($"AFTER: settledTiles {afterDemo.settledTiles}; legacy tile owner AFTER = {afterSample.owner?.Name ?? "none"}");
+            sb.AppendLine(afterSample.owner == owner ? "  OK: the legacy now projects its faction's pressure at its tile." : "  (legacy not dominant here — try a more frontier tile)");
+            Log.Message(sb.ToString());
+        }
+
         [DebugAction("Regions and Societies", "R&S: settlement composition variation (#74)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void SettlementCompositionReport()
         {
