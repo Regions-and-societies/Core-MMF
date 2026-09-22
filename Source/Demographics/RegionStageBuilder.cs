@@ -45,6 +45,17 @@ namespace RegionsAndSocieties.Demographics
             stage.ageWorking = ReadShare(demo.ageShares, (int)AgeBucket.WorkingAge, 0.6f);
             stage.natalism = Clamp01(profile.natalistSkew);
 
+            // #29: stratification + slavery from the owning faction's character — the Empire reads rigidly
+            // stratified and slave-holding (its education shape polarises bimodal and its underclass is capped
+            // at Primary), a tribe egalitarian. Drives the missing-middle growth throttle.
+            if (owner?.def != null)
+            {
+                FactionArchetype arch = FactionCharacterRules.Classify(owner.def.defName, (int)owner.def.techLevel, owner.def.permanentEnemy);
+                FactionCharacterRules.Character character = FactionCharacterRules.CharacterOf(arch);
+                stage.stratification = character.stratification;
+                stage.slaveryStance = character.slaveryStance;
+            }
+
             // education: the region distribution, copied in tier order (Illiterate..Postgrad).
             stage.education = new float[EducationRules.TierCount];
             if (demo.educationShares != null && demo.educationShares.Length == EducationRules.TierCount)
@@ -65,7 +76,8 @@ namespace RegionsAndSocieties.Demographics
             stage.pollution = DefaultPollution;
             stage.roads = DefaultRoads;
             stage.ideoTolerance = DefaultIdeoTolerance;
-            stage.slaveryStance = DefaultSlaveryStance;
+            // stage.slaveryStance is set above from the owning faction's character (#29); an unowned region
+            // keeps the neutral default (0).
             stage.crime = DefaultCrime;
             return stage;
         }

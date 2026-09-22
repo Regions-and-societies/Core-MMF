@@ -105,6 +105,34 @@ namespace RegionsAndSocieties.UI
             Log.Message(sb.ToString());
         }
 
+        [DebugAction("Regions and Societies", "R&S: stratification & balance (#29)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        private static void StratificationReport()
+        {
+            var mgr = Find.World?.GetComponent<SynapseRegionManager>();
+            if (mgr?.Provinces == null) { Log.Message("[R&S] no region manager"); return; }
+            mgr.AdvanceCohortYear();   // seed + evolve so the shaped education distribution shows
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("=== R&S stratification & balance (#29) — one region per faction archetype ===");
+            var seen = new System.Collections.Generic.HashSet<Demographics.FactionArchetype>();
+            foreach (GeographicProvince p in mgr.Provinces)
+            {
+                if (p == null || p.provinceType != ProvinceType.Land) continue;
+                var demo = Demographics.RegionDemographicsUtility.ForRegion(p);
+                if (demo.settledTiles <= 0) continue;
+                Faction owner = Demographics.RegionStageBuilder.OwnerOf(p);
+                if (owner?.def == null) continue;
+                Demographics.FactionArchetype arch = Demographics.FactionCharacterRules.Classify(owner.def.defName, (int)owner.def.techLevel, owner.def.permanentEnemy);
+                if (!seen.Add(arch)) continue;
+                Demographics.FactionCharacterRules.Character ch = Demographics.FactionCharacterRules.CharacterOf(arch);
+                float[] e = demo.educationShares;
+                sb.AppendLine($"-- {owner.Name} [{arch}]  strat {ch.stratification:0.00}  slavery {ch.slaveryStance:0.00} --");
+                sb.AppendLine($"   edu: illit {e[0]:P0}  pri {e[1]:P0}  sec {e[2]:P0}  und {e[3]:P0}  post {e[4]:P0}");
+                sb.AppendLine($"   skilled-middle {(e[2] + e[3]):P0}   balance {demo.balanceIndex:0.00}   growthCapacity {demo.growthCapacity:0.00}");
+            }
+            Log.Message(sb.ToString());
+        }
+
         [DebugAction("Regions and Societies", "R&S: location-based demographics (#33)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void LocationBasedDemographics()
         {

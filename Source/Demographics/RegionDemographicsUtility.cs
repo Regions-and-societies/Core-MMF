@@ -51,6 +51,11 @@ namespace RegionsAndSocieties.Demographics
         // [illiterate, basic, skilled, advanced], plus the collapsed 0-100 attainment index.
         public readonly float[] educationShares = new float[EducationRules.TierCount];
         public int educationIndex;
+        // Socioeconomic balance / growth capacity (#29), derived from the education SHAPE: the skilled-middle
+        // share drives an economy, a polarised "missing middle" throttles it. balanceIndex 0..1 (1 = broad
+        // middle), growthCapacity 0.30..1 (the multiplier the growth/economy applies). Default 1 = unshaped.
+        public float balanceIndex = 1f;
+        public float growthCapacity = 1f;
         // Socioeconomic structure (#14): the share of settled tiles in each SES tier, indexed by
         // (int)SesTier [subsistence, modest, prosperous, affluent], plus the collapsed 0-100 index.
         public readonly float[] sesShares = new float[SocioeconomicRules.TierCount];
@@ -455,6 +460,11 @@ namespace RegionsAndSocieties.Demographics
             var demo = Aggregate(province);
             OverlayCohorts(demo, province);                      // #58: living cohorts are the source of truth for the people-axes
             RegionDemographicsStress.Apply(province.id, demo);   // sparse overrides on top of the baseline
+            if (demo.settledTiles > 0)                            // #29: balance/growth read from the final education shape
+            {
+                demo.balanceIndex = StratificationRules.BalanceIndex(demo.educationShares);
+                demo.growthCapacity = StratificationRules.GrowthCapacity(demo.educationShares);
+            }
             regionCache[province.id] = demo;
             return demo;
         }
