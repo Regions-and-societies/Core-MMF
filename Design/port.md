@@ -170,6 +170,12 @@ all sixteen touched files byte-identical.
 - **#77** — tier ladder collapse, homestead..city rename, occupancy, terrain build time, district pin,
   generalist sector, Workshop infographic. Merge `848519a`.
 - **#55** — CP registration hook for faction placement profiles & archetypes. Merge `a352b56`.
+- **#35** — settlement history. Phase 1 (merge `e7d9962`): an ignored timed site that expires in
+  friendly/neutral territory leaves a faint permanent legacy pressure source. Phase 2 (merge `55c9456`):
+  opt-in `PersistentOutpostHistory` (per-world raw -1/0/1 + `persistentOutpostHistoryDefault`, CP-forceable
+  like `StrictTerritorialOwnership`) keeps the expiring site as a timerless live source instead. All pure
+  Core logic — **no planet-size / sea-level interaction**, ports mechanically via the format-patch recipe.
+  The `Destroy` prefix now returns `bool` (skips removal to persist); nothing RP2-specific.
 
 ### The one conflict that fires every time
 
