@@ -234,6 +234,46 @@ namespace RegionsAndSocieties.UI
             sb.AppendLine("   top skills: " + string.Join(", ", parts));
         }
 
+        [DebugAction("Regions and Societies", "R&S: settlement composition variation (#74)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        private static void SettlementCompositionReport()
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("=== R&S settlement composition variation (#74) — settlements of one faction differ ===");
+            var settlements = Find.WorldObjects?.Settlements;
+            if (settlements == null) { Log.Message("[R&S] no settlements"); return; }
+
+            var byFaction = new System.Collections.Generic.Dictionary<Faction, System.Collections.Generic.List<RimWorld.Planet.Settlement>>();
+            foreach (RimWorld.Planet.Settlement s in settlements)
+            {
+                if (s?.Faction == null || s.Faction.IsPlayer) continue;
+                if (!byFaction.TryGetValue(s.Faction, out var l)) { l = new System.Collections.Generic.List<RimWorld.Planet.Settlement>(); byFaction[s.Faction] = l; }
+                l.Add(s);
+            }
+            Faction fac = null; System.Collections.Generic.List<RimWorld.Planet.Settlement> list = null;
+            foreach (var kv in byFaction) if (kv.Value.Count >= 2) { fac = kv.Key; list = kv.Value; break; }
+            if (fac == null) { Log.Message("[R&S] no faction with 2+ settlements"); return; }
+
+            var baseProf = Demographics.RegionDemographicsUtility.ProfileFor(fac);
+            sb.AppendLine($"faction {fac.Name}: BASELINE races {FormatWeights(baseProf)}  fallbackWealth {baseProf.fallbackWealth}");
+            for (int i = 0; i < list.Count && i < 4; i++)
+            {
+                int tile = list[i].Tile.tileId;
+                var prof = Demographics.RegionDemographicsUtility.SettlementProfileFor(tile, fac);
+                sb.AppendLine($"  '{list[i].Name}' (tile {tile}): races {FormatWeights(prof)}  fallbackWealth {prof.fallbackWealth}");
+            }
+            Log.Message(sb.ToString());
+        }
+
+        private static string FormatWeights(Demographics.FactionDemographicProfile p)
+        {
+            if (p?.races == null || p.races.Length == 0) return "(baseliner)";
+            float sum = 0f; for (int i = 0; i < p.raceWeights.Length; i++) sum += p.raceWeights[i];
+            var parts = new System.Collections.Generic.List<string>();
+            for (int i = 0; i < p.races.Length; i++)
+                parts.Add($"{p.races[i]?.defName ?? "?"} {(sum > 0f ? p.raceWeights[i] / sum : 0f):P0}");
+            return string.Join(", ", parts);
+        }
+
         [DebugAction("Regions and Societies", "R&S: stratification & balance (#29)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void StratificationReport()
         {

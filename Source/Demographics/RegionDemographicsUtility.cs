@@ -112,6 +112,10 @@ namespace RegionsAndSocieties.Demographics
         // #33: per-region density stats (its densest tile's population + population-weighted mean urbanity),
         // so a per-tile local demographic read is O(1) after the region is first touched.
         private static readonly Dictionary<int, RegionUrbanity> urbanityCache = new Dictionary<int, RegionUrbanity>();
+        // #74: each settlement's OWN make-up, by its world tile — a Districts-EP override or a deterministic
+        // perturbation of the faction baseline. Cached so it is computed once and identical under full and
+        // culled aggregation (VerifyCulling holds).
+        private static readonly Dictionary<int, FactionDemographicProfile> settlementProfileCache = new Dictionary<int, FactionDemographicProfile>();
         private static List<PressureSource> sources;
         private static int cacheVersion = -1;
         private static float avgTileSize = -1f;
@@ -134,6 +138,7 @@ namespace RegionsAndSocieties.Demographics
         public static void InvalidateCache()
         {
             profileCache.Clear();
+            settlementProfileCache.Clear();
             regionCache.Clear();
             factionCache.Clear();
             ambientCache.Clear();
@@ -156,6 +161,7 @@ namespace RegionsAndSocieties.Demographics
             if (v != cacheVersion)
             {
                 profileCache.Clear();
+                settlementProfileCache.Clear();
                 regionCache.Clear();
                 factionCache.Clear();
                 ambientCache.Clear();
@@ -231,8 +237,8 @@ namespace RegionsAndSocieties.Demographics
             var raceWealthAcc = new Dictionary<XenotypeDef, double>();
             var raceWealthWt = new Dictionary<XenotypeDef, double>();
             float humanWeight = 0f; double humanWealthAcc = 0, humanWealthWt = 0;   // null-race bucket (Biotech off)
-            var pf = new List<Faction>(); var pw = new List<float>();
-            Faction top = null; float topP = 0f;
+            var pf = new List<Faction>(); var pw = new List<float>(); var pt = new List<int>();   // #74: source tiles
+            Faction top = null; float topP = 0f; int topTile = -1;
 
             for (int i = 0; i < srcs.Count; i++)
             {
@@ -240,9 +246,11 @@ namespace RegionsAndSocieties.Demographics
                 float pressure = Pressure(s.population, CrowTiles(grid, s.tile, tileId));
                 if (pressure <= 0f) continue;
 
-                FactionDemographicProfile prof = ProfileFor(s.faction);
-                pf.Add(s.faction); pw.Add(pressure);
-                if (pressure > topP) { topP = pressure; top = s.faction; }
+                // #74: this SETTLEMENT's own make-up, not its faction's — so two settlements of a faction
+                // push measurably different mixes.
+                FactionDemographicProfile prof = SettlementProfileFor(s.tile, s.faction);
+                pf.Add(s.faction); pw.Add(pressure); pt.Add(s.tile);
+                if (pressure > topP) { topP = pressure; top = s.faction; topTile = s.tile; }
 
                 float wsum = 0f;
                 for (int r = 0; r < prof.raceWeights.Length; r++) wsum += prof.raceWeights[r];
@@ -291,15 +299,15 @@ namespace RegionsAndSocieties.Demographics
             if (chosen != null && raceWealthWt.TryGetValue(chosen, out double wt) && wt > 0)
                 baseWealth = raceWealthAcc[chosen] / wt;
             else
-                baseWealth = humanWealthWt > 0 ? humanWealthAcc / humanWealthWt : ProfileFor(top).fallbackWealth;
+                baseWealth = humanWealthWt > 0 ? humanWealthAcc / humanWealthWt : SettlementProfileFor(topTile, top).fallbackWealth;
 
             uint wealthState = DemographicsRules.TileSeed(WorldSeed, tileId, WealthSalt);
             sample.wealth = DemographicsRules.RangeInt(ref wealthState, (int)(baseWealth * 0.6), (int)(baseWealth * 1.4));
 
-            // Ideology and age both hang off the same pressure-weighted faction draw (factions sorted by
-            // load id for determinism) — the society whose norms and demographics dominate this tile.
-            Faction ageFaction = PressureWeightedFaction(tileId, pf, pw, top);
-            FactionDemographicProfile ageProf = ProfileFor(ageFaction);
+            // Ideology and age both hang off the same pressure-weighted SETTLEMENT draw (sources sorted by
+            // faction load id for determinism) — the settlement whose norms and demographics dominate this
+            // tile. #74: the chosen settlement's OWN profile, so ideo/age vary settlement to settlement too.
+            FactionDemographicProfile ageProf = PressureWeightedSourceProfile(tileId, pf, pw, pt, top, topTile);
             // Ideology (#13): draw among the faction's ideos — its primary plus any minors — rather than
             // always its primary, so a region reads as a belief mix. Own salt, independent of the draws
             // above and of the faction pick.
@@ -420,7 +428,13 @@ namespace RegionsAndSocieties.Demographics
             return AmbientFactionFor(prov);
         }
 
-        private static Faction PressureWeightedFaction(int tileId, List<Faction> factions, List<float> pressures, Faction fallback)
+        /// <summary>Pick, by pressure weight, the SETTLEMENT whose norms dominate this tile, and return its
+        /// own (#74) demographic profile — the source the ideology/age draw hangs off. Sources are ordered by
+        /// faction load id for a machine-stable pick, and the seed is unchanged (<see cref="IdeoSalt"/>), so
+        /// this is identical to the old faction-level draw except it resolves to the settlement's profile. The
+        /// pick reads only the &gt;0-pressure sources both full and culled aggregation share, so it is
+        /// culling-invariant.</summary>
+        private static FactionDemographicProfile PressureWeightedSourceProfile(int tileId, List<Faction> factions, List<float> pressures, List<int> tiles, Faction fallbackFaction, int fallbackTile)
         {
             int n = factions.Count;
             var order = new int[n];
@@ -433,7 +447,9 @@ namespace RegionsAndSocieties.Demographics
 
             uint state = DemographicsRules.TileSeed(WorldSeed, tileId, IdeoSalt);
             int pick = DemographicsRules.WeightedPick(ref state, w);
-            return pick >= 0 ? factions[order[pick]] : fallback;
+            return pick >= 0
+                ? SettlementProfileFor(tiles[order[pick]], factions[order[pick]])
+                : SettlementProfileFor(fallbackTile, fallbackFaction);
         }
 
         /// <summary>Which of a faction's ideos a tile follows: a deterministic weighted draw over its
@@ -1625,6 +1641,52 @@ namespace RegionsAndSocieties.Demographics
             if (profileCache.TryGetValue(faction, out FactionDemographicProfile p)) return p;
             p = FactionDemographicProfile.Build(faction);
             profileCache[faction] = p;
+            return p;
+        }
+
+        /// <summary>
+        /// #74: a SETTLEMENT's own demographic make-up — not its faction's. A consumer (Districts-EP) can
+        /// supply the real thing aggregated from the settlement's districts via
+        /// <see cref="SettlementDemographicHooks"/>; otherwise Core projects a deterministic perturbation of
+        /// the faction baseline, seeded by the settlement's tile, so two settlements of one faction push
+        /// measurably different mixes and wealth while staying recognisably that faction. Cached per settlement
+        /// tile and deterministic, so full and culled aggregation agree (<see cref="VerifyCulling"/> holds).
+        /// </summary>
+        public static FactionDemographicProfile SettlementProfileFor(int settlementTile, Faction faction)
+        {
+            EnsureFresh();
+            if (settlementProfileCache.TryGetValue(settlementTile, out FactionDemographicProfile cached)) return cached;
+
+            FactionDemographicProfile prof = SettlementDemographicHooks.TryGet(settlementTile)   // Districts-EP override
+                ?? PerturbFactionProfile(ProfileFor(faction), settlementTile);                    // Core cheap variation
+            settlementProfileCache[settlementTile] = prof;
+            return prof;
+        }
+
+        /// <summary>Deterministically perturb a faction profile into one settlement's own make-up (#74):
+        /// each race weight, each per-race wealth, the fallback wealth and the ideo weights are shifted within
+        /// bounds by a seed made from the world seed and the settlement's tile. The race/ideo SETS and the
+        /// tech/skew signals are unchanged (it is still the same faction), only the mix and wealth move.</summary>
+        private static FactionDemographicProfile PerturbFactionProfile(FactionDemographicProfile b, int settlementTile)
+        {
+            if (b == null || b.races == null) return b ?? FactionDemographicProfile.Empty;
+            int seed = unchecked(WorldSeed * 31 + settlementTile);
+
+            var p = new FactionDemographicProfile
+            {
+                races = b.races,
+                raceWeights = SettlementCompositionRules.PerturbWeights(b.raceWeights, seed),
+                raceMedianWealth = new int[b.raceMedianWealth.Length],
+                fallbackWealth = SettlementCompositionRules.PerturbWealth(b.fallbackWealth, seed),
+                primaryIdeo = b.primaryIdeo,
+                ideos = b.ideos,
+                ideoWeights = SettlementCompositionRules.PerturbWeights(b.ideoWeights, seed, SettlementCompositionRules.IdeoSpread),
+                techLevel = b.techLevel,
+                natalistSkew = b.natalistSkew,
+                researchSkew = b.researchSkew,
+            };
+            for (int i = 0; i < b.raceMedianWealth.Length; i++)
+                p.raceMedianWealth[i] = SettlementCompositionRules.PerturbWealth(b.raceMedianWealth[i], seed + 3 + i);
             return p;
         }
     }

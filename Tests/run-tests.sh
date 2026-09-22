@@ -178,6 +178,11 @@ run_suite stratification Exe \
     Tests/StratificationRulesTests.cs \
     $SRC/Demographics/StratificationRules.cs
 
+# Pure, no game — per-settlement demographic variation: deterministic bounded perturbation (#74).
+run_suite settlementcomposition Exe \
+    Tests/SettlementCompositionRulesTests.cs \
+    $SRC/Demographics/SettlementCompositionRules.cs
+
 # Pure, no game — the per-cohort year step composing all six modules (#58 spine).
 run_suite cohortyear Exe \
     Tests/CohortYearRulesTests.cs \
