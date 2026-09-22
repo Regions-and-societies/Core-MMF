@@ -105,6 +105,58 @@ namespace RegionsAndSocieties.UI
             Log.Message(sb.ToString());
         }
 
+        [DebugAction("Regions and Societies", "R&S: TEST pawn inherits demographics (#28)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        private static void TestPawnInheritsDemographics()
+        {
+            var mgr = Find.World?.GetComponent<SynapseRegionManager>();
+            if (mgr?.Provinces == null) { Log.Message("[R&S] no region manager"); return; }
+            mgr.AdvanceCohortYear();   // ensure demographics are populated
+
+            GeographicProvince hi = null, lo = null; int hiIdx = -1, loIdx = int.MaxValue;
+            foreach (GeographicProvince p in mgr.Provinces)
+            {
+                if (p == null || p.provinceType != ProvinceType.Land || p.tiles == null || p.tiles.Count == 0) continue;
+                var d = Demographics.RegionDemographicsUtility.ForRegion(p);
+                if (d.settledTiles <= 0) continue;
+                if (d.educationIndex > hiIdx) { hiIdx = d.educationIndex; hi = p; }
+                if (d.educationIndex < loIdx) { loIdx = d.educationIndex; lo = p; }
+            }
+            if (hi == null || lo == null) { Log.Message("[R&S] no settled regions"); return; }
+
+            // Reference consumer (demo only — a real one ships in a CP): region education index → Intellectual.
+            var prev = Demographics.PawnDemographicHooks.OnPawnGenerated;
+            Demographics.PawnDemographicHooks.OnPawnGenerated = ctx =>
+            {
+                SkillRecord sk = ctx.pawn.skills?.GetSkill(SkillDefOf.Intellectual);
+                if (sk != null) sk.Level = UnityEngine.Mathf.Clamp(4 + (ctx.demographics.educationIndex - 50) / 6, 0, 20);
+            };
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("=== R&S pawn inherits demographics (#28) — education index -> Intellectual skill ===");
+            try
+            {
+                int hiSkill = GenIntellectualForTile(hi);
+                int loSkill = GenIntellectualForTile(lo);
+                sb.AppendLine($"HIGH-edu region #{hi.id} (eduIndex {hiIdx}) -> generated pawn Intellectual {hiSkill}");
+                sb.AppendLine($"LOW-edu  region #{lo.id} (eduIndex {loIdx}) -> generated pawn Intellectual {loSkill}");
+                sb.AppendLine(hiSkill > loSkill
+                    ? "  OK: a pawn from the more-educated region rolled a higher skill (the hook fired per region)."
+                    : "  (no skew — check the hook)");
+            }
+            finally { Demographics.PawnDemographicHooks.OnPawnGenerated = prev; }
+            Log.Message(sb.ToString());
+        }
+
+        private static int GenIntellectualForTile(GeographicProvince p)
+        {
+            Faction owner = Demographics.RegionStageBuilder.OwnerOf(p) ?? Faction.OfPlayer;
+            var req = new PawnGenerationRequest(PawnKindDefOf.Colonist, owner, forceGenerateNewPawn: true);
+            req.Tile = new RimWorld.Planet.PlanetTile(p.tiles[0]);   // generate "from" this region's tile
+            Pawn pawn = PawnGenerator.GeneratePawn(req);
+            SkillRecord sk = pawn.skills?.GetSkill(SkillDefOf.Intellectual);
+            return sk?.Level ?? -1;
+        }
+
         [DebugAction("Regions and Societies", "R&S: stratification & balance (#29)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void StratificationReport()
         {
