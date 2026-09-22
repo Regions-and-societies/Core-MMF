@@ -266,6 +266,42 @@ namespace RegionsAndSocieties.UI
             Log.Message(sb.ToString());
         }
 
+        [DebugAction("Regions and Societies", "R&S: persistent settlement history (#35 P2)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
+        private static void TestPersistentOutpostHistory()
+        {
+            var mgr = Find.World?.GetComponent<SynapseRegionManager>();
+            if (mgr == null || Find.WorldObjects == null) { Log.Message("[R&S] no world"); return; }
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("=== R&S persistent settlement history (#35 Phase 2) — timerless outposts as live sources ===");
+            sb.AppendLine($"mode: effective={mgr.EffectivePersistentOutpostHistory} (world raw {(mgr.PersistentOutpostHistory ? 1 : 0)}), default={FactionPlacementSettings.persistentOutpostHistoryDefault}");
+
+            // Every classified outpost/camp and whether it qualifies as a live persistent source right now.
+            int qualifying = 0, timed = 0, total = 0;
+            var all = Find.WorldObjects.AllWorldObjects;
+            for (int i = 0; i < all.Count; i++)
+            {
+                WorldObject o = all[i];
+                if (o == null || o.Faction == null) continue;
+                Integration.WorldObjectKind kind = Integration.WorldObjectClassifier.Classify(o);
+                if (kind != Integration.WorldObjectKind.Outpost && kind != Integration.WorldObjectKind.Camp) continue;
+                total++;
+                var timeout = o.GetComponent<RimWorld.Planet.TimeoutComp>();
+                bool ticking = timeout != null && timeout.Active;
+                GeographicProvince prov = mgr.GetProvinceForTile(o.Tile.tileId);
+                bool ownNeutral = prov != null && prov.provinceType == ProvinceType.Land
+                    && Demographics.RegionDemographicsUtility.IsOwnOrNeutralTerritory(prov, o.Faction);
+                bool live = !ticking && ownNeutral && Demographics.RegionDemographicsUtility.IsSurfaceSampleTile(o.Tile);
+                if (ticking) timed++;
+                if (live) qualifying++;
+                sb.AppendLine($"  {kind} '{o.LabelCap}' [{o.Faction.Name}] tile {o.Tile.tileId}: timer={(ticking ? $"active {timeout.TicksLeft}t" : "none/stopped")}, ownOrNeutral={ownNeutral} -> liveSource={live}");
+            }
+            sb.AppendLine($"outposts/camps: {total} total, {timed} still counting down, {qualifying} qualify as live sources (counted only when mode ON).");
+            if (total == 0) sb.AppendLine("  (no outpost/camp objects present — spawn a raider camp / VOE outpost to see one become a source when mode is ON.)");
+
+            Log.Message(sb.ToString());
+        }
+
         [DebugAction("Regions and Societies", "R&S: settlement composition variation (#74)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap | AllowedGameStates.PlayingOnWorld)]
         private static void SettlementCompositionReport()
         {
